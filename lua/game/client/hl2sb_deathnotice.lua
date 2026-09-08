@@ -129,7 +129,7 @@ surface.SetFontGlyphSet( hGlyphCS, "csd", GLYPH_TALL, 0, 0, 0, FLAG_AA_ADD )
 -- GMod skull texture (hud/killicons/default).
 -------------------------------------------------------------------------------
 local KILLICON_GLYPH = {
-	["death_357"]            = { "/" },
+	["death_357"]            = { "." },
 	["death_ar2"]            = { "2" },
 	["death_crossbow_bolt"]  = { "1" },
 	["death_crossbow"]       = { "1" },
@@ -142,8 +142,8 @@ local KILLICON_GLYPH = {
 	["death_handgrenade"]    = { "4" },
 	["death_pistol"]         = { "-" },
 	["death_physics"]        = { "9" },
-	["death_physcannon"]     = { "," },
-	["death_physgun"]        = { "," },
+	["death_physcannon"]     = { "9" },
+	["death_physgun"]        = { "9" },
 	["death_combine_ball"]   = { "8" },
 	["death_smg1_grenade"]   = { "7" },
 	["death_stunstick"]      = { "!" },
@@ -271,11 +271,15 @@ local function DrawRow( x, y, d, life )
 		nRowLog = nRowLog + 1
 		print( string.format(
 			"[HL2SB] row%d  '%s' -> '%s'\n" ..
+			"    weapon='%s'  glyph=%s  skull=%s\n" ..
 			"    wKiller=%d wIcon=%d wVictim=%d\n" ..
 			"    killer  x=%d..%d\n" ..
 			"    icon    x=%d..%d\n" ..
 			"    victim  x=%d..%d\n",
 			nRowLog, tostring( d.left ), tostring( d.right ),
+			tostring( d.icon ),
+			( KILLICON_GLYPH[ d.icon ] and ("'" .. KILLICON_GLYPH[ d.icon ][1] .. "'") ) or "NONE",
+			tostring( d.useSkull ),
 			wKiller, wIcon, wVictim,
 			xKillerRight - wKiller, xKillerRight,
 			xIconLeft, xIconLeft + wIcon,
