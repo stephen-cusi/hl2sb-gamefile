@@ -1,0 +1,12 @@
+--========== Copyleft © 2010, Team Sandbox, Some rights reserved. ===========--
+--
+-- Purpose: Ammo type definitions for the Campaign gamemode.
+--
+--          Campaign inherits the base (Deathmatch) table, which already
+--          restores the HL2MP carry limits, so nothing has to be written
+--          here. Put overrides in this file if the campaign ever needs its
+--          own numbers, e.g.
+--
+--            ammo.register( { name = "Pistol", maxcarry = 250 } )
+--
+--===========================================================================--

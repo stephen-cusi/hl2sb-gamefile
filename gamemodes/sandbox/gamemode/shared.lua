@@ -4,6 +4,8 @@
 --
 --===========================================================================--
 
+include( "ammo.lua" )
+
 GM.Name			= "Sandbox"
 GM.Homepage		= "http://www.andrewmcwatters.com/hl2sb/"
 GM.Developer	= "Team Sandbox"

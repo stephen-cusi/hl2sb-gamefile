@@ -4,6 +4,8 @@
 --
 --===========================================================================--
 
+include( "ammo.lua" )
+
 GM.Name       = "Deathmatch"
 GM.Homepage   = "http://www.steampowered.com/"
 GM.Developer  = "Valve"
