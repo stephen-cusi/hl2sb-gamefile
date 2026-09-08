@@ -44,18 +44,22 @@ local FADE            = 1.2     -- alpha fade applied over the last N seconds
 local TOP_FRAC        = 0.06    -- top margin as a fraction of screen height
 local RIGHT_FRAC      = 0.02    -- right margin as a fraction of screen width
 local TEXT_TALL       = 20      -- name text height
-local GLYPH_TALL      = 26      -- death-icon glyph font height
-local ICON_TALL       = GLYPH_TALL  -- icon box height (also the row height)
+local GLYPH_TALL      = 20      -- death-icon glyph font height
+                                --   kept equal to TEXT_TALL so the two font
+                                --   boxes have the same height and the icon
+                                --   lines up with the names automatically
+local ICON_TALL       = 24      -- icon box height (also the row height)
 local GAP_ICON        = 14      -- gap between the icon and each name
 local ROW_SPACING     = 1.18    -- row pitch as a multiple of icon height
 local LERP            = 0.7     -- position smoothing (GMod uses 0.7)
 
--- Vertical nudge for the kill-icon glyphs, in pixels.  Positive moves the icon
--- DOWN.  The HL2MP/csd death-icon font does not put its ink on the baseline,
--- so baseline alignment alone leaves the glyph sitting above the names; this
--- constant compensates.  Tune it live with:
---     lua_dofile_cl lua/game/client/hl2sb_deathnotice.lua
-local ICON_Y_OFFSET   = 2
+-- Fine vertical nudge for the kill-icon glyphs, in pixels.  Positive moves the
+-- icon DOWN.  Stored in a global so a script reload keeps the tuned value, and
+-- adjustable live from the console:
+--     hl2sb_killfeed_icon_y 3      -- move the icon 3 px down
+--     hl2sb_killfeed_icon_y -2     -- move it 2 px up
+--     hl2sb_killfeed_icon_y        -- print the current value
+HL2SB_KillFeedIconY = HL2SB_KillFeedIconY or 6
 
 -- { r, g, b } tables rather than Color objects: the surface calls take plain
 -- channels, so there is no need to allocate a Color per row per frame.
@@ -228,7 +232,7 @@ local function DrawIcon( iconName, useSkull, x, yText, tall, alpha )
 	-- so the glyph goes at (text baseline - glyph ascent) + ICON_Y_OFFSET.
 	local textAscent  = surface.GetFontAscent( hText, "A" )
 	local glyphAscent = surface.GetFontAscent( hGlyph, ch )
-	surface.DrawSetTextPos( x, yText + textAscent - glyphAscent + ICON_Y_OFFSET )
+	surface.DrawSetTextPos( x, yText + textAscent - glyphAscent + HL2SB_KillFeedIconY )
 	surface.DrawPrintText( ch )
 
 	return w
@@ -355,8 +359,8 @@ hook.add( "HudViewportPaint", "hl2sb_deathnotice", function()
 			"    row:   yText=+%.1f  glyphY=+%.1f\n",
 			sw, sh,
 			tallText, ascText, w3, h3, w1, h1, w2, h2,
-			tallGlyph, ascGlyph, ICON_TALL, ICON_Y_OFFSET,
-			yText, yText + ascText - ascGlyph + ICON_Y_OFFSET ) )
+			tallGlyph, ascGlyph, ICON_TALL, HL2SB_KillFeedIconY,
+			yText, yText + ascText - ascGlyph + HL2SB_KillFeedIconY ) )
 	end
 
 	local sw, sh = surface.GetScreenSize()
@@ -395,7 +399,30 @@ hook.add( "HudViewportPaint", "hl2sb_deathnotice", function()
 end )
 
 -------------------------------------------------------------------------------
+-- Live tuning command.  Registered once (a script reload must not re-register
+-- the ConCommand, but it does refresh the value it reads).
+-------------------------------------------------------------------------------
+if ( concommand and not _G.__hl2sb_kf_icony_cmd ) then
+	_G.__hl2sb_kf_icony_cmd = true
+
+	concommand.Create( "hl2sb_killfeed_icon_y", function( pPlayer, pCmd, argstr )
+		local v = tonumber( argstr )
+		if ( v ) then
+			HL2SB_KillFeedIconY = floor( v )
+			print( string.format( "[HL2SB] kill feed icon Y offset = %d\n",
+				HL2SB_KillFeedIconY ) )
+		else
+			print( string.format( "[HL2SB] kill feed icon Y offset = %d   "
+				.. "(usage: hl2sb_killfeed_icon_y <px>, positive = down)\n",
+				HL2SB_KillFeedIconY ) )
+		end
+	end, "Kill feed icon vertical offset in pixels (positive = down)" )
+end
+
+-------------------------------------------------------------------------------
 -- Load marker.  This is the line to look for in the console / ds_debug.log to
 -- confirm the file was executed and both hooks registered.
 -------------------------------------------------------------------------------
-print( "[HL2SB] hl2sb_deathnotice.lua loaded (GMod-style kill feed)\n" )
+print( string.format(
+	"[HL2SB] hl2sb_deathnotice.lua loaded (GMod-style kill feed)  iconY=%d\n",
+	HL2SB_KillFeedIconY ) )
