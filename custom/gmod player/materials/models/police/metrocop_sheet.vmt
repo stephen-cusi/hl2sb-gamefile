@@ -1,0 +1,16 @@
+"VertexLitGeneric"
+{
+	"$baseTexture" "models/police/metrocop_sheet"
+	
+	"$envmap" "env_cubemap"
+	"$basealphaenvmapmask" 1
+	"$envmaptint" "[.5 .5 .5]"
+	
+	// GMOD additions
+	//"$bumpmap" "models/police/metrocop_sheet_normal"
+	//"$normalmapalphaenvmapmask" 1
+	//"$phong" "1"
+	//"$phongexponent" "10"
+	//"$phongboost" "5"
+	//"$phongfresnelranges" "[0.05 0.2 0.6]"
+}

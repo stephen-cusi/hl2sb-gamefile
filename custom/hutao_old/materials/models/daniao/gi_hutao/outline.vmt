@@ -1,0 +1,8 @@
+VertexLitGeneric
+{
+	"$basetexture" "models\daniao\gi_hutao\black"
+	
+	"$alpha" "1"
+	"$alphatest" "0"
+	"$nodecal" "1"
+}

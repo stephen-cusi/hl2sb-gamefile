@@ -1,0 +1,9 @@
+"Sky"
+{
+	"$baseTexture" 		"skybox/flatgrass_side"
+	"$hdrbasetexture" 		"skybox/flatgrass_side_hdr"
+	"$nofog" 			1
+	"$ignorez" 		1
+	"$basetexturetransform" 	"center 0 0 scale 1 2 rotate 0 translate 0 0"
+}
+

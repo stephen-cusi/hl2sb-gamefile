@@ -1,0 +1,88 @@
+# ============================================================
+# hl2sb-gamefile — 只收录可编辑的文本资源
+# 二进制资源(材质/模型/地图/贴图/音频/字体)一律排除
+# ============================================================
+
+# --- 二进制资源:贴图 / 材质二进制 ---
+*.vtf
+*.vtx
+*.vvd
+*.phy
+*.vvc
+*.mdl
+*.ani
+*.ain
+*.bsp
+*.nav
+*.wav
+*.mp3
+*.ogg
+*.png
+*.jpg
+*.jpeg
+*.tga
+*.psd
+*.ttf
+*.otf
+*.vfont
+*.pyh
+
+# --- 二进制数据/缓存 ---
+*.cache
+*.dt
+*.dat
+*.lst
+*.bin
+*.pak
+*.vpk
+*.vpcf_c
+*.sav
+*.dem
+*.tmp
+*.pid
+*.mdmp
+*.dmp
+
+# --- 编译产物 / 库 ---
+*.dll
+*.lib
+*.exp
+*.pdb
+*.obj
+*.o
+*.so
+*.dylib
+*.exe
+
+# --- 日志与备份 ---
+*.log
+*.bak
+*.bak_*
+*.prev.log
+*.old
+lua_backup_*/
+
+# --- 运行期生成目录 ---
+dumps/
+shots/
+bin/
+download/
+downloadlists/
+last_launcher.pid
+
+# --- 编辑器缓存 / IDE 工程文件 ---
+.vs/
+.vscode/
+.idea/
+*.vsidx
+*.wsuo
+*.suo
+*.user
+*.sqlite
+*.lock
+*.sln
+*.vcxproj*
+*.filters
+
+# --- 含大量二进制的资源目录(保留其中文本由上层规则决定) ---
+# materials/ 与 models/ 下的 .vmt/.vdf 仍会被收录(vmt 是文本)
