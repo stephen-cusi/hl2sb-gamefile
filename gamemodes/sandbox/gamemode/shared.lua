@@ -13,7 +13,9 @@ GM.Manual		= nil
 
 function GM:Initialize()
 if ( not _CLIENT ) then
-  engine.ServerCommand( "mp_falldamage 1\n" )
+  -- Sandbox default: real fall damage OFF (the create-server "Enable
+  -- fall damage" checkbox can turn it back on per session).
+  engine.ServerCommand( "mp_falldamage 0\n" )
   engine.ServerCommand( "mp_flashlight 1\n" )
 else
   -- Andrew; not the right place to put this, but oh well.
