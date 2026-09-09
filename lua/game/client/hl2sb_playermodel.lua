@@ -275,7 +275,11 @@ function SCROLL_LIST:OnMousePressed( code )
 	if ( code ~= MOUSE_LEFT ) then return end
 
 	local _, y = CursorPos()
+	local localY = ScreenToLocalY( self, y )
 	local index = self:ScreenToRow( y )
+
+	print( string.format( "[HL2SB] list click: screenY=%d localY=%d row=%d items=%d\n",
+		y, localY, index, #self.Items ) )
 
 	if ( index >= 1 and index <= #self.Items ) then
 		self:Select( index )
@@ -456,7 +460,7 @@ function PREVIEW:OnMouseReleased( code )
 end
 
 function PREVIEW:OnMouseWheeled( delta )
-	self.nZoom = max( ZOOM_MIN, min( ZOOM_MAX, self.nZoom - delta * ZOOM_STEP ) )
+	self.nZoom = max( ZOOM_MIN, min( ZOOM_MAX, ( self.nZoom or 1.0 ) - delta * ZOOM_STEP ) )
 	self:SetZoom( self.nZoom )
 end
 
@@ -592,7 +596,13 @@ function MENU:PreviewModel( item )
 		return
 	end
 
-	self.Preview:LoadModel( item.model )
+	-- Do not reload the same model: ApplyFilter() re-selects the first match on
+	-- every keystroke, and reloading resets the camera and animation each time.
+	if ( self.szPreviewPath ~= item.model ) then
+		self.szPreviewPath = item.model
+		self.Preview:LoadModel( item.model )
+	end
+
 	self:SetStatus( item.name )
 end
 
