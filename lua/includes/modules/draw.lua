@@ -277,11 +277,9 @@ function RoundedBoxEx( bordersize, x, y, w, h, color, tl, tr, bl, br )
   w = math.Round( w )
   h = math.Round( h )
 
-  -- HL2SB's gui/cornerX textures render wrong here (the textured corners paint
-  -- the whole box white and swallow the colour), so we render a plain solid
-  -- rectangle instead of a textured rounded box.  DrawFilledRect uses the
-  -- current draw colour (set by SetDrawColour), so the fill colour is correct.
-  -- Corner radius is approximated by simply filling the whole rect.
+  -- Plain solid rectangle.  The HL2SB gui/cornerX textures render as crisp
+  -- round corners, but the user chose to keep the simple sharp-cornered box,
+  -- so we just fill the whole rect with the draw colour.
   surface.DrawFilledRect( x, y, x + w, y + h )
 end
 
