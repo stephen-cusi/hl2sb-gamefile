@@ -361,9 +361,13 @@ function TEXT_INPUT:GetValue()
 end
 
 function TEXT_INPUT:Focus()
+	print( string.format( "[HL2SB] DIAG search focus: hasFocus=%s\n",
+		tostring( self.HasFocus and self:HasFocus() ) ) )
 	self:RequestFocus()
 	self.bFocused = true
 	self:Repaint()
+	print( string.format( "[HL2SB] DIAG search focus after: hasFocus=%s\n",
+		tostring( self.HasFocus and self:HasFocus() ) ) )
 end
 
 function TEXT_INPUT:Paint()
@@ -468,43 +472,81 @@ function PREVIEW:Init()
 	st.nYaw = 180
 	st.nZoom = 1.0
 
-	-- No method snapshots here: whether the C-side methods resolve through the
-	-- metatable chain has proven unreliable (they can come back nil), so each
-	-- call site checks for the method before using it.
+	-- Capture the C-side methods once, while the metatable chain is known good
+	-- (the Init diagnostic confirms all of them resolve here).  Looking them up
+	-- again later returns nil, so every call site goes through these.
+	st.SetModel         = self.SetModel
+	st.SetYaw           = self.SetYaw
+	st.SetZoom          = self.SetZoom
+	st.SetFOV           = self.SetFOV
+	st.SetZoomLimits    = self.SetZoomLimits
+	st.RefitCamera      = self.RefitCamera
+	st.PlaySequence     = self.PlaySequence
+	st.GetSequenceName  = self.GetSequenceName
+	st.GetSequenceCount = self.GetSequenceCount
 
 	self:SetMouseInputEnabled( true )
 	self:SetKeyBoardInputEnabled( false )
-	if ( self.SetZoomLimits ) then self:SetZoomLimits( ZOOM_MIN, ZOOM_MAX ) end
-	if ( self.SetFOV ) then self:SetFOV( FOV ) end
-	if ( self.SetYaw ) then self:SetYaw( st.nYaw ) end
-	if ( self.SetZoom ) then self:SetZoom( st.nZoom ) end
+	if ( st.SetZoomLimits ) then st.SetZoomLimits( self, ZOOM_MIN, ZOOM_MAX ) end
+	if ( st.SetFOV ) then st.SetFOV( self, FOV ) end
+	if ( st.SetYaw ) then st.SetYaw( self, st.nYaw ) end
+	if ( st.SetZoom ) then st.SetZoom( self, st.nZoom ) end
+end
+
+-- CModelPanel fits the model into the *vertical* FOV only.  In a portrait panel
+-- the horizontal field is then too narrow and the model spills out sideways, so
+-- widen the vertical FOV until the horizontal one is at least FOV degrees.
+function PREVIEW:UpdateFOV()
+	local st = PState( self )
+	local w, h = self:GetWide(), self:GetTall()
+	if ( w <= 0 or h <= 0 or not st.SetFOV ) then return end
+
+	local aspect = w / h
+	local fovY = FOV
+
+	if ( aspect < 1.0 ) then
+		fovY = 2 * math.deg( math.atan( math.tan( math.rad( FOV ) * 0.5 ) / aspect ) )
+	end
+
+	st.SetFOV( self, floor( fovY ) )
+	if ( st.RefitCamera ) then st.RefitCamera( self ) end
 end
 
 function PREVIEW:LoadModel( path )
-	if ( not self.SetModel ) then return false end
+	local st = PState( self )
 
-	local ok = self:SetModel( path )
+	-- Fall back to a direct lookup if the cached reference is missing, so an
+	-- empty preview can never happen silently.
+	local fnSetModel = st.SetModel or self.SetModel
+	if ( not fnSetModel ) then
+		print( "[HL2SB] preview: SetModel unavailable\n" )
+		return false
+	end
+
+	local ok = fnSetModel( self, path )
+	if ( not ok ) then
+		print( "[HL2SB] preview: failed to load '" .. tostring( path ) .. "'\n" )
+	end
 	if ( ok ) then
-		local st = PState( self )
-		if ( self.RefitCamera ) then self:RefitCamera() end
+		if ( st.RefitCamera ) then st.RefitCamera( self ) end
 		st.nYaw = 180
-		if ( self.SetYaw ) then self:SetYaw( st.nYaw ) end
+		if ( st.SetYaw ) then st.SetYaw( self, st.nYaw ) end
 	end
 	return ok
 end
 
 function PREVIEW:CycleAnimation()
-	if ( not self.GetSequenceCount or not self.PlaySequence ) then return end
+	local st = PState( self )
+	if ( not st.GetSequenceCount or not st.PlaySequence ) then return end
 
-	local n = self:GetSequenceCount()
+	local n = st.GetSequenceCount( self )
 	if ( n <= 0 ) then return end
 
-	local st = PState( self )
 	st.nSeq = ( st.nSeq or 0 ) + 1
 	if ( st.nSeq >= n ) then st.nSeq = 0 end
 
-	if ( self.GetSequenceName ) then
-		self:PlaySequence( self:GetSequenceName( st.nSeq ) )
+	if ( st.GetSequenceName ) then
+		st.PlaySequence( self, st.GetSequenceName( self, st.nSeq ) )
 	end
 end
 
@@ -525,6 +567,11 @@ function PREVIEW:OnCursorMoved()
 	local st = PState( self )
 	if ( not st.bDragging ) then return end
 
+	st.nMoveLog = ( st.nMoveLog or 0 ) + 1
+	if ( st.nMoveLog % 20 == 1 ) then
+		print( string.format( "[HL2SB] DIAG preview move #%d\n", st.nMoveLog ) )
+	end
+
 	local x = CursorPos()
 	local dx = x - st.nLastX
 	st.nLastX = x
@@ -535,7 +582,7 @@ function PREVIEW:OnCursorMoved()
 
 	if ( dx ~= 0 ) then
 		st.nYaw = st.nYaw + dx * ROTATE_SPEED
-		if ( self.SetYaw ) then self:SetYaw( st.nYaw ) end
+		if ( st.SetYaw ) then st.SetYaw( self, st.nYaw ) end
 	end
 end
 
@@ -553,7 +600,7 @@ function PREVIEW:OnMouseWheeled( delta )
 	print( string.format( "[HL2SB] DIAG preview wheel: delta=%d\n", delta ) )
 	local st = PState( self )
 	st.nZoom = max( ZOOM_MIN, min( ZOOM_MAX, ( st.nZoom or 1.0 ) - delta * ZOOM_STEP ) )
-	if ( self.SetZoom ) then self:SetZoom( st.nZoom ) end
+	if ( st.SetZoom ) then st.SetZoom( self, st.nZoom ) end
 end
 
 Register( PREVIEW, "HL2SBModelPreview", "ModelPanel" )
@@ -631,8 +678,17 @@ function MENU:Layout()
 	local nBottom = 34
 
 	if ( self.Preview ) then
+		local nOldW, nOldH = self.Preview:GetSize()
+		local nNewH = h - CAPTION_H - nBottom
+
 		self.Preview:SetPos( 0, CAPTION_H )
-		self.Preview:SetSize( nPreviewW, h - CAPTION_H - nBottom )
+		self.Preview:SetSize( nPreviewW, nNewH )
+
+		-- Only re-fit when the aspect actually changed; doing it every frame
+		-- would reset the user's zoom.
+		if ( nOldW ~= nPreviewW or nOldH ~= nNewH ) then
+			self.Preview:UpdateFOV()
+		end
 	end
 
 	if ( self.Search ) then

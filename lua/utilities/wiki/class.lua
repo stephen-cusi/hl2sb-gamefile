@@ -1,4 +1,4 @@
---======== Copyleft © 2010-2011, Team Sandbox, Some rights reserved. ========--
+--======== Copyleft Â© 2010-2011, Team Sandbox, Some rights reserved. ========--
 --
 -- Purpose: Dumps an individual class in wiki format for Sandpedia.
 --

@@ -1,4 +1,4 @@
---========== Copyleft © 2010, Team Sandbox, Some rights reserved. ===========--
+--========== Copyleft Â© 2010, Team Sandbox, Some rights reserved. ===========--
 --
 -- Purpose: Hook implementation.
 --
@@ -91,4 +91,35 @@ function remove( strEventName, strHookName )
   if ( tHooks[ strEventName ][ strHookName ] ) then
     tHooks[ strEventName ][ strHookName ] = nil
   end
+end
+
+-------------------------------------------------------------------------------
+-- Purpose: Run the given hook (GMod-compatible hook.Run).
+--          Calls every hook registered under strEventName in order and returns
+--          the first non-nil result, exactly like GMod's hook.Run(name, ...).
+--          This is the entry point most GMod addons use to fire callbacks, so
+--          ported scripts calling hook.Run("PlayerSpawn", ply) keep working.
+-- Input  : strEventName - Name of the hook
+-- Output : first non-nil result, else nil
+-------------------------------------------------------------------------------
+function Run( strEventName, ... )
+  local tHooks = tHooks[ strEventName ]
+  if ( tHooks ~= nil ) then
+    for k, v in pairs( tHooks ) do
+      if ( v == nil ) then
+        Warning( "Hook '" .. tostring( k ) .. "' (" .. tostring( strEventName ) .. ") tried to call a nil function!\n" )
+        tHooks[ k ] = nil
+        break
+      else
+        tReturns = { pcall( v, ... ) }
+        if ( tReturns[ 1 ] == false ) then
+          Warning( "Hook '" .. tostring( k ) .. "' (" .. tostring( strEventName ) .. ") Failed: " .. tostring( tReturns[ 2 ] ) .. "\n" )
+          tHooks[ k ] = nil
+        elseif ( tReturns[ 2 ] ~= nil ) then
+          return unpack( tReturns, 2 )
+        end
+      end
+    end
+  end
+  return nil
 end

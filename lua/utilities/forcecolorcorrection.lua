@@ -1,4 +1,4 @@
---========== Copyleft © 2010, Team Sandbox, Some rights reserved. ===========--
+--========== Copyleft Â© 2010, Team Sandbox, Some rights reserved. ===========--
 --
 -- Purpose: Tests a forcing of color correction in the Source Engine.
 --

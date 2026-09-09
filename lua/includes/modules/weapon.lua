@@ -1,4 +1,4 @@
---========== Copyleft © 2010, Team Sandbox, Some rights reserved. ===========--
+--========== Copyleft Â© 2010, Team Sandbox, Some rights reserved. ===========--
 --
 -- Purpose: Scripted weapon implementation.
 --
