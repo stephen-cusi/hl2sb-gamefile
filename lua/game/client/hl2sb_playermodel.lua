@@ -109,9 +109,29 @@ local function OutlineRect( x, y, w, h, clr )
 	surface.DrawOutlinedRect( x, y, x + w, y + h )
 end
 
--- Convert a screen Y into a panel-local Y.
+-- Screen position of a panel.
+--
+-- Panel:LocalToScreen/ScreenToLocal are unusable in HL2SB: the bindings declare
+-- local int x, y without initialising them and call the in/out method with those
+-- garbage values, so they return stack junk (observed: localY = -842002995).
+-- Walk the parent chain instead - every Lua-created panel is a child of the
+-- full-screen Lua root, so summing GetPos() gives the real screen offset.
+local function PanelScreenPos( panel )
+	local x, y = 0, 0
+	local p = panel
+
+	while ( p ) do
+		local px, py = p:GetPos()
+		x = x + ( px or 0 )
+		y = y + ( py or 0 )
+		p = p:GetParent()
+	end
+
+	return x, y
+end
+
 local function ScreenToLocalY( panel, screenY )
-	local _, top = panel:LocalToScreen( 0, 0 )
+	local _, top = PanelScreenPos( panel )
 	return screenY - top
 end
 
