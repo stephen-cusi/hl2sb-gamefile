@@ -132,6 +132,15 @@ local function PanelScreenPos( panel )
 	return x, y
 end
 
+-- vgui.register() errors if the class name is already taken, which makes
+-- lua_dofile_cl abort on reload and leaves the old definitions in place.  Drop
+-- the previous factory first: tHelpers inside vgui.lua is keyed by name, so the
+-- freshly registered table simply replaces the old one.
+local function Register( tbl, name, base )
+	vgui[ name ] = nil
+	vgui.register( tbl, name, base )
+end
+
 local function ScreenToLocalY( panel, screenY )
 	local _, top = PanelScreenPos( panel )
 	return screenY - top
@@ -193,7 +202,7 @@ function BUTTON:OnMouseReleased( code )
 	end
 end
 
-vgui.register( BUTTON, "HL2SBBtn", "Panel" )
+Register( BUTTON, "HL2SBBtn", "Panel" )
 
 -------------------------------------------------------------------------------
 -- ScrollList
@@ -259,10 +268,14 @@ function SCROLL_LIST:Paint()
 	local nScrollbarW = ( self:GetMaxScroll() > 0 ) and 6 or 0
 	local nTextW = w - nScrollbarW - 12
 
+	-- Note the loop must SKIP rows scrolled above the viewport, not break: with
+	-- a break the very first (negative) row ended the whole loop, which is what
+	-- made the list go completely black as soon as it was scrolled.
 	for i, item in ipairs( self.Items ) do
 		local y = ( i - 1 ) * LIST_ROW_H - self.Scroll
-		if ( y + LIST_ROW_H < 0 ) then break end
 		if ( y > h ) then break end
+
+		if ( y + LIST_ROW_H >= 0 ) then
 
 		if ( i == self.Selected ) then
 			FillRect( 0, y, w - nScrollbarW, LIST_ROW_H, CLR_SEL )
@@ -277,7 +290,8 @@ function SCROLL_LIST:Paint()
 			label = string.sub( label, 1, #label - 4 ) .. "..."
 		end
 
-		DrawTextAt( label, 6, y + floor( ( LIST_ROW_H - TEXT_TALL ) * 0.5 ), clr )
+			DrawTextAt( label, 6, y + floor( ( LIST_ROW_H - TEXT_TALL ) * 0.5 ), clr )
+		end
 	end
 
 	if ( nScrollbarW > 0 ) then
@@ -289,6 +303,8 @@ function SCROLL_LIST:Paint()
 end
 
 function SCROLL_LIST:OnMouseWheeled( delta )
+	print( string.format( "[HL2SB] DIAG list wheel: delta=%d scroll=%d max=%d tall=%d items=%d\n",
+		delta, self.Scroll or -1, self:GetMaxScroll(), self:GetTall(), #( self.Items or {} ) ) )
 	self.Scroll = max( 0, min( self.Scroll - delta * LIST_ROW_H * 2, self:GetMaxScroll() ) )
 	self:Repaint()
 end
@@ -300,7 +316,7 @@ function SCROLL_LIST:OnMousePressed( code )
 	local localY = ScreenToLocalY( self, y )
 	local index = self:ScreenToRow( y )
 
-	print( string.format( "[HL2SB] list click: screenY=%d localY=%d row=%d items=%d\n",
+	print( string.format( "[HL2SB] DIAG list click: screenY=%d localY=%d row=%d items=%d\n",
 		y, localY, index, #self.Items ) )
 
 	if ( index >= 1 and index <= #self.Items ) then
@@ -319,7 +335,7 @@ function SCROLL_LIST:OnCursorMoved()
 	end
 end
 
-vgui.register( SCROLL_LIST, "HL2SBScrollList", "Panel" )
+Register( SCROLL_LIST, "HL2SBScrollList", "Panel" )
 
 -------------------------------------------------------------------------------
 -- TextInput
@@ -370,6 +386,7 @@ function TEXT_INPUT:Paint()
 end
 
 function TEXT_INPUT:OnMousePressed( code )
+	print( string.format( "[HL2SB] DIAG search press: code=%d\n", code ) )
 	if ( code == MOUSE_LEFT ) then
 		self:Focus()
 	end
@@ -377,18 +394,26 @@ end
 
 function TEXT_INPUT:OnKeyCodeTyped( code )
 	local name = self:KeyCodeToString( code )
+	print( string.format( "[HL2SB] DIAG search key: code=%d name=%s\n", code, tostring( name ) ) )
 	if ( not name ) then return end
 
-	if ( name == "BACKSPACE" ) then
+	-- KeyCodeToString() prefixes every name with "KEY_" ("KEY_BACKSPACE",
+	-- "KEY_1", ...), so strip it once before classifying the key.
+	local key = name
+	if ( string.sub( key, 1, 4 ) == "KEY_" ) then
+		key = string.sub( key, 5 )
+	end
+
+	if ( key == "BACKSPACE" ) then
 		self.Value = string.sub( self.Value, 1, #self.Value - 1 )
-	elseif ( name == "ESCAPE" ) then
+	elseif ( key == "ESCAPE" ) then
 		self.bFocused = false
-	elseif ( name == "ENTER" ) then
+	elseif ( key == "ENTER" ) then
 		self.bFocused = false
 	else
-		local ch = KEY_CHARS[ name ]
-		if ( not ch and #name == 1 ) then
-			ch = string.lower( name )
+		local ch = KEY_CHARS[ name ] or KEY_CHARS[ key ]
+		if ( not ch and #key == 1 ) then
+			ch = string.lower( key )
 		end
 		if ( ch ) then
 			self.Value = self.Value .. ch
@@ -402,91 +427,136 @@ function TEXT_INPUT:OnKeyCodeTyped( code )
 	end
 end
 
-vgui.register( TEXT_INPUT, "HL2SBTextInput", "Panel" )
+Register( TEXT_INPUT, "HL2SBTextInput", "Panel" )
 
 -------------------------------------------------------------------------------
 -- Preview
 -------------------------------------------------------------------------------
 local PREVIEW = {}
 
+-- Preview state lives in this weak-keyed table rather than on the panel itself.
+-- Writing fields on a ModelPanel goes through ModelPanel___newindex, which
+-- throws "attempt to index a non-scripted panel" once the panel is no longer a
+-- live LModelPanel (observed at line 461 after the menu was reopened).
+-- Keyed by VPANEL, not by the panel object: every lua_pushpanel() hands Lua a
+-- fresh userdata for the same panel, so keying by the userdata never hits and
+-- the state (and the method snapshot) was rebuilt empty on every call.
+local PreviewState = {}
+
+local function PState( panel )
+	local key = panel:GetVPanel()
+	local st = PreviewState[ key ]
+	if ( not st ) then
+		st = { bDragging = false, nDragStartX = 0, nLastX = 0, bMoved = false,
+			   nYaw = 180, nZoom = 1.0, nSeq = 0 }
+		PreviewState[ key ] = st
+	end
+	return st
+end
+
 function PREVIEW:Init()
-	self.bDragging = false
-	self.nDragStartX = 0
-	self.nLastX = 0
-	self.bMoved = false
-	self.nYaw = 180
-	self.nZoom = 1.0
+	print( string.format(
+		"[HL2SB] DIAG methods: SetModel=%s SetYaw=%s SetZoom=%s SetFOV=%s Refit=%s Play=%s GetSeq=%s\n",
+		tostring( self.SetModel ), tostring( self.SetYaw ), tostring( self.SetZoom ),
+		tostring( self.SetFOV ), tostring( self.RefitCamera ),
+		tostring( self.PlaySequence ), tostring( self.GetSequenceCount ) ) )
+	local st = PState( self )
+	st.bDragging = false
+	st.nDragStartX = 0
+	st.nLastX = 0
+	st.bMoved = false
+	st.nYaw = 180
+	st.nZoom = 1.0
+
+	-- No method snapshots here: whether the C-side methods resolve through the
+	-- metatable chain has proven unreliable (they can come back nil), so each
+	-- call site checks for the method before using it.
 
 	self:SetMouseInputEnabled( true )
 	self:SetKeyBoardInputEnabled( false )
-	self:SetZoomLimits( ZOOM_MIN, ZOOM_MAX )
-	self:SetFOV( FOV )
-	self:SetYaw( self.nYaw )
-	self:SetZoom( self.nZoom )
+	if ( self.SetZoomLimits ) then self:SetZoomLimits( ZOOM_MIN, ZOOM_MAX ) end
+	if ( self.SetFOV ) then self:SetFOV( FOV ) end
+	if ( self.SetYaw ) then self:SetYaw( st.nYaw ) end
+	if ( self.SetZoom ) then self:SetZoom( st.nZoom ) end
 end
 
 function PREVIEW:LoadModel( path )
+	if ( not self.SetModel ) then return false end
+
 	local ok = self:SetModel( path )
 	if ( ok ) then
-		self:RefitCamera()
-		self.nYaw = 180
-		self:SetYaw( self.nYaw )
+		local st = PState( self )
+		if ( self.RefitCamera ) then self:RefitCamera() end
+		st.nYaw = 180
+		if ( self.SetYaw ) then self:SetYaw( st.nYaw ) end
 	end
 	return ok
 end
 
 function PREVIEW:CycleAnimation()
+	if ( not self.GetSequenceCount or not self.PlaySequence ) then return end
+
 	local n = self:GetSequenceCount()
 	if ( n <= 0 ) then return end
 
-	self.nSeq = ( self.nSeq or 0 ) + 1
-	if ( self.nSeq >= n ) then self.nSeq = 0 end
+	local st = PState( self )
+	st.nSeq = ( st.nSeq or 0 ) + 1
+	if ( st.nSeq >= n ) then st.nSeq = 0 end
 
-	self:PlaySequence( self:GetSequenceName( self.nSeq ) )
+	if ( self.GetSequenceName ) then
+		self:PlaySequence( self:GetSequenceName( st.nSeq ) )
+	end
 end
 
 function PREVIEW:OnMousePressed( code )
+	print( string.format( "[HL2SB] DIAG preview press: code=%d SetYaw=%s SetZoom=%s\n",
+		code, tostring( self.SetYaw ), tostring( self.SetZoom ) ) )
 	if ( code ~= MOUSE_LEFT ) then return end
 
+	local st = PState( self )
 	local x = CursorPos()
-	self.bDragging = true
-	self.bMoved = false
-	self.nDragStartX = x
-	self.nLastX = x
+	st.bDragging = true
+	st.bMoved = false
+	st.nDragStartX = x
+	st.nLastX = x
 end
 
 function PREVIEW:OnCursorMoved()
-	if ( not self.bDragging ) then return end
+	local st = PState( self )
+	if ( not st.bDragging ) then return end
 
 	local x = CursorPos()
-	local dx = x - self.nLastX
-	self.nLastX = x
+	local dx = x - st.nLastX
+	st.nLastX = x
 
-	if ( abs( x - self.nDragStartX ) > 3 ) then
-		self.bMoved = true
+	if ( abs( x - st.nDragStartX ) > 3 ) then
+		st.bMoved = true
 	end
 
 	if ( dx ~= 0 ) then
-		self.nYaw = self.nYaw + dx * ROTATE_SPEED
-		self:SetYaw( self.nYaw )
+		st.nYaw = st.nYaw + dx * ROTATE_SPEED
+		if ( self.SetYaw ) then self:SetYaw( st.nYaw ) end
 	end
 end
 
 function PREVIEW:OnMouseReleased( code )
-	if ( code ~= MOUSE_LEFT or not self.bDragging ) then return end
+	local st = PState( self )
+	if ( code ~= MOUSE_LEFT or not st.bDragging ) then return end
 
-	self.bDragging = false
-	if ( not self.bMoved ) then
+	st.bDragging = false
+	if ( not st.bMoved ) then
 		self:CycleAnimation()
 	end
 end
 
 function PREVIEW:OnMouseWheeled( delta )
-	self.nZoom = max( ZOOM_MIN, min( ZOOM_MAX, ( self.nZoom or 1.0 ) - delta * ZOOM_STEP ) )
-	self:SetZoom( self.nZoom )
+	print( string.format( "[HL2SB] DIAG preview wheel: delta=%d\n", delta ) )
+	local st = PState( self )
+	st.nZoom = max( ZOOM_MIN, min( ZOOM_MAX, ( st.nZoom or 1.0 ) - delta * ZOOM_STEP ) )
+	if ( self.SetZoom ) then self:SetZoom( st.nZoom ) end
 end
 
-vgui.register( PREVIEW, "HL2SBModelPreview", "ModelPanel" )
+Register( PREVIEW, "HL2SBModelPreview", "ModelPanel" )
 
 -------------------------------------------------------------------------------
 -- The menu
@@ -651,7 +721,7 @@ function MENU:Close()
 	g_HL2SBPlayerModelMenu = nil
 end
 
-vgui.register( MENU, "HL2SBPlayerModelMenu", "Frame" )
+Register( MENU, "HL2SBPlayerModelMenu", "Frame" )
 
 -------------------------------------------------------------------------------
 -- Entry point
