@@ -86,22 +86,23 @@
 
 ## 5. 执行清单（真实状态，勾选 = 已完成并验证）
 
-> 状态核对时间点：本清单编制于 `surface.SetFont` 绑定 + draw 库完成后。
+> 状态核对时间点：GMod 拾取 HUD 完成后。
 > 清单里的文件路径均按 HL2SB `D:\srceng\hl2sb\lua` 相对路径写。
 > `[x]`=已在游戏验证 / `[~]`=已写未验证 / `[ ]`=未动。
 
 ### P0（先补全局函数，GMod 脚本兼容的大门）
 - [ ] `includes/extensions/string.lua` — Explode/Split/Trim/Left/Right/Replace/StartsWith/EndsWith（**未做**）
-- [x] `includes/extensions/math.lua` — Clamp/Round/Sign/Approach/Remap/EaseInOut/IsNearlyEqual（**已做，离线测试通过**）
+- [x] `includes/extensions/math.lua` — Clamp/Round/Sign/Approach/Remap/EaseInOut/IsNearlyEqual（**已做**）
 - [ ] `includes/extensions/table.lua` — 扩充 Pack/Empty/IsEmpty/Copy/Count/Random/IsSequential/Reverse（**当前只有 copy/hasvalue/inherit/merge/print/tokeyvalues，未扩充**）
 - [ ] 引擎加全局 `CreateConVar`/`GetConVar`/`GetConVarNumber`/`GetConVarString`（**未做，需 C++**）
-- [ ] `hook.lua` 加 `hook.Run` 别名（**未做**）
+- [x] `hook.lua` 加 `hook.Run` 别名（**已做，离线测试通过**）
 
 ### P1（HUD/UI 常用）
-- [~] `includes/modules/draw.lua` — GMod 版 draw 库（**已写，`Color` 分量坑已修，离线测试通过；待进游戏确认**）
+- [x] `includes/modules/draw.lua` — GMod 版 draw 库（**已做，游戏内验证：SimpleText/RoundedBox/GetFontHeight 正常**；RoundedBox 保持直角）
 - [ ] `includes/modules/list.lua`（**未做**）
 - [ ] `includes/modules/team.lua` — 半成品，返回硬编码队伍（**未做**）
-- [ ] `includes/modules/killicon.lua` — 对接现有 deathnotice（**未做**）
+- [x] `includes/modules/killicon.lua` 相关 — 拾取武器/弹药 icon 用字体字形（**部分，见下**）
+- [x] GMod 拾取 HUD（`game/client/hl2sb_cl_hudpickup.lua`）— 拾取条 + 弹药合并 + 列表居中 + 屏蔽原版拾取图标（**已做，游戏内验证**）
 
 ### P2（实体/网络）
 - [ ] `ents.FindByClass/FindByName/GetAll`（**未做**）
@@ -120,16 +121,40 @@
 
 | 完成项 | 落点 | 验证 |
 |---|---|---|
-| `surface.SetFont(name)` 绑定（GMod 字符串字体名→hFont） | `public/lua/vgui/LISurface.cpp` | 编译通过 + 部署 `hl2sb/bin` + 提交 `23d472d6` |
+| `surface.SetFont(name)` 绑定（GMod 字符串字体名→hFont） | `public/lua/vgui/LISurface.cpp` | 编译 + 部署 + 提交 `23d472d6` |
 | `includes/extensions/math.lua` | `hl2sb/lua/includes/extensions/math.lua` | Lua5.1 离线测试通过 |
-| `includes/modules/draw.lua`（GMod 版，含 `Color` 分量坑修复） | `hl2sb/lua/includes/modules/draw.lua` | 离线测试（真实 userdata Color mock）通过 |
-| HUD 演示脚本（验证 draw 库） | `hl2sb/lua/game/client/hl2sb_draw_demo.lua` | 语法通过，**待进游戏确认** |
+| `includes/modules/draw.lua`（GMod 版，含 Color 分量坑修复） | `hl2sb/lua/includes/modules/draw.lua` | 游戏内验证（userdata Color mock） |
+| `hook.Run`（GMod 兼容） | `hl2sb/lua/includes/modules/hook.lua` | 离线测试通过 |
+| **GMod 拾取 HUD**（服务端 item_pickup 事件 → Lua 拾取条） | `game/client/hl2sb_cl_hudpickup.lua` + 引擎侧 `item_world.cpp`/`item_ammo.cpp`/`basecombatcharacter.cpp`/`hl2mp_player.cpp`/`hud_killfeed.cpp`/`hud_weaponselection.cpp` | 游戏内验证（弹药数量/合并/居中/屏蔽原版图标） |
+
+---
+
+## 5.2 引擎缺失功能（需 C++ 绑定，加到移植计划）
+
+这些 GMod 脚本常用、但 HL2SB 引擎**当前没有**的绑定。按"缺什么 → 建议"列，方便后续逐个补。
+
+| 缺失 | 说明 / 建议 | 优先级 |
+|---|---|---|
+| `ents.GetAll` / `ents.FindByClass` / `ents.FindByName` | 遍历世界实体。HL2SB 有 `luaopen_gEntList`(server)但无这些方法 | **P2，高** |
+| `player.GetAll` / `player.Iterator` | 遍历玩家。需在客户端/服务端绑定 player 列表迭代 | **P2，高** |
+| 全局 `CreateConVar` / `GetConVar` / `GetConVarNumber` / `GetConVarString` | GMod 脚本声明/读 cvar 的入口。HL2SB 只有 `ConVar` userdata + `cvar` 模块(回调) | **P0，高** |
+| `surface.GetTextureID` / `surface.SetTexture` / `DrawTexturedRectRotated` / `DrawRect` | GMod draw 库原生用；HL2SB 用 `DrawSetTexture`/`DrawTexturedSubRect`/`DrawFilledRect` 替代。**若要让 GMod 脚本原样跑 draw 库，需补这些别名** | 中 |
+| `util.NetworkIDToString` / `net.*`(Read/Write/Start/Send) | HL2SB 无 net 系统。最大工程，单独一轮 | **P2，大** |
+| `usermessage.Hook` / `SendUserMessage` | GMod 的 usermessage Lua 绑定。HL2SB 无 | 低 |
+| `IsValid`(全局) / `isfunction` / `istable` / `isstring` / `isentity` | GMod 全局类型谓词。HL2SB 只有 `util.IsValid`、实体 metatable 上 | **P0，高** |
+| `LocalPlayer()` / `CurTime()` / `ScrW()` / `ScrH()` | GMod 全局。HL2SB 用 `engine.GetLocalPlayer`/`gpGlobals.curtime`/`surface.GetScreenSize`。**若移植 GMod 脚本需补别名** | 中 |
+| `entity`/`weapon` 实体方法 `Name` / `GetClass` / `Team` / `Nick` / `GetColor` | HL2SB 实体绑定只有 `IsPlayer`(此前核实)。GMod 脚本大量用这些 | 中 |
+| `killicon` 库(Add/AddFont/GetSize/Render) | HL2SB 无。killfeed/拾取 icon 现用字体字形硬编码 `KILLICON_GLYPH` 替代 | 中 |
+| `team.GetColor` / `list.Get` | HL2SB 无 team/list 库(纯 Lua 可做部分) | 中 |
 
 ### 关键坑备忘（已记录到 AGENTS.md 5.4）
 - **`Color` 分量取值**：HL2SB `Color` 是 userdata，`.r/.g/.b/.a` 是**方法函数**不是字段。
   `col.r` → 函数；必须 `col:r()/col:g()/col:b()/col:a()`。照搬 GMod 脚本必炸。
 - **`module()` 环境**：Lua5.1 默认无 seeall，module 体内的裸全局会变 nil。
   用 `module("name", package.seeall)` 并尽量在 module 前捕获全局。
+- **`HudElementShouldDraw`**：HL2SB 引擎已有此钩子（≈ GMod HUDShouldDraw），可隐藏任意 HUD 元素。
+  注意 `DECLARE_HUDELEMENT` 的元素名 = 类名（带 `CHud` 前缀），如 `CHudHistoryResource`。
+- **`gui/cornerX` 材质**：HL2SB 能正确着色渲染（$vertexcolor 可用），但拾取 HUD 选择保留直角。
 
 ---
 
