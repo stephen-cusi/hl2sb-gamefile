@@ -120,7 +120,9 @@ local function PanelScreenPos( panel )
 	local x, y = 0, 0
 	local p = panel
 
-	while ( p ) do
+	-- GetParent() returns INVALID_PANEL (a userdata, so truthy) at the root,
+	-- not nil - indexing it throws "attempt to index an INVALID_PANEL".
+	while ( p and tostring( p ) ~= "INVALID_PANEL" ) do
 		local px, py = p:GetPos()
 		x = x + ( px or 0 )
 		y = y + ( py or 0 )
