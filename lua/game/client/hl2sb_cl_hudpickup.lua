@@ -1,217 +1,297 @@
 --[[---------------------------------------------------------------------------
-    HL2SB pickup HUD - GMod cl_hudpickup.lua port.
+    HL2SB pickup notification - Garry's Mod's gamemodes/base/gamemode/
+    cl_hudpickup.lua, ported with the smallest possible diff.
 
-    Shows a GMod-style pickup bar when the local player picks something up:
-    a rounded bar with a coloured left tab (weapon=orange / item=green /
-    ammo=blue) and the name (+ ammo count) on the right.  Slides in from the
-    right, holds ~5s, fades out.
+    GMod's bar: a rounded strip that slides in from the right edge, holds for
+    five seconds and fades out.  The left tab carries the type colour
+    (weapon = orange, item = green, ammo = blue), the name sits next to it and
+    the amount is right-aligned.  Consecutive pickups of the same ammo type are
+    merged into the existing card instead of stacking.
 
-    It also suppresses the stock HL2MP pickup-history icon (the battery /
-    weapon circle icons) via the HudElementShouldDraw hook, so only this bar
-    appears.  The weapon-selection menu (number keys / mouse wheel) is NOT
-    touched.
+    Same gamemode API as GMod, so gamemodes can override any of it:
+        GM.PickupHistory / GM.PickupHistoryLast / GM.PickupHistoryTop
+        GM.PickupHistoryWide / GM.PickupHistoryCorner
+        GM:HUDWeaponPickedUp( wep )
+        GM:HUDItemPickedUp( itemname )
+        GM:HUDAmmoPickedUp( itemname, amount )
+        GM:HUDDrawPickupHistory()
 
-    Engine -> Lua: item_pickup { userid, item, amount } -> HUDItemPickedUp.
-
-    Toggle:
-        hl2sb_pickup_hud 0  -> GMod pickup bar (default)
-        hl2sb_pickup_hud 1  -> also allow the stock history icon
+    Differences from GMod's file, all "HL2SB:" marked:
+      * GM           -> _G._GAMEMODE (the engine's gamemode table; created if
+                        the gamemode has not registered itself yet).
+      * corners      -> GMod blits materials/gui/corner8 through
+                        surface.DrawTexturedRectRotated.  Source 2013's
+                        vgui::ISurface has no rotated textured rect, so the
+                        corners are drawn with draw.RoundedBox instead.  Every
+                        timing / alpha / layout / merge rule below is GMod's.
+      * fonts        -> HL2SB's clientscheme only defines Default /
+                        DefaultSmall / DefaultVerySmall; other names come back
+                        INVALID_FONT and render nothing, so GMod's
+                        "DermaDefaultBold" maps onto "Default".
+      * input        -> GMod's CHudHistoryResource calls GM:HUD*PickedUp.
+                        HL2SB's CHudKillFeed forwards the engine's item_pickup
+                        game event to the Lua hook HUDItemPickedUp( userid,
+                        item, amount ); the dispatcher at the bottom sorts that
+                        into the three GMod gamemode methods.
 
     Path: lua/game/client/hl2sb_cl_hudpickup.lua
----------------------------------------------------------------------------]]
+-----------------------------------------------------------------------------]]
 
 if ( not _CLIENT ) then return end
 
 require( "hook" )
 require( "draw" )
-require( "math" )   -- HL2SB math extension (Round/Clamp)
+require( "math" )     -- HL2SB math extension (Round / Clamp)
 
 local draw    = draw
 local hook    = hook
 local math    = math
 local surface = surface
 local Color   = Color
-local curtime = gpGlobals.curtime
-local floor   = math.floor
-local clamp   = math.Clamp
+local CurTime = CurTime
+local ScrW    = ScrW
+local ScrH    = ScrH
+local LocalPlayer = LocalPlayer
 
--- ---------------------------------------------------------------------------
--- Tunables
--- ---------------------------------------------------------------------------
-local HOLD    = 4.0
-local FADEIN  = 0.15
-local FADEOUT = 0.35
-local FONT    = "Default"
+-- HL2SB: the engine's gamemode table.
+local GM = _G._GAMEMODE
+if ( GM == nil ) then
+	GM = {}
+	_G._GAMEMODE = GM
+end
+_G.GAMEMODE = _G.GAMEMODE or GM
 
--- GMod palette for the bar tab.
-local WEAPON_COLOR = { 255, 170, 40, 255 }   -- orange
-local ITEM_COLOR   = { 90, 200, 90, 255 }    -- green
-local AMMO_COLOR   = { 90, 160, 255, 255 }   -- blue
+-- HL2SB: font mapping (GMod name -> a font HL2SB's scheme actually has).
+local function Font( name )
+	return "Default"
+end
 
--- ---------------------------------------------------------------------------
--- Suppress the stock pickup-history icon (battery/weapon circle icons).
--- This only hides the pickup history element; the weapon-selection menu
--- (HudWeaponSelection) is untouched.  We must return a value for every element
--- so other HUD elements keep drawing.
--- ---------------------------------------------------------------------------
-local bHideStockHistory = true
+GM.PickupHistory = GM.PickupHistory or {}
+GM.PickupHistoryLast = 0
+GM.PickupHistoryTop = ScrH() / 2
+GM.PickupHistoryWide = 300
 
-hook.add( "HudElementShouldDraw", "hl2sb_cl_hudpickup", function( name )
-  -- Only suppress the stock pickup-history icon.  DECLARE_HUDELEMENT uses the
-  -- class name (with the CHud prefix) as the element name, so the pickup
-  -- history element is "CHudHistoryResource".  For every other element we
-  -- return nil so RETURN_LUA_BOOLEAN() falls through to the engine's own
-  -- ShouldDraw logic (respecting HIDEHUD etc).
-  if ( bHideStockHistory and name == "CHudHistoryResource" ) then
-    return false
-  end
-  return nil
-end )
+local function AddGenericPickup( self, itemname )
+	local pickup		= {}
+	pickup.time			= CurTime()
+	pickup.name			= itemname
+	pickup.holdtime		= 5
+	pickup.font			= Font( "DermaDefaultBold" )
+	pickup.fadein		= 0.04
+	pickup.fadeout		= 0.3
 
--- ---------------------------------------------------------------------------
--- Pickup history
--- ---------------------------------------------------------------------------
-local PickupHistory = {}
+	local hfont = draw.GetFont( pickup.font )
+	local w, h = surface.GetTextSize( hfont, tostring( pickup.name ) )
+	pickup.height		= h
+	pickup.width		= w
 
-local function AddPickup( name, amount, clr )
-  local pickup = {}
-  pickup.time    = curtime()
-  pickup.name    = name or ""
-  pickup.amount  = amount
-  pickup.colour  = clr or WEAPON_COLOR
-  pickup.holdtime= HOLD
-  pickup.fadein  = FADEIN
-  pickup.fadeout = FADEOUT
-  pickup.font    = FONT
-  pickup.height  = 20
-  table.insert( PickupHistory, pickup )
+	table.insert( self.PickupHistory, pickup )
+	self.PickupHistoryLast = pickup.time
+
+	return pickup
+end
+
+--[[---------------------------------------------------------
+	Name: gamemode:HUDWeaponPickedUp( wep )
+	Desc: The game wants you to draw on the HUD that a weapon has been picked up
+-----------------------------------------------------------]]
+function GM:HUDWeaponPickedUp( wep )
+
+	if ( !IsValid( LocalPlayer() ) || !LocalPlayer():Alive() ) then return end
+	if ( wep == nil ) then return end
+
+	local name = wep
+	if ( type( wep ) ~= "string" and IsValid( wep ) and isfunction( wep.GetPrintName ) ) then
+		name = wep:GetPrintName()
+	end
+
+	local pickup = AddGenericPickup( self, name )
+	pickup.color = Color( 255, 200, 50, 255 )
+
+end
+
+--[[---------------------------------------------------------
+	Name: gamemode:HUDItemPickedUp( itemname )
+	Desc: An item has been picked up..
+-----------------------------------------------------------]]
+function GM:HUDItemPickedUp( itemname )
+
+	if ( !IsValid( LocalPlayer() ) || !LocalPlayer():Alive() ) then return end
+
+	local pickup = AddGenericPickup( self, "#" .. itemname )
+	pickup.color = Color( 180, 255, 180, 255 )
+
+end
+
+--[[---------------------------------------------------------
+	Name: gamemode:HUDAmmoPickedUp( itemname, amount )
+	Desc: Ammo has been picked up..
+-----------------------------------------------------------]]
+function GM:HUDAmmoPickedUp( itemname, amount )
+
+	if ( !IsValid( LocalPlayer() ) || !LocalPlayer():Alive() ) then return end
+
+	-- Try to tack it onto an exisiting ammo pickup
+	if ( self.PickupHistory ) then
+
+		for k, v in pairs( self.PickupHistory ) do
+
+			if ( v.name == "#" .. itemname .. "_ammo" ) then
+
+				v.amount = tostring( tonumber( v.amount ) + amount )
+				v.time = CurTime() - v.fadein
+				return
+
+			end
+
+		end
+
+	end
+
+	local pickup = AddGenericPickup( self, "#" .. itemname .. "_ammo" )
+	pickup.color = Color( 180, 200, 255, 255 )
+	pickup.amount = tostring( amount )
+
+	local hfont = draw.GetFont( pickup.font )
+	local w, h = surface.GetTextSize( hfont, tostring( pickup.amount ) )
+	pickup.width = pickup.width + w + 16
+
+end
+
+function GM:HUDDrawPickupHistory()
+
+	if ( self.PickupHistory == nil ) then return end
+
+	local x, y = ScrW() - self.PickupHistoryWide - 20, self.PickupHistoryTop
+	local tall = 0
+	local wide = 0
+
+	for k, v in pairs( self.PickupHistory ) do
+
+		if ( !istable( v ) ) then
+
+			Msg( tostring( v ) .. "\n" )
+			PrintTable( self.PickupHistory )
+			self.PickupHistory[ k ] = nil
+			return
+
+		end
+
+		if ( v.time < CurTime() ) then
+
+			if ( v.y == nil ) then v.y = y end
+
+			v.y = ( v.y * 5 + y ) / 6
+
+			local delta = ( v.time + v.holdtime ) - CurTime()
+			delta = delta / v.holdtime
+
+			local alpha = 255
+			local colordelta = math.Clamp( delta, 0.6, 0.7 )
+
+			-- Fade in/out
+			if ( delta > 1 - v.fadein ) then
+				alpha = math.Clamp( ( 1.0 - delta ) * ( 255 / v.fadein ), 0, 255 )
+			elseif ( delta < v.fadeout ) then
+				alpha = math.Clamp( delta * ( 255 / v.fadeout ), 0, 255 )
+			end
+
+			v.x = x + self.PickupHistoryWide - ( self.PickupHistoryWide * ( alpha / 255 ) )
+
+			local rx, ry, rw, rh = math.Round( v.x - 4 ), math.Round( v.y - ( v.height / 2 ) - 4 ), math.Round( self.PickupHistoryWide + 9 ), math.Round( v.height + 8 )
+			local bordersize = 8
+
+			-- HL2SB: GMod builds the strip out of four rotated copies of
+			-- materials/gui/corner8 plus flat DrawRect runs.  vgui::ISurface has
+			-- no DrawTexturedRectRotated here, so the same geometry is drawn as
+			-- two rounded boxes: the coloured tab on the left, the body on the
+			-- right.  The measurements are GMod's.
+			local tabW = v.height - 4
+
+			-- Coloured tab (object type).
+			draw.RoundedBox( bordersize / 2, rx, ry, tabW + bordersize, rh,
+				Color( v.color.r, v.color.g, v.color.b, alpha ) )
+
+			-- Body.
+			local bodyC = 230 * colordelta
+			draw.RoundedBox( bordersize / 2, rx + tabW, ry, rw - tabW, rh,
+				Color( bodyC, bodyC, bodyC, alpha ) )
+
+			draw.SimpleText( v.name, v.font, v.x + v.height + 9, ry + ( rh / 2 ) + 1, Color( 0, 0, 0, alpha * 0.5 ), draw.TEXT_ALIGN_LEFT, draw.TEXT_ALIGN_CENTER )
+			draw.SimpleText( v.name, v.font, v.x + v.height + 8, ry + ( rh / 2 ), Color( 255, 255, 255, alpha ), draw.TEXT_ALIGN_LEFT, draw.TEXT_ALIGN_CENTER )
+
+			if ( v.amount ) then
+
+				draw.SimpleText( v.amount, v.font, v.x + self.PickupHistoryWide + 1, ry + ( rh / 2 ) + 1, Color( 0, 0, 0, alpha * 0.5 ), draw.TEXT_ALIGN_RIGHT, draw.TEXT_ALIGN_CENTER )
+				draw.SimpleText( v.amount, v.font, v.x + self.PickupHistoryWide, ry + ( rh / 2 ), Color( 255, 255, 255, alpha ), draw.TEXT_ALIGN_RIGHT, draw.TEXT_ALIGN_CENTER )
+
+			end
+
+			y = y + ( v.height + 16 )
+			tall = tall + v.height + 18
+			wide = math.max( wide, v.width + v.height + 24 )
+
+			if ( alpha == 0 ) then self.PickupHistory[ k ] = nil end
+
+		end
+
+	end
+
+	self.PickupHistoryTop = ( self.PickupHistoryTop * 5 + ( ScrH() * 0.75 - tall ) / 2 ) / 6
+	self.PickupHistoryWide = ( self.PickupHistoryWide * 5 + wide ) / 6
+
 end
 
 -- ---------------------------------------------------------------------------
--- Draw one bar.  Returns next y and whether still alive.
+-- Wiring
 -- ---------------------------------------------------------------------------
-local function DrawBar( rightX, y, d )
-  local age   = curtime() - d.time
-  local life  = d.holdtime + d.fadeout
-  local remain= life - age
-  if ( remain <= 0 ) then return y, false end
 
-  local alpha = 255
-  if ( age < d.fadein ) then
-    alpha = clamp( age / d.fadein, 0, 1 ) * 255
-  elseif ( remain < d.fadeout ) then
-    alpha = clamp( remain / d.fadeout, 0, 1 ) * 255
-  end
-  alpha = floor( alpha )
-
-  local text = d.name
-  if ( d.amount and tonumber( d.amount ) and tonumber( d.amount ) > 0 ) then
-    text = d.name .. "   " .. tostring( d.amount )
-  end
-
-  -- Measure the text.
-  local hfont = surface.CreateFont()   -- cheap: one per bar per frame is OK for now
-  surface.SetFontGlyphSet( hfont, "Default", 16, 700, 0, 0, 0x010 )
-  local textW, textH = surface.GetTextSize( hfont, text )
-  if ( not textW or textW <= 0 ) then textW = 80 end
-  if ( not textH or textH <= 0 ) then textH = 18 end
-
-  local barH = textH + 10
-  local tabW = 14          -- coloured tab width
-  local padX = 10
-
-  -- Slide in from the right.
-  local slide = 1.0 - clamp( age / 0.25, 0, 1 )
-  local barW  = tabW + textW + padX * 2
-  local barX  = rightX - barW + slide * 80
-
-  -- Bar background (dark).
-  draw.RoundedBox( 2, barX, y, barW, barH, Color( 30, 30, 34, floor( alpha * 0.8 ) ) )
-
-  -- Left tab (type colour).
-  draw.RoundedBox( 2, barX, y, tabW, barH, Color( d.colour[1], d.colour[2], d.colour[3], alpha ) )
-
-  -- Name + amount (white, right, vertically centred).
-  draw.SimpleText( text, d.font, barX + tabW + padX, y + ( barH - textH ) / 2,
-    Color( 235, 235, 235, alpha ), draw.TEXT_ALIGN_LEFT, draw.TEXT_ALIGN_TOP )
-
-  return y + barH + 8, true
-end
-
-hook.add( "HudViewportPaint", "hl2sb_cl_hudpickup", function()
-  if ( #PickupHistory == 0 ) then return end
-
-  local sw, sh = surface.GetScreenSize()
-  local rightX = sw - 20
-
-  -- First pass: measure total stack height (bars) so we can centre the whole
-  -- list on ~75% of the screen (GMod smooths PickupHistoryTop toward
-  -- (ScrH()*0.75 - tall)/2).  This keeps a tall pickup history from running off
-  -- the bottom of the screen.
-  local stackTall = 0
-  for i = 1, #PickupHistory do
-    local d = PickupHistory[i]
-    local age = curtime() - d.time
-    if ( age >= 0 ) then
-      stackTall = stackTall + ( d._h or 26 ) + 8
-    end
-  end
-
-  -- Smoothly move the origin toward the centred position.
-  local targetTop = ( sh * 0.75 - stackTall ) / 2
-  if ( targetTop < 8 ) then targetTop = 8 end
-  if ( not PickupHistoryTop ) then PickupHistoryTop = targetTop end
-  PickupHistoryTop = ( PickupHistoryTop * 5 + targetTop ) / 6
-
-  local y = PickupHistoryTop
-  local alive = {}
-
-  for i = 1, #PickupHistory do
-    local newY, stillAlive = DrawBar( rightX, y, PickupHistory[i] )
-    if ( stillAlive ) then
-      y = newY
-      alive[ #alive + 1 ] = PickupHistory[i]
-    end
-  end
-
-  PickupHistory = alive
+-- GMod's cl_init.lua runs this from GM:HUDPaint; HL2SB's equivalent per-frame
+-- client callback is HudViewportPaint.
+hook.add( "HudViewportPaint", "gmod_cl_hudpickup", function()
+	hook.Run( "HUDDrawPickupHistory" )
 end )
 
--- ---------------------------------------------------------------------------
--- Handler (engine -> Lua)
--- ---------------------------------------------------------------------------
-hook.add( "HUDItemPickedUp", "hl2sb_cl_hudpickup", function( userid, item, amount )
-  item = item or ""
-  amount = tonumber( amount ) or nil
-
-  local low = string.lower( item )
-  local clr
-  if ( string.find( low, "_ammo", 1, true ) ) then
-    clr = AMMO_COLOR
-  elseif ( string.find( low, "item_", 1, true ) == 1 or string.find( low, "weapon_", 1, true ) ~= 1 ) then
-    clr = ITEM_COLOR
-  else
-    clr = WEAPON_COLOR
-  end
-
-  -- GMod: merge a repeated ammo pickup into the existing card (accumulate the
-  -- amount and refresh the timer) instead of stacking a new one, so picking up
-  -- lots of the same ammo doesn't fill the screen.
-  if ( string.find( low, "_ammo", 1, true ) ) then
-    for i = 1, #PickupHistory do
-      local e = PickupHistory[i]
-      if ( e.name == item ) then
-        local cur = tonumber( e.amount ) or 0
-        e.amount = cur + ( amount or 0 )
-        e.time   = curtime()        -- refresh
-        print( string.format( "[HL2SB][pickup-hud] merged %s -> %s\n", item, tostring(e.amount) ) )
-        return
-      end
-    end
-  end
-
-  AddPickup( item, amount, clr )
-  print( string.format( "[HL2SB][pickup-hud] %s amount=%s\n", tostring(item), tostring(amount) ) )
+-- Make GM:HUDDrawPickupHistory reachable through hook.Run as well, so addons
+-- that hook "HUDDrawPickupHistory" get called like they do in GMod.
+hook.Add( "HUDDrawPickupHistory", "gmod_cl_hudpickup", function()
+	return GM:HUDDrawPickupHistory()
 end )
 
-print( "[HL2SB] hl2sb_cl_hudpickup.lua loaded (GMod pickup bar)" )
+-- GMod's CHudHistoryResource drives the three gamemode methods.  HL2SB forwards
+-- the engine's item_pickup game event to this hook as ( userid, item, amount );
+-- sort it into the GMod methods.
+hook.add( "HUDItemPickedUp", "gmod_cl_hudpickup", function( userid, item, amount )
+	if ( userid and IsValid( LocalPlayer() ) and LocalPlayer():UserID() != userid ) then return end
+	if ( item == nil or item == "" ) then return end
+
+	local low = string.lower( item )
+
+	-- Ammo arrives as "<ammoname>_ammo"; GMod's HUDAmmoPickedUp wants the bare
+	-- ammo name and appends the suffix itself.
+	if ( string.sub( low, -5 ) == "_ammo" ) then
+		GM:HUDAmmoPickedUp( string.sub( item, 1, #item - 5 ), tonumber( amount ) or 0 )
+		return
+	end
+
+	if ( string.sub( low, 1, 7 ) == "weapon_" ) then
+		-- GMod passes the weapon entity.  HL2SB's item_pickup event only
+		-- carries the class name (and there is no GetWeapons() binding), so use
+		-- the active weapon when it matches -- a freshly picked up weapon is
+		-- normally the one being deployed -- and fall back to the class name.
+		local wep = nil
+		if ( IsValid( LocalPlayer() ) ) then
+			local active = LocalPlayer():GetActiveWeapon()
+			if ( IsValid( active ) and active:GetClass() == item ) then
+				wep = active
+			end
+		end
+
+		GM:HUDWeaponPickedUp( wep or item )
+		return
+	end
+
+	GM:HUDItemPickedUp( item )
+end )
+
+print( "[HL2SB] hl2sb_cl_hudpickup.lua loaded (GMod cl_hudpickup)" )

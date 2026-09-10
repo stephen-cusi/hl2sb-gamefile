@@ -120,6 +120,11 @@ local function GetFont( name, size, weight )
   return hfont
 end
 
+-- HL2SB: expose the cached-font helper.  GMod-style HUD code measures text with
+-- surface.GetTextSize, which needs an HFont rather than a face name, so it has
+-- to be able to resolve one (GMod's cl_hudpickup.lua does exactly this).
+GetFont = GetFont
+
 -- Height of a single line of the given font name (cached).
 function GetFontHeight( font )
   if ( not font ) then font = "Default" end

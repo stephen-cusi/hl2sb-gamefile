@@ -20,7 +20,6 @@
 -----------------------------------------------------------------------------]]
 
 require( "hook" )
-require( "net" )
 
 local surface  = surface
 local ScrW     = ScrW
@@ -40,14 +39,13 @@ local NOTIF_TEXT_H    = 12
 -- Queue of active notices.
 local Notices = {}
 
--- Font.
+-- Font.  draw.GetFont resolves a face name to a cached HFont, which is what
+-- surface.GetTextSize / DrawSetTextFont need (surface.SetFont wants an HFont,
+-- not a name).
 local hFont
 local function EnsureFont()
 	if hFont then return hFont end
-	hFont = surface.SetFont( "Default" )
-	if not hFont or hFont == 0 then
-		hFont = surface.SetFont( "DefaultSmall" )
-	end
+	hFont = draw.GetFont( "Default" )
 	return hFont
 end
 
@@ -94,10 +92,11 @@ local function AddNotify( name, count )
 	NotifySound()
 end
 
-net.Receive( "UndoNotify", function( len, client )
-	local name  = net.ReadString()
-	local count = net.ReadInt()
-	AddNotify( name, count )
+-- GMod fires OnUndo on the CLIENT from the Undo_FireUndo net message that
+-- lua/includes/modules/undo.lua sends (GM:OnUndo in GMod's sandbox gamemode).
+-- The old server-side "UndoNotify" broadcast is gone with the C++ undo stack.
+hook.add( "OnUndo", "hl2sb_undo_notify", function( name, customtext )
+	AddNotify( customtext or name, nil )
 end )
 
 -- Spring / ease update from GMod's notification.lua UpdateNotice.
