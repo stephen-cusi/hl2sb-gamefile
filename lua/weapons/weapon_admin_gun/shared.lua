@@ -1,7 +1,7 @@
 --===== hl2sb "Admin Gun" (GMod-style SWEP, verified Approach B) =====--
 -- Fires via Lua ItemPostFrame (auto-fire) and RETURNS FALSE to suppress the
 -- engine base auto-fire loop (prevents double-fire). Uses only verified
--- bindings. Msg() traces are for live debugging.
+-- bindings. print() traces are for live debugging.
 
 SWEP.printname			= "Admin Gun"
 -- capitalized keys: read by C++ GetPrintName/GetSlot/GetPosition (HUD name & slot)
@@ -50,11 +50,10 @@ end
 function SWEP:Precache() end
 
 function SWEP:PrimaryAttack()
-	Msg("AdminGun: PrimaryAttack\n")
+	print("AdminGun: PrimaryAttack\n")
 	if _CLIENT then return end
 	local pPlayer = self:GetOwner()
 	if ToBaseEntity( pPlayer ) == NULL then return end
-
 	if self.m_iClip1 <= 0 then
 		self:WeaponSound( 0 )
 		self.m_flNextPrimaryAttack = gpGlobals.curtime() + 0.5
@@ -86,7 +85,7 @@ function SWEP:PrimaryAttack()
 end
 
 function SWEP:SecondaryAttack()
-	Msg("AdminGun: SecondaryAttack\n")
+	print("AdminGun: SecondaryAttack\n")
 	if _CLIENT then return end
 	local pPlayer = self:GetOwner()
 	if ToBaseEntity( pPlayer ) == NULL then return end

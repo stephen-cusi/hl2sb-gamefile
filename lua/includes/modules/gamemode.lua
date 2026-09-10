@@ -4,6 +4,8 @@
 --
 --===========================================================================--
 
+-- 必须和 C++ 的 LUA_BASE_GAMEMODE 一致（game/shared/lua/luamanager.h）。
+-- 之前这里是 "deathmatch"，改成 GMod 结构后基础 gamemode 叫 "base"。
 _BASE_GAMEMODE = "deathmatch"
 
 require( "hook" )
@@ -13,6 +15,8 @@ local table = table
 local print = print
 local _BASE_GAMEMODE = _BASE_GAMEMODE
 local _G = _G
+local tostring = tostring
+local Warning = dbg.Warning
 
 module( "gamemode" )
 
@@ -51,7 +55,16 @@ function register( tGamemode, strName, strBaseClass )
     tGamemode = table.inherit( tGamemode, _G._GAMEMODE )
   end
   if ( strName ~= _BASE_GAMEMODE ) then
-    tGamemode = table.inherit( tGamemode, get( strBaseClass ) )
+    -- 父 gamemode 必须先加载好（引擎是按 base -> 当前 gamemode 的顺序加载的）。
+    -- 拿不到就只警告，不要 table.inherit(nil) 直接把加载打断。
+    local tBase = get( strBaseClass )
+    if ( tBase ~= nil ) then
+      tGamemode = table.inherit( tGamemode, tBase )
+    else
+      Warning( "WARNING: gamemode \"" .. tostring( strName ) ..
+               "\" declares base \"" .. tostring( strBaseClass ) ..
+               "\" but it is not registered yet!\n" )
+    end
   end
   tGamemodes[ strName ] = tGamemode
 end

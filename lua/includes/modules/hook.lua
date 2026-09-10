@@ -8,7 +8,9 @@ local pairs = pairs
 local Warning = dbg.Warning
 local tostring = tostring
 local pcall = pcall
-local unpack = unpack
+-- HL2SB: Lua 5.4 moved unpack() into the table library.  The engine installs the
+-- 5.1 alias as well, but keep this defensive so hook.lua works on either runtime.
+local unpack = unpack or table.unpack
 
 module( "hook" )
 

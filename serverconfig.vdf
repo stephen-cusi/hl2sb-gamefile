@@ -1,4 +1,5 @@
 "ServerConfig"
 {
 	"map"		"sb_field"
+	"mp_falldamage"		"0"
 }

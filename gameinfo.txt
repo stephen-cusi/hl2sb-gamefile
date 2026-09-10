@@ -48,6 +48,15 @@ FileSystem
 			game				|all_source_engine_paths|hl2mp/hl2mp_english.vpk
 			game 				|all_source_engine_paths|hl2mp/hl2mp_pak.vpk
 			mod  				|all_source_engine_paths|garrysmod/garrysmod.vpk
+			// GMod's fallback content: the CS:S / HL2 assets GMod itself relies on
+			// (154 weapon .wav incl. the CS:S name set, ~8.2k materials, 373 models).
+			// GMod SWEPs and addons reference those names directly, so without this
+			// mount their gun/explosion sounds silently fail to load ("Failed to load
+			// sound weapons/deagle/de_deploy.wav") and their models render pink.
+			// Mounted as "game" (not "mod") so it never joins the MOD search path
+			// that the Lua loader enumerates, and placed after the hl2/hl2mp VPKs so
+			// first-party content keeps priority.
+			game				|all_source_engine_paths|garrysmod/fallbacks.vpk
 			platform			|all_source_engine_paths|platform/platform_misc.vpk
 
 			// Now search loose files.  We'll set the directory containing the gameinfo.txt file

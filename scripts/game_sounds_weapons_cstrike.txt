@@ -6,7 +6,7 @@
 	"CompatibilityAttenuation"	"0.40"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/g3sg1/g3sg1-1.wav"
+	"wave"		"weapons/g3sg1/g3sg1-1.wav"
 }
 
 "Weapon_G3SG1.Slide"
@@ -47,7 +47,7 @@
 	"CompatibilityAttenuation"	"ATTN_NORM"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/glock/glock18-1.wav"
+	"wave"		"weapons/glock/glock18-1.wav"
 }
 
 "Weapon_Glock.Clipout"
@@ -98,7 +98,7 @@
 	"CompatibilityAttenuation"	"0.48"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/galil/galil-1.wav"
+	"wave"		"weapons/galil/galil-1.wav"
 	
 }
 
@@ -140,7 +140,7 @@
 	"CompatibilityAttenuation"	"0.52"
 	"pitch"		"PITCH_NORM"
 
-	"wave"		")weapons/m249/m249-1.wav"
+	"wave"		"weapons/m249/m249-1.wav"
 }
 
 "Weapon_M249.Coverup"
@@ -201,7 +201,7 @@
 	"CompatibilityAttenuation"	"0.52"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/xm1014/xm1014-1.wav"
+	"wave"		"weapons/xm1014/xm1014-1.wav"
 }
 
 "Weapon_XM1014.InsertShell"
@@ -222,7 +222,7 @@
 	"CompatibilityAttenuation"	"0.48"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/m3/m3-1.wav"
+	"wave"		"weapons/m3/m3-1.wav"
 }
 
 
@@ -255,7 +255,7 @@
 	"CompatibilityAttenuation"	"0.64"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/mac10/mac10-1.wav"
+	"wave"		"weapons/mac10/mac10-1.wav"
 }
 
 "Weapon_MAC10.Clipout"
@@ -296,7 +296,7 @@
 	"CompatibilityAttenuation"	"1.6"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/tmp/tmp-1.wav"
+	"wave"		"weapons/tmp/tmp-1.wav"
 }
 
 "Weapon_TMP.Clipin"
@@ -328,7 +328,7 @@
 	"CompatibilityAttenuation"	"0.64"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/mp5navy/mp5-1.wav"
+	"wave"		"weapons/mp5navy/mp5-1.wav"
 	
 }
 
@@ -370,7 +370,7 @@
 	"CompatibilityAttenuation"	"ATTN_NORM"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/p228/p228-1.wav"
+	"wave"		"weapons/p228/p228-1.wav"
 }
 
 "Weapon_P228.Clipout"
@@ -431,7 +431,7 @@
 	"CompatibilityAttenuation"	"0.64"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/p90/p90-1.wav"
+	"wave"		"weapons/p90/p90-1.wav"
 }
 
 "Weapon_P90.Cliprelease"
@@ -482,7 +482,7 @@
 	"CompatibilityAttenuation"	"1.6"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/scout/scout_fire-1.wav"
+	"wave"		"weapons/scout/scout_fire-1.wav"
 }
 
 "Weapon_Scout.Bolt"
@@ -523,7 +523,7 @@
 	"CompatibilityAttenuation"	"0.40"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/sg550/sg550-1.wav"
+	"wave"		"weapons/sg550/sg550-1.wav"
 }
 
 "Weapon_SG550.Clipout"
@@ -564,7 +564,7 @@
 	"CompatibilityAttenuation"	"0.48"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/sg552/sg552-1.wav"
+	"wave"		"weapons/sg552/sg552-1.wav"
 	
 }
 
@@ -606,7 +606,7 @@
 	"CompatibilityAttenuation"	"ATTN_NORM"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/fiveseven/fiveseven-1.wav"
+	"wave"		"weapons/fiveseven/fiveseven-1.wav"
 }
 
 "Weapon_FiveSeven.Clipout"
@@ -667,7 +667,7 @@
 	"CompatibilityAttenuation"	"0.64"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/ump45/ump45-1.wav"
+	"wave"		"weapons/ump45/ump45-1.wav"
 }
 
 "Weapon_UMP45.Clipout"
@@ -708,7 +708,7 @@
 	"CompatibilityAttenuation"	"ATTN_NORM"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/usp/usp_unsil-1.wav"
+	"wave"		"weapons/usp/usp_unsil-1.wav"
 }
 
 "Weapon_USP.SilencedShot"
@@ -718,7 +718,7 @@
 	"CompatibilityAttenuation"	"ATTN_IDLE"
 	"pitch"		"PITCH_NORM"
 	
-	"wave"			")weapons/usp/usp1.wav"
+	"wave"		"weapons/usp/usp1.wav"
 	
 }
 
@@ -807,7 +807,7 @@
 	"CompatibilityAttenuation"	"0.52"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/m4a1/m4a1_unsil-1.wav"
+	"wave"		"weapons/m4a1/m4a1_unsil-1.wav"
 	
 }
 
@@ -818,7 +818,7 @@
 	"CompatibilityAttenuation"	"1.4"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/m4a1/m4a1-1.wav"
+	"wave"		"weapons/m4a1/m4a1-1.wav"
 }
 
 "Weapon_M4A1.Silencer_Off"
@@ -889,7 +889,7 @@
 	"CompatibilityAttenuation"	"ATTN_NORM"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/elite/elite-1.wav"
+	"wave"		"weapons/elite/elite-1.wav"
 }
 
 "Weapon_ELITE.Reloadstart"
@@ -961,7 +961,7 @@
 	"CompatibilityAttenuation"	"0.48"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/famas/famas-1.wav"
+	"wave"		"weapons/famas/famas-1.wav"
 	
 }
 
@@ -1003,7 +1003,7 @@
 	"CompatibilityAttenuation"	"0.48"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/aug/aug-1.wav"
+	"wave"		"weapons/aug/aug-1.wav"
 }
 
 "Weapon_AUG.Boltpull"
@@ -1064,7 +1064,7 @@
 	"CompatibilityAttenuation"	"0.28"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/awp/awp1.wav"
+	"wave"		"weapons/awp/awp1.wav"
 }
 
 "Weapon_AWP.Clipin"
@@ -1167,7 +1167,7 @@
 	"CompatibilityAttenuation"	"0.6"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/DEagle/deagle-1.wav"
+	"wave"		"weapons/DEagle/deagle-1.wav"
 	
 }
 
@@ -1219,7 +1219,7 @@
 	"CompatibilityAttenuation"	"0.52"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/ak47/ak47-1.wav"
+	"wave"		"weapons/ak47/ak47-1.wav"
 	
 }
 
@@ -1230,7 +1230,7 @@
 	"CompatibilityAttenuation"	"0.52"
 	"pitch"		"PITCH_NORM"
 
-	"wave"			")weapons/ak47/ak47-1.wav"
+	"wave"		"weapons/ak47/ak47-1.wav"
 	
 }
 
@@ -1285,8 +1285,8 @@
 
 	"rndwave"
 	{
-		"wave"	"^weapons/flashbang/flashbang_explode1.wav"	
-		"wave"	"^weapons/flashbang/flashbang_explode2.wav"	
+		"wave"		"weapons/flashbang/flashbang_explode1.wav"	
+		"wave"		"weapons/flashbang/flashbang_explode2.wav"	
 	}
 }
 
@@ -1361,9 +1361,9 @@
 
 	"rndwave"
 	{
-		"wave"	"^weapons/hegrenade/explode3.wav"
-		"wave"	"^weapons/hegrenade/explode4.wav"
-		"wave"	"^weapons/hegrenade/explode5.wav"
+		"wave"		"weapons/hegrenade/explode3.wav"
+		"wave"		"weapons/hegrenade/explode4.wav"
+		"wave"		"weapons/hegrenade/explode5.wav"
 	}
 }
 
@@ -1388,7 +1388,7 @@
 	"soundlevel"	"SNDLVL_85dB"
 	
 
-	"wave"		"^weapons/smokegrenade/sg_explode.wav"
+	"wave"		"weapons/smokegrenade/sg_explode.wav"
 		
 }
 
@@ -1416,7 +1416,7 @@
 	"volume"		"1"
 	"soundlevel"	"SNDLVL_GUNFIRE"
 
-	"wave"			")weapons/c4/c4_explode1.wav"
+	"wave"		"weapons/c4/c4_explode1.wav"
 }
 
 

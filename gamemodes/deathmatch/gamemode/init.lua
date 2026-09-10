@@ -73,19 +73,19 @@ function GM:GiveDefaultItems( pPlayer )
 	_R.CBasePlayer.GiveAmmo( pPlayer, 6,	"Buckshot");
 	_R.CBasePlayer.GiveAmmo( pPlayer, 6,	"357" );
 
-	if ( pPlayer:GetPlayerModelType() == PLAYER_SOUNDS_METROPOLICE or pPlayer:GetPlayerModelType() == PLAYER_SOUNDS_COMBINESOLDIER ) then
+	local mt = pPlayer:GetPlayerModelType();
+	if ( mt == 2 or mt == 1 ) then
 		pPlayer:GiveNamedItem( "weapon_stunstick" );
-	elseif ( pPlayer:GetPlayerModelType() == PLAYER_SOUNDS_CITIZEN ) then
+	else
 		pPlayer:GiveNamedItem( "weapon_crowbar" );
 	end
-	
+
 	pPlayer:GiveNamedItem( "weapon_pistol" );
 	pPlayer:GiveNamedItem( "weapon_smg1" );
 	pPlayer:GiveNamedItem( "weapon_frag" );
 	pPlayer:GiveNamedItem( "weapon_physcannon" );
 
 	local szDefaultWeaponName = engine.GetClientConVarValue( engine.IndexOfEdict( pPlayer ), "cl_defaultweapon" );
-
 	local pDefaultWeapon = pPlayer:Weapon_OwnsThisType( szDefaultWeaponName );
 
 	if ( ToBaseEntity( pDefaultWeapon ) ~= NULL ) then
@@ -95,7 +95,6 @@ function GM:GiveDefaultItems( pPlayer )
 	end
 	return false
 end
-
 function GM:Host_Say( pPlayer, p, teamonly )
 end
 
@@ -134,9 +133,6 @@ end
 
 function GM:PlayerPickupObject( pHL2MPPlayer, pObject, bLimitMassAndSize )
 	return false
-end
-
-function GM:PlayerSpawn( pPlayer )
 end
 
 function GM:PlayerThink( pPlayer )

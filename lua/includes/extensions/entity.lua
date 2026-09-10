@@ -7,7 +7,7 @@
 local type = type
 
 function ToBaseEntity( pEntity )
-  if ( not pEntity or type( pEntity ) ~= "entity" ) then
+  if ( not pEntity or type( pEntity ) ~= "Entity" ) then
     return NULL;
   end
 

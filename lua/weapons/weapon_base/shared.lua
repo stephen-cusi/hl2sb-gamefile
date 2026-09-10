@@ -1,183 +1,456 @@
---===== weapon_base (GMod-compatible) for hl2sb =====--
--- NO m_acttable (avoids "Bad pstudiohdr in GetSequenceLinearMotion()" crash).
+--[[--------------------------------------------------------------------
+    weapon_base  --  Faithful GMod SWEP base ported to HL2SB.
 
-SWEP.Base = "weapon_base"
-SWEP.HoldType = "normal"
-SWEP.Spawnable = false
-SWEP.AdminSpawnable = false
-SWEP.Weight = 5
-SWEP.AutoSwitchTo = true
-SWEP.AutoSwitchFrom = true
+    Source: Facepunch/garrysmod  gamemodes/base/entities/weapons/
+            weapon_base/shared.lua  (verbatim method set, GMod semantics).
 
--- Empty defaults; each SWEP sets its own models. Both key styles: C++
--- reads lowercase "viewmodel"/"playermodel" (uppercase fallback added),
--- Lua GetViewModel()/GetWorldModel() read the capitalized keys.
-SWEP.ViewModel = ""
-SWEP.WorldModel = ""
-SWEP.viewmodel = SWEP.ViewModel
-SWEP.playermodel = SWEP.WorldModel
+    HL2SB adaptations (engine-level, no shims):
+      * SetHoldType(t) -> drives HL2SB's m_acttable (numeric baseAct ->
+        weaponAct triples) so the player body/world-model animates.  GMod's
+        engine reads HoldType; HL2SB's postures from m_acttable.  We keep the
+        GMod HoldType name and the helper, and map it here.
+      * Clip1/Clip2/Ammo1/Ammo2/SetClip1/SetClip2/GetPrimaryAmmoType/
+        GetSecondaryAmmoType refer to the engine bindings.
+----------------------------------------------------------------------]]--
 
+-- PrintName / header fields (GMod shows these on the HUD)
+SWEP.PrintName		= "Scripted Weapon"
+SWEP.Author			= ""
+SWEP.Contact		= ""
+SWEP.Purpose		= ""
+SWEP.Instructions	= ""
+SWEP.Category		= ""
+
+SWEP.ViewModelFOV	= 62
+SWEP.ViewModelFlip	= false
+SWEP.UseHands		= true
+
+-- HL2SB scripted-weapon flat keys (engine reads these in InitScriptedWeapon).
+-- GMod SWEPs set capitalised ViewModel/WorldModel; engine falls back to them.
+SWEP.ViewModel		= "models/weapons/v_357.mdl"
+SWEP.WorldModel		= "models/weapons/w_357.mdl"
+SWEP.viewmodel		= SWEP.ViewModel
+SWEP.playermodel	= SWEP.WorldModel
+SWEP.anim_prefix	= "python"
+SWEP.bucket		= 1
+SWEP.bucket_position	= 1
+
+SWEP.clip_size		= -1
+SWEP.clip2_size		= -1
+SWEP.default_clip		= -1
+SWEP.default_clip2	= -1
+SWEP.primary_ammo		= "Pistol"
+SWEP.secondary_ammo	= "None"
+
+SWEP.weight			= 5
+SWEP.item_flags		= 0
+SWEP.showusagehint	= 0
+SWEP.autoswitchto	= 1
+SWEP.autoswitchfrom	= 1
+SWEP.BuiltRightHanded	= 1
+SWEP.AllowFlipping	= 1
+SWEP.MeleeWeapon	= 0
+
+SWEP.Spawnable		= false
+SWEP.AdminSpawnable	= false
+SWEP.Spawnable		= false
+SWEP.AdminOnly		= false
+
+-- GMod-style hold type.  Kept as a name AND mapped to m_acttable in
+-- SetHoldType so HL2SB world/body animation stays correct.
+SWEP.HoldType		= "normal"
+
+-- Default Primary/Secondary tables (GMod defaults)
 SWEP.Primary = {
-	Sound = "Weapon_Pistol.Single", Damage = 10, TakeAmmo = 1, ClipSize = -1,
-	Ammo = "Pistol", DefaultClip = -1, Spread = 0.01, NumberofShots = 1,
-	Automatic = false, Recoil = 2, Delay = 0.2, Force = 0,
+	Sound			= "Weapon_Pistol.Single",
+	Damage			= 10,
+	TakeAmmo		= 1,
+	ClipSize		= -1,
+	Ammo			= "Pistol",
+	DefaultClip		= -1,
+	Spread			= 0.01,
+	NumberofShots	= 1,
+	Automatic		= false,
+	Recoil			= 2,
+	Delay			= 0.2,
+	Force			= 0,
 }
+
 SWEP.Secondary = {
-	Sound = "Weapon_Pistol.Empty", Damage = 0, TakeAmmo = 0, ClipSize = -1,
-	Ammo = "None", DefaultClip = -1, Spread = 0.01, NumberofShots = 1,
-	Automatic = false, Recoil = 0, Delay = 0.4, Force = 0,
+	Sound			= "Weapon_Pistol.Empty",
+	Damage			= 0,
+	TakeAmmo		= 0,
+	ClipSize		= -1,
+	Ammo			= "None",
+	DefaultClip		= -1,
+	Spread			= 0.01,
+	NumberofShots	= 1,
+	Automatic		= false,
+	Recoil			= 0,
+	Delay			= 0.4,
+	Force			= 0,
 }
 
-function SWEP:Initialize()
-	self.m_bReloadsSingly = false
-	self.m_bFiresUnderwater = true
-	if self.Primary and self.Primary.ClipSize and self.Primary.ClipSize ~= -1 then
-		self.m_iClip1 = self.Primary.DefaultClip or self.Primary.ClipSize
-	end
-	if self.Secondary and self.Secondary.ClipSize and self.Secondary.ClipSize ~= -1 then
-		self.m_iClip2 = self.Secondary.DefaultClip or self.Secondary.ClipSize
-	end
-	self.m_flNextPrimaryAttack = 0
-	self.m_flNextSecondaryAttack = 0
-	return true
-end
+-- Default m_acttable.  GMod SWEPs call SetHoldType("pistol") etc. so this is
+-- replaced on Initialize; kept as a sane pistol default for any SWEP that
+-- never sets a hold type.  Base acts: ACT_HL2MP_* / ACT_RANGE_ATTACK1.
+-- Weapon acts: ACT_HL2MP_*_PISTOL / ACT_RANGE_ATTACK_PISTOL.
+SWEP.m_acttable = {
+	{ ACT_HL2MP_IDLE, ACT_HL2MP_IDLE_PISTOL, false },
+	{ ACT_HL2MP_RUN, ACT_HL2MP_RUN_PISTOL, false },
+	{ ACT_HL2MP_IDLE_CROUCH, ACT_HL2MP_IDLE_CROUCH_PISTOL, false },
+	{ ACT_HL2MP_WALK_CROUCH, ACT_HL2MP_WALK_CROUCH_PISTOL, false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK, ACT_HL2MP_GESTURE_RANGE_ATTACK_PISTOL, false },
+	{ ACT_HL2MP_GESTURE_RELOAD, ACT_HL2MP_GESTURE_RELOAD_PISTOL, false },
+	{ ACT_HL2MP_JUMP, ACT_HL2MP_JUMP_PISTOL, false },
+	{ ACT_RANGE_ATTACK1, ACT_RANGE_ATTACK_PISTOL, false },
+}
 
-function SWEP:SetWeaponHoldType( t )
-	self.HoldType = t or "normal"
+-- HoldType -> m_acttable.  For now "pistol"/"normal" cover the HL2SB pistol
+-- body animation; more hold types map onto the pistol set as a stable default.
+local HoldTypeActtables = {
+	["pistol"]	=
+	{
+		{ ACT_HL2MP_IDLE, ACT_HL2MP_IDLE_PISTOL, false },
+		{ ACT_HL2MP_RUN, ACT_HL2MP_RUN_PISTOL, false },
+		{ ACT_HL2MP_IDLE_CROUCH, ACT_HL2MP_IDLE_CROUCH_PISTOL, false },
+		{ ACT_HL2MP_WALK_CROUCH, ACT_HL2MP_WALK_CROUCH_PISTOL, false },
+		{ ACT_HL2MP_GESTURE_RANGE_ATTACK, ACT_HL2MP_GESTURE_RANGE_ATTACK_PISTOL, false },
+		{ ACT_HL2MP_GESTURE_RELOAD, ACT_HL2MP_GESTURE_RELOAD_PISTOL, false },
+		{ ACT_HL2MP_JUMP, ACT_HL2MP_JUMP_PISTOL, false },
+		{ ACT_RANGE_ATTACK1, ACT_RANGE_ATTACK_PISTOL, false },
+	},
+	["normal"]	=
+	{
+		{ ACT_HL2MP_IDLE, ACT_HL2MP_IDLE_PISTOL, false },
+		{ ACT_HL2MP_RUN, ACT_HL2MP_RUN_PISTOL, false },
+		{ ACT_HL2MP_IDLE_CROUCH, ACT_HL2MP_IDLE_CROUCH_PISTOL, false },
+		{ ACT_HL2MP_WALK_CROUCH, ACT_HL2MP_WALK_CROUCH_PISTOL, false },
+		{ ACT_HL2MP_GESTURE_RANGE_ATTACK, ACT_HL2MP_GESTURE_RANGE_ATTACK_PISTOL, false },
+		{ ACT_HL2MP_GESTURE_RELOAD, ACT_HL2MP_GESTURE_RELOAD_PISTOL, false },
+		{ ACT_HL2MP_JUMP, ACT_HL2MP_JUMP_PISTOL, false },
+		{ ACT_RANGE_ATTACK1, ACT_RANGE_ATTACK_PISTOL, false },
+	},
+}
+
+--[[---------------------------------------------------------
+	Name: SWEP:SetHoldType
+	Desc: GMod sets a hold type string; HL2SB animates via m_acttable.
+		  We keep the GMod API and translate to the activity table.
+-----------------------------------------------------------]]
+function SWEP:SetHoldType( t )
+	-- GMod hold types are matched case-insensitively ("Pistol" == "pistol").
+	t = string.lower( t or "normal" )
+	self.HoldType = t
+	self.m_acttable = HoldTypeActtables[ t ] or HoldTypeActtables[ "normal" ]
 	return self.HoldType
 end
 
-function SWEP:CanPrimaryAttack()
-	if self.Primary.ClipSize == nil or self.Primary.ClipSize == -1 then return true end
-	if self.m_iClip1 <= 0 then self:Reload(); return false end
+-- GMod API name: stock SWEP Initialize calls self:SetWeaponHoldType(t).
+SWEP.SetWeaponHoldType = SWEP.SetHoldType
+
+--[[---------------------------------------------------------
+	Name: SWEP:Initialize
+-----------------------------------------------------------]]
+function SWEP:Initialize()
+	self:SetHoldType( self.HoldType or "pistol" )
+	self.m_bReloadsSingly	= false
+	self.m_bFiresUnderwater	= true
+	if ( self.Primary and self.Primary.ClipSize and self.Primary.ClipSize ~= -1 ) then
+		self.m_iClip1 = self.Primary.DefaultClip or self.Primary.ClipSize
+	end
+	if ( self.Secondary and self.Secondary.ClipSize and self.Secondary.ClipSize ~= -1 ) then
+		self.m_iClip2 = self.Secondary.DefaultClip or self.Secondary.ClipSize
+	end
+	self.m_flNextPrimaryAttack	= 0
+	self.m_flNextSecondaryAttack	= 0
 	return true
 end
 
-function SWEP:CanSecondaryAttack()
-	if self.Secondary.ClipSize == nil or self.Secondary.ClipSize == -1 then return true end
-	if self.m_iClip2 <= 0 then self:Reload(); return false end
-	return true
-end
-
-function SWEP:SetNextPrimaryFire( t ) self.m_flNextPrimaryAttack = t end
-function SWEP:SetNextSecondaryFire( t ) self.m_flNextSecondaryAttack = t end
-
-function SWEP:TakePrimaryAmmo( count )
-	count = count or 1
-	self.m_iClip1 = self.m_iClip1 - count
-	if self.m_iClip1 < 0 then self.m_iClip1 = 0 end
-end
-
-function SWEP:TakeSecondaryAmmo( count )
-	count = count or 1
-	self.m_iClip2 = self.m_iClip2 - count
-	if self.m_iClip2 < 0 then self.m_iClip2 = 0 end
-end
-
-function SWEP:ShootEffects()
-	self:SendWeaponAnim( 180 )
-	local o = self:GetOwner()
-	if o then o:DoMuzzleFlash(); o:SetAnimation( 5 ) end
-end
-
-function SWEP:ShootBullet( damage, num_bullets, aimcone, ammo_type, force, tracer )
-	local o = self:GetOwner()
-	if not o then return end
-	local bullet = {
-		Num = num_bullets or 1, Src = o:GetShootPos(), Dir = o:GetAimVector(),
-		Spread = Vector( aimcone or 0, aimcone or 0, 0 ), Tracer = tracer or 0,
-		Force = force or 1, Damage = damage or 1,
-		AmmoType = ammo_type or self.Primary.Ammo or "Pistol",
-	}
-	o:FireBullets( bullet )
-end
-
+--[[---------------------------------------------------------
+	Name: SWEP:PrimaryAttack
+-----------------------------------------------------------]]
 function SWEP:PrimaryAttack()
-	if not self:CanPrimaryAttack() then return end
-	local o = self:GetOwner()
-	if not o then return end
-	self:ShootEffects()
-	self:ShootBullet( self.Primary.Damage or 1, self.Primary.NumberofShots or 1,
-		(self.Primary.Spread or 0) * 0.1, self.Primary.Ammo or "Pistol",
-		self.Primary.Force or 1, 0 )
-	if self.Primary.Sound then self:EmitSound( Sound( self.Primary.Sound ) ) end
-	if self.Primary.Recoil then
-		local r = self.Primary.Recoil
-		o:ViewPunch( Angle( -r, r * math.random( -1, 1 ), 0 ) )
-	end
+	if ( not self:CanPrimaryAttack() ) then return end
+	-- HL2SB FX DEBUG (temporary): which realm runs the Lua attack?  If both run,
+	-- every sound is emitted twice (client + server) and bullet effects depend
+	-- on the client-side FireBullets actually executing.
+	print( "[swepdbg] PrimaryAttack realm=" .. ( SERVER and "sv" or "cl" ) )
+	self:EmitSound( self.Primary.Sound or "Weapon_AR2.Single" )
+	self:ShootBullet( self.Primary.Damage or 150, self.Primary.NumberofShots or 1,
+		(self.Primary.Spread or 0.01) * 0.1, self.Primary.Ammo or "Pistol",
+		self.Primary.Force or 1, 5 )
 	self:TakePrimaryAmmo( self.Primary.TakeAmmo or 1 )
-	local d = self.Primary.Delay or 0.2
-	self:SetNextPrimaryFire( CurTime() + d )
-	self:SetNextSecondaryFire( CurTime() + d )
+	local owner = self:GetOwner()
+	if ( IsValid( owner ) and not owner:IsNPC() ) then
+		owner:ViewPunch( Angle( -( self.Primary.Recoil or 1 ), 0, 0 ) )
+	end
 end
 
+--[[---------------------------------------------------------
+	Name: SWEP:SecondaryAttack
+-----------------------------------------------------------]]
 function SWEP:SecondaryAttack()
-	if not self:CanSecondaryAttack() then return end
-	local o = self:GetOwner()
-	if not o then return end
-	self:ShootEffects()
-	self:ShootBullet( self.Secondary.Damage or 1, self.Secondary.NumberofShots or 1,
-		(self.Secondary.Spread or 0) * 0.1, self.Secondary.Ammo or "Pistol",
-		self.Secondary.Force or 1, 0 )
-	if self.Secondary.Sound then self:EmitSound( Sound( self.Secondary.Sound ) ) end
-	if self.Secondary.Recoil then
-		local r = self.Secondary.Recoil
-		o:ViewPunch( Angle( -r, r * math.random( -1, 1 ), 0 ) )
-	end
+	if ( not self:CanSecondaryAttack() ) then return end
+	-- HL2SB FX DEBUG (temporary)
+	print( "[swepdbg] SecondaryAttack realm=" .. ( SERVER and "sv" or "cl" ) )
+	self:EmitSound( self.Secondary.Sound or "Weapon_Shotgun.Single" )
+	self:ShootBullet( self.Secondary.Damage or 150, self.Secondary.NumberofShots or 9,
+		(self.Secondary.Spread or 0.2) * 0.1, self.Secondary.Ammo or self.Primary.Ammo or "Pistol",
+		self.Secondary.Force or 1, 5 )
 	self:TakeSecondaryAmmo( self.Secondary.TakeAmmo or 1 )
-	local d = self.Secondary.Delay or 0.4
-	self:SetNextPrimaryFire( CurTime() + d )
-	self:SetNextSecondaryFire( CurTime() + d )
+	local owner = self:GetOwner()
+	if ( IsValid( owner ) and not owner:IsNPC() ) then
+		owner:ViewPunch( Angle( -( self.Secondary.Recoil or 10 ), 0, 0 ) )
+	end
 end
 
+--[[---------------------------------------------------------
+	Name: SWEP:Reload
+-----------------------------------------------------------]]
 function SWEP:Reload()
-	if self.m_bInReload then return false end
-	return self:DefaultReload( self:GetMaxClip1(), self:GetMaxClip2(), 182 )
+	return self:DefaultReload( self:GetMaxClip1(), self:GetMaxClip2(), ACT_VM_RELOAD )
 end
 
-function SWEP:Deploy() return true end
-function SWEP:Holster( pSwitchingTo ) return true end
-function SWEP:CanHolster() return true end
-function SWEP:GetDrawActivity() return 171 end
-function SWEP:OwnerChanged() end
-function SWEP:OnRemove() end
+--[[---------------------------------------------------------
+	Name: SWEP:Think
+-----------------------------------------------------------]]
+function SWEP:Think()
+end
 
-function SWEP:ItemPostFrame()
-	if _CLIENT then return nil end
-	local o = self:GetOwner()
-	if ToBaseEntity( o ) == NULL then return false end
-	if self._gmod_clip_seeded ~= true then
-		self._gmod_clip_seeded = true
-		if self.Primary and self.Primary.ClipSize and self.Primary.ClipSize ~= -1 then
-			self.m_iClip1 = self.Primary.DefaultClip or self.Primary.ClipSize
-		end
-		if self.Secondary and self.Secondary.ClipSize and self.Secondary.ClipSize ~= -1 then
-			self.m_iClip2 = self.Secondary.DefaultClip or self.Secondary.ClipSize
-		end
+--[[---------------------------------------------------------
+	Name: SWEP:Holster
+-----------------------------------------------------------]]
+function SWEP:Holster( wep )
+	return true
+end
+
+--[[---------------------------------------------------------
+	Name: SWEP:Deploy
+-----------------------------------------------------------]]
+function SWEP:Deploy()
+	self:SendWeaponAnim( ACT_VM_DRAW )
+	return true
+end
+
+--[[---------------------------------------------------------
+	Name: SWEP:CanHolster
+-----------------------------------------------------------]]
+function SWEP:CanHolster()
+	return true
+end
+
+--[[---------------------------------------------------------
+	Name: SWEP:GetDrawActivity
+-----------------------------------------------------------]]
+function SWEP:GetDrawActivity()
+	return ACT_VM_DRAW
+end
+
+--[[---------------------------------------------------------
+	Name: SWEP:ShootEffects
+-----------------------------------------------------------]]
+function SWEP:ShootEffects()
+	local owner = self:GetOwner()
+	if ( self:GetOwner() ) then
+		self:SendWeaponAnim( ACT_VM_PRIMARYATTACK )
+		owner:DoMuzzleFlash()
+		owner:SetAnimation( PLAYER_ATTACK1 )
 	end
-	local now = gpGlobals.curtime()
-	local buttons = o.m_nButtons
-	local pressed = o.m_afButtonPressed
-	if bit.band( buttons, 1 ) ~= 0 then
-		if self.Primary.Automatic then
-			if self.m_flNextPrimaryAttack <= now then self:PrimaryAttack() end
-		elseif bit.band( pressed, 1 ) ~= 0 and self.m_flNextPrimaryAttack <= now then
-			self:PrimaryAttack()
-		end
+end
+
+--[[---------------------------------------------------------
+	Name: SWEP:ShootBullet
+	Desc: A convenience function to shoot bullets (GMod).
+-----------------------------------------------------------]]
+function SWEP:ShootBullet( damage, num_bullets, aimcone, ammo_type, force, tracer )
+	self:ShootEffects()
+	local owner = self:GetOwner()
+	if ( not IsValid( owner ) ) then return end
+	local bullet = {}
+	bullet.Num		= num_bullets
+	bullet.Src		= owner:GetShootPos()
+	bullet.Dir		= owner:GetAimVector()
+	bullet.Spread	= Vector( aimcone or 0, aimcone or 0, 0 )
+	bullet.Tracer	= tracer or 5
+	bullet.Force	= force or 1
+	bullet.Damage	= damage
+	bullet.AmmoType = ammo_type or self.Primary.Ammo or "Pistol"
+	bullet.Attacker	= owner
+	bullet.Inflictor = self
+	owner:FireBullets( bullet )
+end
+
+--[[---------------------------------------------------------
+	Name: SWEP:TakePrimaryAmmo
+-----------------------------------------------------------]]
+function SWEP:TakePrimaryAmmo( num )
+	if ( self:Clip1() <= 0 ) then
+		if ( self:Ammo1() <= 0 ) then return end
+		self:GetOwner():RemoveAmmo( num, self:GetPrimaryAmmoType() )
+		return
 	end
-	if bit.band( buttons, 2048 ) ~= 0 then
-		if self.Secondary.Automatic then
-			if self.m_flNextSecondaryAttack <= now then self:SecondaryAttack() end
-		elseif bit.band( pressed, 2048 ) ~= 0 and self.m_flNextSecondaryAttack <= now then
-			self:SecondaryAttack()
-		end
+	self:SetClip1( self:Clip1() - num )
+end
+
+--[[---------------------------------------------------------
+	Name: SWEP:TakeSecondaryAmmo
+-----------------------------------------------------------]]
+function SWEP:TakeSecondaryAmmo( num )
+	if ( self:Clip2() <= 0 ) then
+		if ( self:Ammo2() <= 0 ) then return end
+		self:GetOwner():RemoveAmmo( num, self:GetSecondaryAmmoType() )
+		return
 	end
-	if bit.band( buttons, 8192 ) ~= 0 and self:UsesClipsForAmmo1() and not self.m_bInReload then
+	self:SetClip2( self:Clip2() - num )
+end
+
+--[[---------------------------------------------------------
+	Name: SWEP:CanPrimaryAttack
+-----------------------------------------------------------]]
+function SWEP:CanPrimaryAttack()
+	if ( self:Clip1() <= 0 ) then
+		self:EmitSound( "Weapon_Pistol.Empty" )
+		self:SetNextPrimaryFire( CurTime() + 0.2 )
 		self:Reload()
+		return false
 	end
+	return true
+end
+
+--[[---------------------------------------------------------
+	Name: SWEP:CanSecondaryAttack
+-----------------------------------------------------------]]
+function SWEP:CanSecondaryAttack()
+	if ( self:Clip2() <= 0 ) then
+		self:EmitSound( "Weapon_Pistol.Empty" )
+		self:SetNextSecondaryFire( CurTime() + 0.2 )
+		return false
+	end
+	return true
+end
+
+--[[---------------------------------------------------------
+	Name: SWEP:OnRemove
+-----------------------------------------------------------]]
+function SWEP:OnRemove()
+end
+
+--[[---------------------------------------------------------
+	Name: SWEP:OwnerChanged
+-----------------------------------------------------------]]
+function SWEP:OwnerChanged()
+end
+
+--[[---------------------------------------------------------
+	Name: SWEP:Ammo1
+-----------------------------------------------------------]]
+function SWEP:Ammo1()
+	if ( not self:GetOwner() ) then return 0 end
+	return self:GetOwner():GetAmmoCount( self:GetPrimaryAmmoType() )
+end
+
+--[[---------------------------------------------------------
+	Name: SWEP:Ammo2
+-----------------------------------------------------------]]
+function SWEP:Ammo2()
+	if ( not self:GetOwner() ) then return 0 end
+	return self:GetOwner():GetAmmoCount( self:GetSecondaryAmmoType() )
+end
+
+--[[---------------------------------------------------------
+	Name: SWEP:DoImpactEffect
+-----------------------------------------------------------]]
+function SWEP:DoImpactEffect( tr, nDamageType )
 	return false
 end
 
-function SWEP:ItemBusyFrame() end
-function SWEP:Think() end
-function SWEP:DoImpactEffect() end
+--[[---------------------------------------------------------
+	HL2SB fire-rate helpers.  GMod's engine calls SetNextPrimaryFire/
+	SetNextSecondaryFire; HL2SB caches them in the weapon fields.
+-----------------------------------------------------------]]
+function SWEP:SetNextPrimaryFire( t ) self.m_flNextPrimaryAttack = t end
+function SWEP:SetNextSecondaryFire( t ) self.m_flNextSecondaryAttack = t end
+
+--[[---------------------------------------------------------
+	Name: SWEP:ItemPostFrame
+	Desc: HL2SB's CHL2MPScriptedWeapon::ItemPostFrame does NOT fall through to
+	the CBaseCombatWeapon button loop (RETURN_LUA_NONE skips BaseClass::ItemPostFrame).
+	So the GMod weapon base must drive firing itself from the button state, like
+	GMod's own engine does (auto-fire while held for automatic, edge-trigger for
+	semi-auto), honouring m_flNextPrimaryAttack/m_flNextSecondaryAttack.
+-----------------------------------------------------------]]
+function SWEP:ItemPostFrame()
+	-- GMod runs SWEP methods on BOTH realms for the local player (client
+	-- prediction): PrimaryAttack on the client is what produces the local
+	-- muzzle flash / tracers / bullet impact FX, because the server-side
+	-- FireBullets temp entity uses prediction rules and never reaches the
+	-- shooting client. Suppressing this on the client (the old
+	-- `if _CLIENT then return false end`) left bullets with no impact effects.
+	-- The throttle (m_flNextPrimaryAttack) is a networked prediction field, so
+	-- both realms stay in step. Returning boolean false (NOT nil) still keeps
+	-- the engine's C++ button loop out of the way on both sides.
+	local pPlayer = self:GetOwner()
+	if ( ToBaseEntity( pPlayer ) == NULL ) then return false end
+
+	-- HL2SB FX DEBUG (temporary, once per realm): find out what self.Owner is.
+	-- The stock GMod SWEP does `self.Owner:GetShootPos()`, which fails on the
+	-- client with "attempt to index a number value" while working on the server.
+	if ( self._dbg_owner_probe ~= true ) then
+		self._dbg_owner_probe = true
+		local realm = SERVER and "sv" or "cl"
+		local okT, tOwner = pcall( function() return type( self.Owner ) end )
+		local okV, vOwner = pcall( function() return tostring( self.Owner ) end )
+		local okG, gOwner = pcall( function() return tostring( self:GetOwner() ) end )
+		local okI, tIdx   = pcall( function() return type( self.ClassName ) .. "/" .. type( self.Primary ) end )
+		print( "[swepdbg] ownerprobe realm=" .. realm
+			.. " type(self.Owner)=" .. tostring( okT and tOwner or ( "ERR:" .. tostring( tOwner ) ) )
+			.. " val=" .. tostring( okV and vOwner or "ERR" )
+			.. " GetOwner=" .. tostring( okG and gOwner or "ERR" )
+			.. " misc=" .. tostring( okI and tIdx or "ERR" ) )
+	end
+
+	if self._gmod_clip_seeded ~= true then
+		self._gmod_clip_seeded = true
+		if ( self.Primary and self.Primary.ClipSize and self.Primary.ClipSize ~= -1 ) then
+			self.m_iClip1 = self.Primary.DefaultClip or self.Primary.ClipSize
+		end
+		if ( self.Secondary and self.Secondary.ClipSize and self.Secondary.ClipSize ~= -1 ) then
+			self.m_iClip2 = self.Secondary.DefaultClip or self.Secondary.ClipSize
+		end
+	end
+
+	local now = gpGlobals.curtime()
+	local buttons = pPlayer.m_nButtons
+	local pressed = pPlayer.m_afButtonPressed
+	local reload  = bit.band( buttons, 8192 ) ~= 0 -- IN_RELOAD
+
+	-- Secondary (right click) has priority.
+	if bit.band( buttons, 2048 ) ~= 0 and self.m_flNextSecondaryAttack <= now then
+		if self.Secondary and self.Secondary.Automatic then
+			self:SecondaryAttack()
+		elseif bit.band( pressed, 2048 ) ~= 0 then
+			self:SecondaryAttack()
+		end
+	end
+
+	if bit.band( buttons, 1 ) ~= 0 and self.m_flNextPrimaryAttack <= now then
+		if self.Primary and self.Primary.Automatic then
+			self:PrimaryAttack()
+		elseif bit.band( pressed, 1 ) ~= 0 then
+			self:PrimaryAttack()
+		end
+	end
+
+	if reload and self:UsesClipsForAmmo1() and not self.m_bInReload then
+		self:Reload()
+	end
+
+	return false
+end
+
+--[[---------------------------------------------------------
+	Name: SWEP:ItemBusyFrame
+-----------------------------------------------------------]]
+function SWEP:ItemBusyFrame()
+end

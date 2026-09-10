@@ -31,7 +31,7 @@ function GM:FlWeaponTryRespawn( pWeapon )
   return 0
 end
 
-function GM:PlayerPlayStepSound( pPlayer, vecOrigin, psurface, fvol, force )
+local function PlayerPlayStepSound_Impl( pPlayer, vecOrigin, psurface, fvol, force )
 	if ( gpGlobals.maxClients() > 1 and cvar.FindVar( "sv_footsteps" ):GetFloat() == 0 ) then
 		return false;
 	end
@@ -98,6 +98,23 @@ end
 
 	_R.CBaseEntity.EmitSound( filter, pPlayer:entindex(), ep );
 	return false
+end
+
+-- HL2SB: the hook above used to fail once per footstep with a bare
+-- "attempt to index a number value" (no file/line), which spammed the log
+-- hundreds of times per session.  Run it through xpcall + debug.traceback so
+-- the failure reports its exact line instead of an anonymous message.
+function GM:PlayerPlayStepSound( pPlayer, vecOrigin, psurface, fvol, force )
+	local ok, err = xpcall( function()
+		return PlayerPlayStepSound_Impl( pPlayer, vecOrigin, psurface, fvol, force )
+	end, debug.traceback )
+
+	if ( not ok ) then
+		dbg.Warning( "[step-sound] " .. tostring( err ) .. "\n" )
+		return false
+	end
+
+	return err
 end
 
 function GM:WeaponShouldRespawn( pItem )

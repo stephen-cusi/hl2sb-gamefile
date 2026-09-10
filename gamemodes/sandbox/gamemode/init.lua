@@ -21,9 +21,6 @@ function GM:AddLevelDesignerPlacedObject( pEntity )
   return false
 end
 
--- GMod sandbox preset loadout (gamemodes/sandbox/gamemode/player_class/player_sandbox.lua).
--- gmod_tool -> weapon_toolgun (HL2SB C++ equivalent).
--- gmod_camera omitted: only a half-copied shared.lua exists, no init.lua, no model.
 function GM:GiveDefaultItems( pPlayer )
   pPlayer:RemoveAllAmmo()
 
@@ -51,7 +48,6 @@ function GM:GiveDefaultItems( pPlayer )
 
   return false
 end
-
 function GM:ItemShouldRespawn( pItem )
   pItem:AddSpawnFlags( 2^30 )
   -- return 6

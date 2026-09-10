@@ -10,9 +10,10 @@ function GM:AddLevelDesignerPlacedObject( pEntity )
   return false
 end
 
-function GM:GiveDefaultItems( pHL2MPPlayer )
-  return false
-end
+-- 战役的出生装备统一由 player_class/player_campaign.lua 决定（故意不发武器）。
+local tBaseGamemode = gamemode.get( "base" )
+
+
 
 function GM:ItemShouldRespawn( pItem )
   pItem:AddSpawnFlags( 2^30 )
@@ -111,7 +112,10 @@ end
 
 local g_bFirstPlayerSpawned = false
 
-function GM:PlayerSpawn( pPlayer )
+function GM:PlayerSpawn( pPlayer, transition )
+  -- 战役出生流程：先定玩家类，再处理地图拾取物，最后交给 base 发装备/设模型
+  player_manager.SetPlayerClass( pPlayer, "player_campaign" )
+
   for _, classname in ipairs( self.m_tPickups ) do
     local pEntity = CreateEntityByName( classname )
     pEntity:SetAbsOrigin( pPlayer:GetAbsOrigin() )
@@ -121,16 +125,18 @@ function GM:PlayerSpawn( pPlayer )
 
   if ( not g_bFirstPlayerSpawned ) then
     g_bFirstPlayerSpawned = true
-    return false
+  else
+    -- 第一次出生不放故事板模板，之后的每次重生都要放
+    local pEntity = gEntList.FindEntityByName( NULL, "global_newgame_template*" )
+    while ( pEntity ~= NULL ) do
+      pEntity:AcceptInput( "ForceSpawn", pPlayer, pPlayer, 0 )
+      pEntity = gEntList.FindEntityByName( pEntity, "global_newgame_template*" )
+    end
   end
 
-  local pEntity = gEntList.FindEntityByName( NULL, "global_newgame_template*" )
-  local tEntities = {}
-  while ( pEntity ~= NULL ) do
-    pEntity:AcceptInput( "ForceSpawn", pPlayer, pPlayer, 0 )
-    pEntity = gEntList.FindEntityByName( pEntity, "global_newgame_template*" )
+  if ( tBaseGamemode ~= nil and tBaseGamemode.PlayerSpawn ~= nil ) then
+    return tBaseGamemode.PlayerSpawn( self, pPlayer, transition )
   end
-  return false
 end
 
 function GM:PlayerPickupObject( pHL2MPPlayer, pObject, bLimitMassAndSize )

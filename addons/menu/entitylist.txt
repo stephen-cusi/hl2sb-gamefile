@@ -633,6 +633,7 @@
 "entity"          "weapon_physgun"
 "entity"          "weapon_physlauncher"
 "entity"          "weapon_pistol"
+"entity"          "weapon_pist_weagon"
 "entity"          "weapon_rpg"
 "entity"          "weapon_shotgun"
 "entity"          "weapon_slam"

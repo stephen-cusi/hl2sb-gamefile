@@ -6,7 +6,14 @@
 
 _BASE_WEAPON = "weapon_hl2mpbase_scriptedweapon"
 
+-- module() below swaps this file's environment, which hides every global --
+-- including the ones defined in the lines above and the standard library
+-- (type/tostring).  Snapshot what the module body needs while globals are
+-- still visible.
+local BASE_WEAPON = _BASE_WEAPON
 local table = table
+local type = type
+local tostring = tostring
 local Warning = dbg.Warning
 
 module( "weapon" )
@@ -24,10 +31,24 @@ function get( strClassname )
     return nil
   end
   tWeapon = table.copy( tWeapon )
-  if ( tWeapon.__base ~= strClassname ) then
-    local tBaseWeapon = get( tWeapon.__base )
+  -- HL2SB GMod SWEP compat: GMod SWEPs declare SWEP.Base. Honor that field for
+  -- inheritance (falls back to the engine-forced __base when Base is missing or
+  -- self-referential). This lets a GMod SWEP chain through the Lua weapon_base.
+  local sBase = tWeapon.Base
+  if ( type( sBase ) ~= "string" or sBase == "" or sBase == strClassname ) then
+    sBase = tWeapon.__base
+  end
+  if ( sBase ~= strClassname ) then
+    local tBaseWeapon = get( sBase )
     if ( not tBaseWeapon ) then
-      Warning( "WARNING: Attempted to initialize weapon \"" .. strClassname .. "\" with non-existing base class!\n" )
+      -- The engine base weapon (weapon_hl2mpbase_scriptedweapon) is loaded
+      -- alphabetically after weapon_base, and a Lua weapon whose only base is
+      -- the engine's own scripted base legitimately has no Lua table to inherit
+      -- from (the engine fills those fields itself).  Warning there is noise on
+      -- every map load, so only warn about a genuinely broken Base chain.
+      if ( sBase ~= BASE_WEAPON ) then
+        Warning( "WARNING: Attempted to initialize weapon \"" .. strClassname .. "\" with non-existing base class \"" .. tostring( sBase ) .. "\"!\n" )
+      end
     else
       return table.inherit( tWeapon, tBaseWeapon )
     end

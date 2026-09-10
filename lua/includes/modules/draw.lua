@@ -67,7 +67,7 @@ local function GetColorChannels( c, fallbackAlpha )
 
   -- HL2SB Color (its __type is "color"); also handle a plain userdata just in case.
   if ( ct == "userdata" or ct == "color" ) then
-    r = c:r(); g = c:g(); b = c:b(); a = c:a()
+    r = c.r; g = c.g; b = c.b; a = c.a
   elseif ( ct == "table" and type(c.r) == "number" ) then
     r = c.r; g = c.g; b = c.b; a = c.a
   elseif ( ct == "table" ) then
