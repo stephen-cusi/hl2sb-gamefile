@@ -80,6 +80,20 @@ if ( CLIENT and surface and vgui ) then
 
 	include( "vgui_base.lua" )
 
+	-- HL2SB: GMod's default Derma skin.  Nothing loaded it, so derma.DefaultSkin
+	-- stayed the empty table derma.lua starts with -- and SkinHook() silently
+	-- returns when the skin has no hook for the type:
+	--
+	--     local func = Skin[ strType .. strName ]
+	--     if ( !func ) then return end
+	--
+	-- With no SKIN:PaintPanel every Derma panel (including the undo notice)
+	-- painted NOTHING at all -- no background, no animation -- while the rest of
+	-- the chain reported success.  skins/default.lua ends with
+	-- derma.DefineSkin( "Default", ... ), and it needs derma_gwen.lua's GWEN
+	-- table, which derma/init.lua already includes.
+	include( "skins/default.lua" )
+
 	-- HL2SB: GMod's notification system (AddLegacy / NoticePanel).  GMod keeps
 	-- this file in lua/includes/modules/notification.lua and pulls it in from
 	-- its own init.lua; here it lives one directory up and is included by hand,
