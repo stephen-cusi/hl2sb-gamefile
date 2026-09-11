@@ -394,8 +394,30 @@ function Finish( NiceText )
 
 	-- Do not add undos that have no owner or anything to undo
 	if ( !IsValid( Current_Undo.Owner ) or ( table.IsEmpty( Current_Undo.Entities ) && table.IsEmpty( Current_Undo.Functions ) ) or !Can_CreateUndo( Current_Undo ) ) then
+
+		-- HL2SB: this branch is why "undo" reported "no undo entry recorded"
+		-- while the C++ recorder ran cleanly and reported no error -- it returns
+		-- false and the caller (HL2SB_CallUndoFunc) asks for 0 results, so the
+		-- rejection was completely invisible.  Print which condition fired.
+		if ( GetConVarNumber( "hl2sb_hud_debug" ) ~= 0 ) then
+			local nEnts = 0
+			for _ in pairs( Current_Undo.Entities or {} ) do nEnts = nEnts + 1 end
+			local nFuncs = 0
+			for _ in pairs( Current_Undo.Functions or {} ) do nFuncs = nFuncs + 1 end
+
+			print( "[HL2SB HUD] undo.Finish REJECTED: IsValid(Owner)=" .. tostring( IsValid( Current_Undo.Owner ) )
+				.. " owner=" .. tostring( Current_Undo.Owner )
+				.. " entities=" .. tostring( nEnts )
+				.. " functions=" .. tostring( nFuncs )
+				.. " CanCreateUndo=" .. tostring( Can_CreateUndo( Current_Undo ) ) .. "\n" )
+		end
+
 		Current_Undo = nil
 		return false
+	end
+
+	if ( GetConVarNumber( "hl2sb_hud_debug" ) ~= 0 ) then
+		print( "[HL2SB HUD] undo.Finish accepted: " .. tostring( NiceText or Current_Undo.Name ) .. "\n" )
 	end
 
 	local index = Current_Undo.Owner:UniqueID()
