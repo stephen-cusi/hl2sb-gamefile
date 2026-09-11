@@ -180,6 +180,45 @@ if ( CLIENT and surface and vgui ) then
 
 				Msg( "[HL2SB]   Label:SetFont wrapped for name strings\n" )
 			end
+
+			-- HL2SB: SetFGColorEx / SetBGColorEx and the capital-G getters.
+			--
+			-- GMod's lua/includes/extensions/client/panel.lua:17 overrides
+			-- SetFGColor to accept a Color table OR r, g, b, a, and forwards BOTH
+			-- forms to SetFGColorEx -- which this engine never bound.  Its own
+			-- setter is the lowercase-g SetFgColor that takes a Color:
+			--
+			--     Hook 'hl2sb_notification' (OnUndo) Failed:
+			--       panel.lua:24: attempt to call a nil value (method 'SetFGColorEx')
+			--
+			-- So build the Color here and call the engine setter.  The capital-G
+			-- getters are aliased too (engine: GetFgColor / GetBgColor).
+			-- NOTE: SetFGColor / SetBGColor are deliberately NOT aliased -- GMod's
+			-- panel.lua already owns those names and routes them through the Ex
+			-- forms below.
+			if ( PanelMeta.SetFGColorEx == nil and PanelMeta.SetFgColor ~= nil ) then
+				local EngineSetFgColor = PanelMeta.SetFgColor
+				PanelMeta.SetFGColorEx = function( self, r, g, b, a )
+					return EngineSetFgColor( self, Color( r or 255, g or 255, b or 255, a or 255 ) )
+				end
+				Msg( "[HL2SB]   SetFGColorEx wrapped\n" )
+			end
+
+			if ( PanelMeta.SetBGColorEx == nil and PanelMeta.SetBgColor ~= nil ) then
+				local EngineSetBgColor = PanelMeta.SetBgColor
+				PanelMeta.SetBGColorEx = function( self, r, g, b, a )
+					return EngineSetBgColor( self, Color( r or 255, g or 255, b or 255, a or 255 ) )
+				end
+				Msg( "[HL2SB]   SetBGColorEx wrapped\n" )
+			end
+
+			if ( PanelMeta.GetFGColor == nil and PanelMeta.GetFgColor ~= nil ) then
+				PanelMeta.GetFGColor = PanelMeta.GetFgColor
+			end
+
+			if ( PanelMeta.GetBGColor == nil and PanelMeta.GetBgColor ~= nil ) then
+				PanelMeta.GetBGColor = PanelMeta.GetBgColor
+			end
 		end
 	end
 
