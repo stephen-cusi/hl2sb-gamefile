@@ -1,0 +1,83 @@
+
+local error = error
+
+module( "matproxy", package.seeall )
+
+ProxyList = {}
+ActiveList = {}
+
+--
+-- Called by engine, returns true if we're overriding a proxy
+--
+function ShouldOverrideProxy( name )
+
+	local t = ProxyList[ name ]
+	if ( t == nil ) then return false end
+
+	return true, t.bind == nil
+
+end
+
+--
+-- Called to add a new proxy (see lua/matproxy/ for examples)
+--
+function Add( tbl )
+
+	if ( !tbl.name ) then error( "bad argument #1 to 'Add' (missing 'name' key)" ) return end
+	--if ( !tbl.bind ) then error( "bad argument #1 to 'Add' (missing 'bind' key)" ) return end
+
+	local bReloading = ProxyList[ tbl.name ] != nil
+
+	ProxyList[ tbl.name ] = tbl
+
+	--
+	-- If we're reloading then reload all the active entries that use this proxy
+	--
+	if ( bReloading ) then
+
+		for k, v in pairs( ActiveList ) do
+
+			if ( tbl.name != v.name ) then continue end
+
+			Msg( "Reloading: ", v.Material, "\n" )
+			Init( tbl.name, k, v.Material, v.Values )
+
+		end
+
+	end
+
+end
+
+--
+-- Called by the engine from OnBind
+--
+function Call( name, mat, ent )
+
+	local proxy = ActiveList[ name ]
+	if ( !proxy ) then return end
+	if ( !proxy.bind ) then return end
+
+	proxy:bind( proxy.Material, ent )
+
+end
+
+--
+-- Called by the engine from Init
+--
+function Init( name, uname, mat, values )
+
+	local proxy = ProxyList[ name ]
+	if ( !proxy ) then return end
+
+	ActiveList[ uname ] = table.Copy( proxy )
+	local active_proxy = ActiveList[ uname ]
+
+	-- Store these incase we reload
+	active_proxy.Values = values
+	active_proxy.Material = mat
+
+	if ( !active_proxy.init ) then return end
+
+	active_proxy:init( mat, values )
+
+end
