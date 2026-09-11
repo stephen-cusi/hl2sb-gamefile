@@ -100,3 +100,37 @@ if ( _G.GM ~= nil and GM.AddNotify == nil ) then
 end
 
 print( "[HL2SB] hl2sb_notification.lua loaded (GMod notification system)" )
+
+-- ===========================================================================
+-- HL2SB: drive the framework's "Think" hook on the CLIENT.
+--
+-- GMod fires "Think" every frame from its engine.  In this fork the ONLY
+-- BEGIN_LUA_CALL_HOOK( "Think" ) in the whole tree is
+--
+--     game/shared/hl2mp/hl2mp_gamerules.cpp:467   -> CHL2MPRules::Think, SERVER side
+--
+-- so the client never fires it.  That is precisely why the undo notice played
+-- its sound and never appeared:
+--
+--     notification.lua parks every new notice OFF-SCREEN
+--         Panel.fx = ScrW() + NOTIF_START_X
+--         Panel:SetPos( Panel.fx, Panel.fy )
+--     and NotificationThink -- registered with
+--         hook.Add( "Think", "NotificationThink", ... )
+--     -- is what springs it into view, advances the fade, and finally removes
+--     it (Panel:KillSelf()).
+--
+-- With no client Think every notice stays at x = ScrW() + 200 forever: visible
+-- to nothing, audible in full.  HudViewportPaint already runs once per frame on
+-- the client (it is what all three GMod-style HUDs draw from), so it carries
+-- Think here.
+--
+-- TODO(engine): fire "Think" from the client frame loop
+-- (ClientModeShared::Update / CHLClient::FrameStageNotify) and delete this
+-- bridge -- a framework hook belongs in the frame loop, not on a HUD paint.
+-- ===========================================================================
+hook.add( "HudViewportPaint", "hl2sb_think_bridge", function()
+	hook.Run( "Think" )
+end )
+
+print( "[HL2SB] Think hook bridge installed (client frame -> hook.Run Think)" )
