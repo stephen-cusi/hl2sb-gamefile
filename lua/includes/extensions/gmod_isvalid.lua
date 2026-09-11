@@ -112,7 +112,7 @@ for _, entry in ipairs( DOCK_ENUM ) do
 	if ( _G[ name ] == nil ) then
 		_G[ name ] = value
 	elseif ( _G[ name ] ~= value ) then
-		Msg( "[HL2SB] WARNING: global '" .. name .. "' is already " .. tostring( _G[ name ] )
+		print( "[HL2SB] WARNING: global '" .. name .. "' is already " .. tostring( _G[ name ] )
 			.. ", but GMod's DOCK enum needs it to be " .. tostring( value )
 			.. " -- docking may misbehave\n" )
 	end

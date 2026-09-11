@@ -172,6 +172,32 @@ if ( Material == nil ) then
 		function mat:GetName() return self.__path end
 		function mat:IsError() return false end
 
+		-- HL2SB: pixel sampling, which the Derma skin needs AT LOAD TIME.
+		--
+		-- GWEN.CreateTextureBorder samples the atlas through this while it builds
+		-- its nine-slice borders, i.e. while lua/skins/default.lua is loading:
+		--
+		--     lua/derma/derma_gwen.lua:125:  return mat:GetColor( x, y )
+		--
+		-- This proxy only wraps a texture id, so it genuinely cannot read a pixel
+		-- (that needs IMaterial::GetLowResColorSample).  Returning white is what
+		-- lets the skin LOAD, and that is the whole point: without it
+		-- DefineSkin( "Default", ... ) at the end of the file never ran,
+		-- derma.DefaultSkin stayed empty, derma.SkinHook returned early for every
+		-- type ("if ( !func ) then return end") and NO Derma panel painted
+		-- anything -- the undo notice played its sound and drew nothing.
+		--
+		-- Only a few border pieces take their tint from here; a DPanel's own
+		-- background passes its colour straight to the draw call, so the notice
+		-- still looks right.
+		--
+		-- TODO(engine): bind a real Material( path ) returning an IMaterial --
+		-- public/lua/materialsystem/limaterial.cpp already has IMaterial:GetColor
+		-- -- and delete this whole proxy along with this stub.
+		function mat:GetColor( x, y )
+			return Color( 255, 255, 255, 255 )
+		end
+
 		function mat:GetTextureID()
 			if ( not self.__texid ) then
 				self.__texid = surface.GetTextureID( self.__path )
