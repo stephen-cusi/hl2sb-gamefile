@@ -251,10 +251,24 @@ end
 --     notification.lua:83: attempt to call a nil value (global 'SysTime')
 --
 -- RealTime() and FrameTime() (defined above, on gpGlobals) are the same
--- quantities here.  Aliased rather than wrapped so a real high-precision
--- SysTime can replace it later without touching notification.lua.
+-- quantities here.
+--
+-- HL2SB: the SysTime alias that used to live here is GONE -- the ENGINE provides
+-- SysTime() now (luaopen_UTIL_shared, Plat_FloatTime, both realms).  Do not put
+-- it back:
+--
+--     SysTime = SysTime or RealTime        -- RealTime is CLIENT only
+--
+-- evaluated to nil on the SERVER, so the server had no clock at all, which
+-- silently disabled the undo de-duplication in lua/includes/modules/undo.lua and
+-- let the twice-dispatched "undo" run twice -- deleting entities the first pass
+-- had already removed and crashing in server.dll (execute access violation).
+--
+-- (lua/includes/modules/gmod_compatibility/sh_init.lua:260 also assigns
+-- "SysTime = Engines.GetSystemTime"; that file is not loaded -- we only include
+-- its sh_enumerations.lua -- but do not start including it, or it would shadow
+-- the engine global.)
 -- ===========================================================================
-SysTime = SysTime or RealTime
 RealFrameTime = RealFrameTime or FrameTime
 
 -- ===========================================================================
