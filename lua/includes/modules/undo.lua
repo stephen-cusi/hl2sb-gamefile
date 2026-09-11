@@ -668,18 +668,35 @@ end
 -- it is also why every undo produced two notices.  Only one registration of
 -- "undo" exists (concommand.Add at the bottom of this file), so the duplicate is
 -- in the dispatch, not the registration.  Ignore a repeat within 0.25s.
-local flLastUndoCommandTime = 0
+--
+-- FAIL OPEN: SysTime and RealTime are both nil on the SERVER, so the first
+-- version computed flNow == 0 and swallowed the very first press too ("undo does
+-- nothing at all").  With no clock available, nothing is ever suppressed.
+local flLastUndoCommandTime = -1
+
+local function HL2SB_UndoNow()
+	local flTime = nil
+
+	if ( SysTime ~= nil ) then flTime = SysTime() end
+	if ( flTime == nil and CurTime ~= nil ) then flTime = CurTime() end
+	if ( flTime == nil and RealTime ~= nil ) then flTime = RealTime() end
+	if ( flTime == nil and gpGlobals ~= nil and gpGlobals.curtime ~= nil ) then flTime = gpGlobals.curtime() end
+
+	return flTime
+end
 
 local function CC_UndoLast( pl, command, args )
 
-	local flNow = ( SysTime ~= nil and SysTime() ) or 0
+	local flNow = HL2SB_UndoNow()
 
-	if ( flNow - flLastUndoCommandTime < 0.25 ) then
+	if ( flNow ~= nil and flLastUndoCommandTime >= 0 and ( flNow - flLastUndoCommandTime ) < 0.25 ) then
 		UndoDebug( "undo: duplicate command suppressed (it is dispatched twice per press)" )
 		return
 	end
 
-	flLastUndoCommandTime = flNow
+	if ( flNow ~= nil ) then
+		flLastUndoCommandTime = flNow
+	end
 
 	local index = pl:UniqueID()
 	PlayerUndo[ index ] = PlayerUndo[ index ] or {}
