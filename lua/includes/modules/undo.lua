@@ -485,6 +485,31 @@ hook.Add( "EntityRemoved", "Undo_RemoveInvalidUndos", function( ent )
 end )
 
 --[[---------------------------------------------------------
+	HL2SB: is this entity currently carried by a player?
+
+	The engine records an undo action for everything `ent_create` spawns
+	(HL2SB_UndoRecord, game/server/hl2sb_undo.cpp), weapons from the admin menu
+	included.  That record goes stale the moment somebody picks the weapon up:
+	running the undo would delete it straight out of that player's hands.
+	Anything a player carries is therefore left alone -- weapons sitting in the
+	inventory too, because CBaseCombatWeapon::Equip() sets the owner as well.
+-----------------------------------------------------------]]
+local function IsCarriedByPlayer( ent )
+
+	local owner = nil
+
+	if ( ent.GetOwnerEntity ) then owner = ent:GetOwnerEntity() end
+	if ( !IsValid( owner ) and ent.GetOwner ) then owner = ent:GetOwner() end
+
+	if ( IsValid( owner ) and owner.GetClass and owner:GetClass() == "player" ) then
+		return true
+	end
+
+	return false
+
+end
+
+--[[---------------------------------------------------------
 	Undos an undo
 -----------------------------------------------------------]]
 function Do_Undo( undo )
@@ -512,8 +537,16 @@ function Do_Undo( undo )
 		for index, entity in pairs( undo.Entities ) do
 
 			if ( IsValid( entity ) ) then
-				entity:Remove()
-				count = count + 1
+
+				-- HL2SB: leave anything a player is carrying alone.  An
+				-- admin-spawned weapon gets an undo record when it is created,
+				-- but once a player picks it up that record is stale and
+				-- undoing it would rip the weapon out of their hands.
+				if ( !IsCarriedByPlayer( entity ) ) then
+					entity:Remove()
+					count = count + 1
+				end
+
 			end
 
 		end

@@ -12,6 +12,22 @@ local pcall = pcall
 -- 5.1 alias as well, but keep this defensive so hook.lua works on either runtime.
 local unpack = unpack or table.unpack
 
+-- HL2SB: re-execution guard -- read this before touching anything below.
+--
+-- luasrc_dofolder() loads each file in lua/includes/modules as a PLAIN FILE, so
+-- package.loaded is never populated for them.  A later require("hook") from
+-- any script therefore finds no cached module and EXECUTES THIS FILE AGAIN.
+--
+-- Without the guard the second run reaches `local tHooks = {}` and rebinds
+-- add/Run/call to that brand-new empty table, orphaning every hook registered
+-- by the first run (timer.lua's client tick, timer.lua's Think, ...).
+--
+-- `hook.add` existing is the marker: only the body below installs it, so this
+-- cannot fire on the first run.
+if ( _G.hook ~= nil and _G.hook.add ~= nil ) then
+	return _G.hook
+end
+
 module( "hook" )
 
 local tHooks = {}
@@ -35,7 +51,10 @@ end
 --          tGamemode - Table of the current gamemode
 -- Output :
 -------------------------------------------------------------------------------
-function call( strEventName, tGamemode, ... )
+-- HL2SB: the body below used to BE `call`.  It is a separate local function
+-- only so that call() can wrap it in the same-event re-entrancy guard -- read
+-- the comment on tCallChain before changing anything here.
+local function CallBody( strEventName, tGamemode, ... )
   local tHooks = tHooks[ strEventName ]
   if ( tHooks ~= nil ) then
     for k, v in pairs( tHooks ) do
@@ -68,6 +87,59 @@ function call( strEventName, tGamemode, ... )
       return unpack( tReturns, 2 )
     end
   end
+end
+
+-------------------------------------------------------------------------------
+-- HL2SB: re-entrancy guard -- read this before touching call() or CallBody().
+--
+-- A hook or a gamemode method may call hook.call() / hook.Run() for its OWN
+-- event, and then the gamemode fallback above calls straight back into it:
+--
+--     hook.call(E) -> _GAMEMODE[E] -> hook.call(E) -> _GAMEMODE[E] -> ...
+--
+-- That recurses until the Lua stack blows up.  Measured on 2026-09-11: 11060
+-- "hook.lua:78: stack overflow" lines in one session, which floods the log and
+-- freezes the game solid (the main thread never gets back to pumping window
+-- messages, so Windows reports "not responding").  It is easy to trigger by
+-- accident because every engine -> Lua event goes through here, and this fork's
+-- table.inherit() is a shallow COPY (lua/includes/extensions/table.lua), so a
+-- gamemode table can end up holding a function that dispatches the same event
+-- straight back.
+--
+-- Re-entering for the same event can never produce anything the first pass did
+-- not already ask for: the registered hooks were consulted before the gamemode
+-- fallback, and the fallback is the last thing CallBody does.  So refuse it.
+-- Refusing once per event (instead of recursing) also keeps the culprit's name
+-- in the log exactly once -- that is the line to search for.
+-------------------------------------------------------------------------------
+local tCallChain = {}
+local tReportedReentry = {}
+
+function call( strEventName, tGamemode, ... )
+  if ( tCallChain[ strEventName ] ) then
+    if ( not tReportedReentry[ strEventName ] ) then
+      tReportedReentry[ strEventName ] = true
+      Warning( "HL2SB: '" .. tostring( strEventName ) .. "' re-entered hook.call for the SAME event -- " ..
+               "recursion refused.  Something that handles this event (a registered hook or the gamemode " ..
+               "method) calls hook.call/hook.Run for it again; that used to blow the Lua stack and freeze " ..
+               "the game.  Reported once per event.\n" )
+    end
+    return nil
+  end
+
+  -- pcall, not a bare call: if CallBody ever threw, the flag would stay set and
+  -- that event would be refused for the rest of the level.  This also names the
+  -- event in the error report, which the raw error path could not.
+  tCallChain[ strEventName ] = true
+  local tRet = { pcall( CallBody, strEventName, tGamemode, ... ) }
+  tCallChain[ strEventName ] = nil
+
+  if ( tRet[ 1 ] == false ) then
+    Warning( "ERROR: HOOK: '" .. tostring( strEventName ) .. "' Failed: " .. tostring( tRet[ 2 ] ) .. "\n" )
+    return nil
+  end
+
+  return unpack( tRet, 2 )
 end
 
 -------------------------------------------------------------------------------
@@ -135,10 +207,19 @@ end
 --   "attempt to call a nil value (field 'Add')"。
 --   Call 与 Run 的区别：GMod 的 Call 第一个参数是 gamemode 表，这里只需要
 --   把它透传给 call()（同 add 的回调签名）。
+--
+--   ⚠️ 这里**绝不能**写成 `Add = Add or add`。本文件可能被 require 二次执行
+--   （见文件顶部的守卫），那时 `Add` 字段已存在 —— 于是它会保留**第一次执行**
+--   的那个函数，而那个函数闭包指向的 tHooks 早已被丢弃。结果就是：
+--   hook.Add(...) 把钩子写进死表，hook.Run 在活表里查 —— 静默什么都不发生。
+--   2026-09-11 的双表错位就是这么来的：hook.add 生效、hook.Add 全部失效，
+--   拾取 HUD 怎么都不显示（`hook.GetTable("HUDDrawPickupHistory")` 为 nil，
+--   而同一个文件里 hook.add 注册的 HudViewportPaint 在表里）。
+--   remove/GetTable 同理，必须无条件指向本库自己的函数。
 -- ===========================================================================
-Add       = Add       or add
-Remove    = Remove    or remove
-GetTable  = GetTable  or gethooks
+Add       = add
+Remove    = remove
+GetTable  = gethooks
 
 function Call( strEventName, tGamemode, ... )
   return call( strEventName, tGamemode, ... )

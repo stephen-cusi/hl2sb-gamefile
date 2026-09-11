@@ -58,6 +58,49 @@ function GM:GetGameDescription()
 	return self.Name
 end
 
+-------------------------------------------------------------------------------
+-- GetMapRemainingTime —— 引擎每帧都会问，答错会让服务器无限重载地图
+--
+-- ⚠️ 这个方法是 2026-09-11「地图每几秒自己重开一次」的根因，别删。
+--
+-- 引擎侧 CHL2MPRules::Think() 每帧做：
+--     if ( GetMapRemainingTime() < 0 ) { GoToIntermission(); return; }
+-- 而 CHL2MPRules::GetMapRemainingTime() 在 LUA_SDK 下会先问 Lua，**拿不到数字就走兜底**：
+--     float timeleft = (m_flGameStartTime + mp_timelimit.GetInt() * 60.0f) - gpGlobals->curtime;
+-- mp_timelimit 默认就是 0，于是兜底算出的是 m_flGameStartTime - curtime —— 一个很大的负数，
+-- 引擎据此认为「时间到了」→ GoToIntermission() → g_fGameOver = true → mp_chattime 秒后
+-- ChangeLevel()；又因为地图循环文件坏掉（CRLF 导致条目全被判非法），切换目标是同一张图，
+-- 于是：进图 → 几秒 → 重开 → 再进图 → …… 无限循环。
+--
+-- 这个方法原本**只**定义在 gamemodes/deathmatch/gamemode/shared.lua 里，而本 fork 的 gamemode
+-- 都没有声明继承（没有 DeriveGamemode / __base），所以跑 sandbox / campaign 时引擎问不到答案，
+-- 必然落到那个负数兜底上。放在 base 里，所有 gamemode 都能继承到。
+--
+-- 返回 0 = 没有时间限制（不要进入 intermission）；返回 nil = 让引擎用 mp_timelimit 自己算。
+-------------------------------------------------------------------------------
+function GM:GetMapRemainingTime()
+	-- 读不到 mp_timelimit 时**保守地当作无限制**，宁可永不循环地图，
+	-- 也不能让引擎落到上面那个负数兜底上。
+	local limit = 0
+
+	if ( _G.cvar ~= nil and cvar.FindVar ~= nil ) then
+		local ok, var = pcall( cvar.FindVar, "mp_timelimit" )
+		if ( ok and var ~= nil and var.GetInt ~= nil ) then
+			local ok2, v = pcall( var.GetInt, var )
+			if ( ok2 and type( v ) == "number" ) then
+				limit = v
+			end
+		end
+	end
+
+	if ( limit <= 0 ) then
+		return 0
+	end
+
+	-- 有计时上限：返回 nil，交给引擎按 m_flGameStartTime 算真实剩余时间。
+	return nil
+end
+
 function GM:Saved()
 end
 

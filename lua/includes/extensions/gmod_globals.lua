@@ -26,6 +26,25 @@
 -- ===========================================================================
 Angle = Angle or QAngle
 
+-- ===========================================================================
+-- Sound( path )  (GMod global, both realms)
+--
+-- GMod's Sound() returns a sound object that EmitSound/PlaySound accept.  HL2SB
+-- has no such global and its EmitSound takes the PATH STRING directly, so a
+-- stock GMod SWEP doing `self:EmitSound( Sound( self.Primary.Sound ) )` died on
+-- "attempt to call a nil value (global 'Sound')" -- a red error in the console
+-- that also skipped everything after it in that function (pist_weagon's
+-- SetNextPrimaryFire, so its fire rate was never armed).
+--
+-- Returning the path is exactly what AGENTS.md 9.6 tells hand-ported scripts to
+-- do by hand; providing the global means the pristine addon works unmodified.
+-- ===========================================================================
+if ( Sound == nil ) then
+	function Sound( path )
+		return path
+	end
+end
+
 ACT_INVALID			= -1
 ACT_VM_DRAW			= 171
 ACT_VM_HOLSTER		= 172

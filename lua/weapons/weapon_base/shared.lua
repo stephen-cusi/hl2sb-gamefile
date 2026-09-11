@@ -390,25 +390,41 @@ function SWEP:ItemPostFrame()
 	-- The throttle (m_flNextPrimaryAttack) is a networked prediction field, so
 	-- both realms stay in step. Returning boolean false (NOT nil) still keeps
 	-- the engine's C++ button loop out of the way on both sides.
+	-- HL2SB: resolve the owner once per frame, and make BOTH spellings work.
+	--
+	-- GMod SWEPs write self.Owner:GetShootPos(), but the engine only fills in
+	-- GetOwner(), and on the client self.Owner has been seen as a plain number
+	-- ("attempt to index a number value").  Publish the entity back onto the
+	-- field the scripts use.
+	--
+	-- ⚠️ Do NOT use `ToBaseEntity( ... ) == NULL` to test it: in this fork that
+	-- comparison never matches an entity, so the test was always true and the
+	-- function always bailed out on the first line.
+	--
+	-- ⚠️ And bail out with NIL, not false.  Returning false tells
+	-- CBaseCombatWeapon::ItemPostFrame to skip its own button loop *because Lua
+	-- is driving the attack* -- but with no owner this function cannot drive
+	-- anything, so NOTHING fires: the weapon deploys, never shoots, and the log
+	-- stays clean (seen in game 2026-09-11 with pist_weagon).
 	local pPlayer = self:GetOwner()
-	if ( ToBaseEntity( pPlayer ) == NULL ) then return false end
-
-	-- HL2SB FX DEBUG (temporary, once per realm): find out what self.Owner is.
-	-- The stock GMod SWEP does `self.Owner:GetShootPos()`, which fails on the
-	-- client with "attempt to index a number value" while working on the server.
-	if ( self._dbg_owner_probe ~= true ) then
-		self._dbg_owner_probe = true
-		local realm = SERVER and "sv" or "cl"
-		local okT, tOwner = pcall( function() return type( self.Owner ) end )
-		local okV, vOwner = pcall( function() return tostring( self.Owner ) end )
-		local okG, gOwner = pcall( function() return tostring( self:GetOwner() ) end )
-		local okI, tIdx   = pcall( function() return type( self.ClassName ) .. "/" .. type( self.Primary ) end )
-		print( "[swepdbg] ownerprobe realm=" .. realm
-			.. " type(self.Owner)=" .. tostring( okT and tOwner or ( "ERR:" .. tostring( tOwner ) ) )
-			.. " val=" .. tostring( okV and vOwner or "ERR" )
-			.. " GetOwner=" .. tostring( okG and gOwner or "ERR" )
-			.. " misc=" .. tostring( okI and tIdx or "ERR" ) )
+	if ( pPlayer == nil or type( pPlayer ) ~= "entity" ) then
+		pPlayer = self.Owner
 	end
+
+	if ( pPlayer == nil or type( pPlayer ) ~= "entity" ) then
+		if ( not self._no_owner_warned ) then
+			self._no_owner_warned = true
+			print( "[HL2SB] weapon_base: no valid Owner (Owner=" .. tostring( self.Owner )
+				.. ", GetOwner()=" .. tostring( self:GetOwner() )
+				.. ") -- leaving the C++ button loop in charge.\n" )
+		end
+
+		return nil
+	end
+
+	-- Whatever the script (or a previous frame) left in there, self.Owner is a
+	-- real entity from here on.
+	self.Owner = pPlayer
 
 	if self._gmod_clip_seeded ~= true then
 		self._gmod_clip_seeded = true

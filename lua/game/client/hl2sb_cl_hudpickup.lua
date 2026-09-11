@@ -61,6 +61,50 @@ if ( GM == nil ) then
 end
 _G.GAMEMODE = _G.GAMEMODE or GM
 
+-- ---------------------------------------------------------------------------
+-- HL2SB: token -> display text.
+--
+-- GMod's cl_hudpickup names things "#item_battery" / "#Pistol_ammo" and lets the
+-- engine resolve the token while drawing.  HL2SB's surface.DrawPrintText does
+-- NOT resolve tokens (it only converts ANSI to Unicode), so the literal
+-- "#item_battery" was being rendered on screen.
+--
+-- Resolve through the engine's localization table (Localizations.Find is
+-- g_pVGuiLocalize->Find, llocalization.cpp), then language.GetPhrase, then fall
+-- back to a readable form of the class name so a missing token still looks sane.
+-- ---------------------------------------------------------------------------
+local function LocalName( raw )
+	if ( type( raw ) ~= "string" ) then return tostring( raw ) end
+
+	local key = raw
+	if ( key:sub( 1, 1 ) == "#" ) then key = key:sub( 2 ) end
+
+	if ( _G.Localizations ~= nil and _G.Localizations.Find ~= nil ) then
+		-- Source's Find() accepts the token with or without the leading '#'.
+		for _, tok in ipairs( { "#" .. key, key } ) do
+			local ok, txt = pcall( _G.Localizations.Find, tok )
+			if ( ok and type( txt ) == "string" and txt ~= ""
+			     and txt ~= tok and txt ~= key ) then
+				return txt
+			end
+		end
+	end
+
+	if ( _G.language ~= nil and _G.language.GetPhrase ~= nil ) then
+		local ok, txt = pcall( _G.language.GetPhrase, key )
+		if ( ok and type( txt ) == "string" and txt ~= "" and txt ~= key ) then
+			return txt
+		end
+	end
+
+	-- Readable fallback -- HL2 class names are close enough to English:
+	--   "item_battery"        -> "Battery"
+	--   "weapon_pist_weagon"  -> "Pist weagon"
+	--   "SMG1_grenade_ammo"   -> "SMG1 grenade ammo"
+	local s = key:gsub( "^weapon_", "" ):gsub( "^item_", "" ):gsub( "_", " " )
+	return ( s:gsub( "^%l", string.upper ) )
+end
+
 -- HL2SB: font mapping (GMod name -> a font HL2SB's scheme actually has).
 local function Font( name )
 	return "Default"
@@ -94,14 +138,15 @@ GM.PickupHistoryWide = 300
 local function AddGenericPickup( self, itemname )
 	local pickup		= {}
 	pickup.time			= CurTime()
-	pickup.name			= itemname
+	pickup.name			= itemname                  -- raw, used by the ammo merge below
+	pickup.text			= LocalName( itemname )      -- what actually gets drawn
 	pickup.holdtime		= 5
 	pickup.font			= Font( "DermaDefaultBold" )
 	pickup.fadein		= 0.04
 	pickup.fadeout		= 0.3
 
 	local hfont = draw.GetFont( pickup.font )
-	local w, h = surface.GetTextSize( hfont, tostring( pickup.name ) )
+	local w, h = surface.GetTextSize( hfont, tostring( pickup.text ) )
 	pickup.height		= h
 	pickup.width		= w
 
@@ -190,8 +235,9 @@ function GM:HUDDrawPickupHistory()
 
 		if ( !istable( v ) ) then
 
-			Msg( tostring( v ) .. "\n" )
-			PrintTable( self.PickupHistory )
+			-- HL2SB: GMod's Msg() / PrintTable() do not exist here; calling them
+			-- threw and hook.Run() then unregistered this hook for good.
+			print( "[HL2SB] pickup history: dropping non-table entry " .. tostring( v ) )
 			self.PickupHistory[ k ] = nil
 			return
 
@@ -237,8 +283,13 @@ function GM:HUDDrawPickupHistory()
 			draw.RoundedBox( bordersize / 2, rx + tabW, ry, rw - tabW, rh,
 				Color( bodyC, bodyC, bodyC, alpha ) )
 
-			draw.SimpleText( v.name, v.font, v.x + v.height + 9, ry + ( rh / 2 ) + 1, Color( 0, 0, 0, alpha * 0.5 ), draw.TEXT_ALIGN_LEFT, draw.TEXT_ALIGN_CENTER )
-			draw.SimpleText( v.name, v.font, v.x + v.height + 8, ry + ( rh / 2 ), Color( 255, 255, 255, alpha ), draw.TEXT_ALIGN_LEFT, draw.TEXT_ALIGN_CENTER )
+			-- HL2SB: v.text is the localized form of v.name (see LocalName).
+			-- GMod renders "#item_battery" and lets the engine resolve it; we
+			-- resolve it up front, because surface.DrawPrintText does not.
+			local label = v.text or v.name
+
+			draw.SimpleText( label, v.font, v.x + v.height + 9, ry + ( rh / 2 ) + 1, Color( 0, 0, 0, alpha * 0.5 ), draw.TEXT_ALIGN_LEFT, draw.TEXT_ALIGN_CENTER )
+			draw.SimpleText( label, v.font, v.x + v.height + 8, ry + ( rh / 2 ), Color( 255, 255, 255, alpha ), draw.TEXT_ALIGN_LEFT, draw.TEXT_ALIGN_CENTER )
 
 			if ( v.amount ) then
 
@@ -268,8 +319,16 @@ end
 
 -- GMod's cl_init.lua runs this from GM:HUDPaint; HL2SB's equivalent per-frame
 -- client callback is HudViewportPaint.
+--
+-- HL2SB: the drawer is invoked DIRECTLY here instead of through
+-- hook.Run("HUDDrawPickupHistory").  hook.Run silently does nothing when the
+-- event has no hooks, and the pickup strip never appeared while every other
+-- part of this file (event hooks, entries, colours) demonstrably worked -- so
+-- the HUD must not depend on that second lookup.  The named hook is still
+-- registered below, so addons that fire "HUDDrawPickupHistory" reach the same
+-- drawer.
 hook.add( "HudViewportPaint", "gmod_cl_hudpickup", function()
-	hook.Run( "HUDDrawPickupHistory" )
+	GM:HUDDrawPickupHistory()
 end )
 
 -- Make GM:HUDDrawPickupHistory reachable through hook.Run as well, so addons

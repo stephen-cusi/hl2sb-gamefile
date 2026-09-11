@@ -187,10 +187,12 @@ hook.add( "HudViewportPaint", "hl2sb_undo_notify", function()
 				surface.DrawFilledRect( x, y, x + w, y + NOTIF_HEIGHT )
 
 				-- Undo icon (GMod vgui/notices/undo material).
+				-- HL2SB: surface.DrawTexturedRect now takes GMod's ( x, y, w, h );
+				-- the engine's corner form is surface.__hl2sb_cornerRect.
 				local iy = y + ( NOTIF_HEIGHT - ICON_SIZE ) / 2
 				surface.DrawSetTexture( UndoIcon() )
 				surface.DrawSetColor( 255, 200, 120, 255 )
-				surface.DrawTexturedRect( x + 8, iy, x + 8 + ICON_SIZE, iy + ICON_SIZE )
+				surface.DrawTexturedRect( x + 8, iy, ICON_SIZE, ICON_SIZE )
 
 				-- Text, white, to the right of the icon.
 				surface.DrawSetTextFont( font )
