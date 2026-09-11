@@ -262,7 +262,10 @@ end )
 -- the engine's item_pickup game event to this hook as ( userid, item, amount );
 -- sort it into the GMod methods.
 hook.add( "HUDItemPickedUp", "gmod_cl_hudpickup", function( userid, item, amount )
-	if ( userid and IsValid( LocalPlayer() ) and LocalPlayer():UserID() != userid ) then return end
+	-- HL2SB: the player method is UniqueID() (= GetUserID); GMod's Player:UserID()
+	-- does not exist here, and calling it made this hook fail on every pickup,
+	-- so the notification never drew at all.
+	if ( userid and IsValid( LocalPlayer() ) and LocalPlayer():UniqueID() != userid ) then return end
 	if ( item == nil or item == "" ) then return end
 
 	local low = string.lower( item )

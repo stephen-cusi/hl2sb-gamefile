@@ -24,8 +24,19 @@ net.Receivers = net.Receivers or {}
 
 --[[---------------------------------------------------------
     WriteBool / ReadBool
+
+    WriteBool must NOT be an alias of WriteBit: the engine binding is
+    net_WriteBit(), which does luaL_checkint() on its argument, so passing a
+    Lua boolean fails with
+        bad argument #1 to 'WriteBit' (number expected, got boolean)
+    -- which is exactly what broke undo.Do_Undo() and therefore the whole undo
+    -- notification (net.Send was never reached, so the client never got
+    -- Undo_FireUndo).  GMod's WriteBool takes a boolean, so convert here.
 -----------------------------------------------------------]]
-net.WriteBool = net.WriteBit
+function net.WriteBool( b )
+    net.WriteBit( b and 1 or 0 )
+end
+
 function net.ReadBool()
     return net.ReadBit() == 1
 end
