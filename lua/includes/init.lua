@@ -387,14 +387,25 @@ end
 -- gmod_compatibility/, so this file was never loaded.  `include` resolves
 -- relative to the calling file, and this one lives in lua/includes/.
 --
--- sh_enumerations.lua hard-errors ("Missing enumeration table for key: INPUT")
--- on the first _E table this engine does not publish, and because its loop runs
--- over pairs() that abort landed at a DIFFERENT point every level: the KEY_*
--- aliases it exists for worked only by luck.  Pre-seed the one table it demands
--- and lets it finish.  (TODO(engine): publish a real _E.INPUT.)
+-- sh_enumerations.lua hard-errors ("Missing enumeration table for key: INPUT",
+-- then SURFACE, ...) on EACH _E table this engine does not publish, and because
+-- its loops run over pairs() the abort lands at a DIFFERENT point every level --
+-- the KEY_* aliases it exists for only ended up copied by luck.  Pre-seed every
+-- table it insists on (only when falsy, so the real ones are never hidden) and
+-- the whole file runs.  (TODO(engine): publish these tables for real.)
 -- ===========================================================================
-if ( _E ~= nil and _E.INPUT == nil ) then
-	_E.INPUT = {}
+local hl2sb_EnumTablesToSeed = {
+	"ACTIVITY", "BUTTON", "INPUT", "CONTENTS", "COLLISION_GROUP", "FCVAR",
+	"EDICT_FLAG", "SOLID_FLAG", "SOLID", "SOUND_CHANNEL", "SURFACE",
+	"DAMAGE_TYPE", "HIT_GROUP", "MATERIAL_TYPE", "ENTITY_EFFECT", "ENGINE_FLAG",
+}
+
+if ( _E ~= nil ) then
+	for _, key in ipairs( hl2sb_EnumTablesToSeed ) do
+		if ( not _E[ key ] ) then
+			_E[ key ] = {}
+		end
+	end
 end
 
 include( "modules/gmod_compatibility/sh_enumerations.lua" )
