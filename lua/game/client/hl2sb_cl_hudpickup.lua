@@ -133,6 +133,30 @@ local function LocalAlive()
 	return true
 end
 
+-- ===========================================================================
+-- HL2SB debug: hl2sb_hud_debug 1
+--
+-- Both HUDs in this file and in hl2sb_undo_notify.lua were silently invisible
+-- once already, and "nothing drawn" has three very different causes: the event
+-- never arrives, it arrives and is filtered out, or it arrives and the draw is
+-- skipped.  A single cvar separates them from the log:
+--
+--     hl2sb_hud_debug 1
+--
+-- prints one line per event.  Off by default; no cost when off beyond one
+-- convar lookup per event (not per frame).
+-- ===========================================================================
+if ( HL2SB_HUDDebug == nil ) then
+	function HL2SB_HUDDebug( ... )
+		if ( GetConVarNumber( "hl2sb_hud_debug" ) == 0 ) then return end
+
+		local out = {}
+		for i = 1, select( "#", ... ) do out[ i ] = tostring( ( select( i, ... ) ) ) end
+
+		Msg( "[HL2SB HUD] " .. table.concat( out, " " ) .. "\n" )
+	end
+end
+
 -- HL2SB: hide the stock HL2MP pickup-history element (the battery / weapon
 -- circle icons) so the GMod bar is the only pickup feedback.  Returning nil for
 -- every other element lets the engine's own ShouldDraw logic run.
@@ -165,6 +189,8 @@ local function AddGenericPickup( self, itemname )
 
 	table.insert( self.PickupHistory, pickup )
 	self.PickupHistoryLast = pickup.time
+
+	HL2SB_HUDDebug( "pickup queued:", tostring( pickup.name ), "holdtime=" .. tostring( pickup.holdtime ), "entries=" .. tostring( #self.PickupHistory ) )
 
 	return pickup
 end
@@ -356,11 +382,23 @@ end )
 -- the engine's item_pickup game event to this hook as ( userid, item, amount );
 -- sort it into the GMod methods.
 hook.add( "HUDItemPickedUp", "gmod_cl_hudpickup", function( userid, item, amount )
+	HL2SB_HUDDebug( "HUDItemPickedUp:", "userid=" .. tostring( userid ), "item=" .. tostring( item ), "amount=" .. tostring( amount ) )
+
 	-- HL2SB: the player method is UniqueID() (= GetUserID); GMod's Player:UserID()
 	-- does not exist here, and calling it made this hook fail on every pickup,
 	-- so the notification never drew at all.
-	if ( userid and IsValid( LocalPlayer() ) and LocalPlayer():UniqueID() != userid ) then return end
-	if ( item == nil or item == "" ) then return end
+	-- HL2SB: UniqueID() must exist on the CLIENT for this to work -- it used to be
+	-- a server-only binding, so this line threw "attempt to call a nil value
+	-- (method 'UniqueID')" on every pickup and hook.lua then unregistered us for
+	-- the rest of the level.  Now bound in game/client/lua/lc_baseplayer.cpp.
+	if ( userid and IsValid( LocalPlayer() ) and LocalPlayer():UniqueID() != userid ) then
+		HL2SB_HUDDebug( "  -> dropped: not the local player" )
+		return
+	end
+	if ( item == nil or item == "" ) then
+		HL2SB_HUDDebug( "  -> dropped: empty item name" )
+		return
+	end
 
 	local low = string.lower( item )
 

@@ -62,4 +62,19 @@ if ( CLIENT ) then
 
 	include( "vgui_base.lua" )
 
+	-- HL2SB: GMod's notification system (AddLegacy / NoticePanel).  GMod keeps
+	-- this file in lua/includes/modules/notification.lua and pulls it in from
+	-- its own init.lua; here it lives one directory up and is included by hand,
+	-- because it MUST run after the two lines above:
+	--
+	--   * its last statement is vgui.Register( "NoticePanel", PANEL, "DPanel" ),
+	--     and DPanel only exists once vgui_base.lua has run lua/vgui/dpanel.lua;
+	--   * it calls derma.SkinHook indirectly through DPanel's Paint, which
+	--     derma/derma.lua provides.
+	--
+	-- The engine's folder pass loads lua/includes/modules/ BEFORE this file, so
+	-- leaving it in modules/ made that Register fail with
+	-- "vgui.Register: base class 'DPanel' does not exist" on every level.
+	include( "notification.lua" )
+
 end
