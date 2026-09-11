@@ -553,6 +553,7 @@ function Do_Undo( undo )
 	end
 
 	if ( count > 0 ) then
+		UndoDebug( "undo: sending Undo_FireUndo" )
 		net.Start( "Undo_FireUndo" )
 			net.WriteString( undo.Name )
 			net.WriteBool( undo.CustomUndoText != nil )
@@ -579,6 +580,17 @@ local function Can_Undo( ply, undo )
 
 end
 
+-- HL2SB debug: hl2sb_hud_debug 1 traces the whole undo chain.  Every step below
+-- returns silently when it has nothing to do, so "undo does nothing" cannot be
+-- told apart between "no entry was recorded", "Can_Undo said no", "count == 0"
+-- and "the net message never arrived" without a line at each one.
+local function UndoDebug( ... )
+	if ( GetConVarNumber( "hl2sb_hud_debug" ) == 0 ) then return end
+	local out = {}
+	for i = 1, select( "#", ... ) do out[ i ] = tostring( ( select( i, ... ) ) ) end
+	print( "[HL2SB HUD] " .. table.concat( out, " " ) .. "\n" )
+end
+
 local function CC_UndoLast( pl, command, args )
 
 	local index = pl:UniqueID()
@@ -595,6 +607,7 @@ local function CC_UndoLast( pl, command, args )
 	end
 
 	-- No undos
+	UndoDebug( "undo: no undo entry recorded for " .. tostring( pl ) )
 	if ( !last ) then return end
 
 	-- This is quite messy, but if the player rejoined the server
@@ -605,6 +618,8 @@ local function CC_UndoLast( pl, command, args )
 	if ( !Can_Undo( pl, last ) ) then return end
 
 	local count = Do_Undo( last )
+	UndoDebug( "undo: Do_Undo returned count=", count )
+		local count = Do_Undo( last )
 
 	net.Start( "Undo_Undone" )
 		net.WriteInt( lastk, 16 )
