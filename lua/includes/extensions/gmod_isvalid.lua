@@ -60,3 +60,24 @@ end
 
 AddIsValid( "Entity" )
 AddIsValid( "Player" )
+
+-- ===========================================================================
+-- Panel:Prepare()
+--
+-- lua/includes/extensions/client/panel/scriptedpanels.lua:44 calls
+-- panel:Prepare() right after merging the control table, and this engine never
+-- bound it:
+--
+--     Hook 'hl2sb_notification' (OnUndo) Failed:
+--       scriptedpanels.lua:44: attempt to call a nil value (method 'Prepare')
+--
+-- In GMod it is a no-op hook that panels may override (DListView and friends
+-- use it to build their columns), so a no-op on the metatable is faithful.
+-- ===========================================================================
+do
+	local panelMeta = FindMetaTable and FindMetaTable( "Panel" )
+	if ( panelMeta ~= nil and panelMeta.Prepare == nil ) then
+		function panelMeta:Prepare()
+		end
+	end
+end
