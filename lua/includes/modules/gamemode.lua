@@ -34,6 +34,17 @@ function call( strEventName, ... )
   return hook.call( strEventName, _G._GAMEMODE, ... )
 end
 
+-- HL2SB: GMod spells this Call (capital C).  lua/derma/derma.lua:167 calls
+-- gamemode.Call( "ForceDermaSkin" ) from GetDefaultSkin(), and GetDefaultSkin()
+-- runs on every panel skin lookup -- with only the lowercase name defined that
+-- threw
+--
+--     lua/derma/derma.lua:167: attempt to call a nil value (field 'Call')
+--
+-- once per frame, so the GMod notice panel existed but could never paint (the
+-- "no animation" symptom).  Same function, both names.
+Call = call
+
 -------------------------------------------------------------------------------
 -- Purpose: Returns a gamemode table object
 -- Input  : strName - Name of the gamemode
