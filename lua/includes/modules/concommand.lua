@@ -57,3 +57,17 @@ function Remove( pName )
     tFnCommandCallbacks[ pName ] = nil
   end
 end
+
+-------------------------------------------------------------------------------
+-- Purpose: GMod 兼容别名。
+--   GMod 的库是 concommand.Add( cmd, fn, canExecute, helpString, flags )
+--   （Remove 同名同义）。HL2SB 的 Create 是
+--   ( name, fn, helpString, flags )，回调签名一致，都是 fn( ply, cmd, args )。
+--   canExecute 被接受但忽略：HL2SB 没有 per-command 的权限钩子。
+--
+--   必须定义在这个模块里：lua/includes/extensions/ 比 modules/ 先加载，
+--   那时全局 concommand 还不存在，在 extensions 里加别名会被静默跳过。
+-------------------------------------------------------------------------------
+function Add( cmd, fn, canExecute, helpString, flags )
+  return Create( cmd, fn, helpString, flags )
+end

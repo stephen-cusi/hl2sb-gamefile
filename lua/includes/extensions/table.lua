@@ -466,3 +466,26 @@ table.foreachi = table.foreachi or function( t, fn )
     if ( r ~= nil ) then return r end
   end
 end
+
+-- ===========================================================================
+-- table.insert 返回值
+--   GMod 的引擎补丁让 table.insert 返回"插入位置"，标准 Lua 返回 nothing。
+--   GMod 自己的 undo.lua 就是靠这个：
+--       local id = table.insert( PlayerUndo[ index ], Current_Undo )
+--       net.WriteInt( id, 16 )        -- 标准 Lua 下 id 是 nil -> 报错
+--   GMod 的 lua/includes/extensions/table.lua 里没有这个补丁，是引擎侧的，
+--   所以这里用纯 Lua 复刻：
+--       table.insert( t, value )        -> 返回 #t
+--       table.insert( t, pos, value )   -> 返回 pos
+--   内部一律走保存下来的原生实现，避免递归。
+-- ===========================================================================
+local rawinsert = table.insert
+function table.insert( t, a, b )
+  if ( b == nil ) then
+    rawinsert( t, a )
+    return #t
+  end
+
+  rawinsert( t, a, b )
+  return a
+end

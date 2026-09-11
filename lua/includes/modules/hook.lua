@@ -125,3 +125,21 @@ function Run( strEventName, ... )
   end
   return nil
 end
+
+-- ===========================================================================
+-- GMod 大小写别名
+--   GMod 的 hook 库是 hook.Add / hook.Remove / hook.Call / hook.GetTable。
+--   HL2SB 原本只有小写的 add / remove / call（外加 Run）。GMod 自己的文件
+--   （lua/includes/modules/undo.lua、gamemodes/*/cl_hudpickup.lua、
+--   gmod_camera 等）全用大写形式，缺了就直接
+--   "attempt to call a nil value (field 'Add')"。
+--   Call 与 Run 的区别：GMod 的 Call 第一个参数是 gamemode 表，这里只需要
+--   把它透传给 call()（同 add 的回调签名）。
+-- ===========================================================================
+Add       = Add       or add
+Remove    = Remove    or remove
+GetTable  = GetTable  or gethooks
+
+function Call( strEventName, tGamemode, ... )
+  return call( strEventName, tGamemode, ... )
+end
