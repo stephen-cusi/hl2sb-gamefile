@@ -76,6 +76,38 @@ if ( CLIENT and surface and vgui ) then
 	-- registered vgui[] factory.
 	include( "extensions/client/panel.lua" )
 
+	-- HL2SB: GMod-vs-vgui2 Panel method spelling differences.
+	--
+	-- This has to happen HERE -- after scriptedpanels.lua has registered the
+	-- Panel metatable, and before vgui_base.lua loads DLabel.lua -- and NOT in
+	-- the extensions pass: there FindMetaTable( "Panel" ) is still nil, so the
+	-- aliases were skipped in silence and DLabel.lua:29 kept failing with
+	-- "attempt to call a nil value (method 'SetKeyboardInputEnabled')".
+	--
+	-- This fork spells these with a capital B (vgui2's own spelling, e.g.
+	-- scriptedhudviewport.cpp: SetKeyBoardInputEnabled(false)); GMod's Lua API
+	-- uses a lowercase b and GMod's own panel files use the GMod spelling.
+	do
+		local PanelMeta = FindMetaTable( "Panel" )
+		Msg( "[HL2SB] panel method aliases: FindMetaTable(Panel) = " .. tostring( PanelMeta ) .. "\n" )
+
+		if ( PanelMeta ~= nil ) then
+			local Aliases = {
+				{ "SetKeyboardInputEnabled", "SetKeyBoardInputEnabled" },
+				{ "IsKeyboardInputEnabled",  "IsKeyBoardInputEnabled"  },
+			}
+
+			for _, pair in ipairs( Aliases ) do
+				if ( PanelMeta[ pair[ 1 ] ] == nil and PanelMeta[ pair[ 2 ] ] ~= nil ) then
+					PanelMeta[ pair[ 1 ] ] = PanelMeta[ pair[ 2 ] ]
+					Msg( "[HL2SB]   aliased " .. pair[ 1 ] .. " -> " .. pair[ 2 ] .. "\n" )
+				end
+			end
+
+			Msg( "[HL2SB]   SetKeyboardInputEnabled = " .. tostring( PanelMeta.SetKeyboardInputEnabled ) .. "\n" )
+		end
+	end
+
 	include( "derma/init.lua" )
 
 	include( "vgui_base.lua" )
