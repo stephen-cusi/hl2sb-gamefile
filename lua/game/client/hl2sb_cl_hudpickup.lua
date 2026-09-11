@@ -417,7 +417,23 @@ end
 -- the HUD must not depend on that second lookup.  The named hook is still
 -- registered below, so addons that fire "HUDDrawPickupHistory" reach the same
 -- drawer.
+-- HL2SB: one-shot proof that the HudViewportPaint hook is being called at all.
+--
+-- Every GMod-style HUD in this project (pickup, undo notification, death
+-- notice) draws from HudViewportPaint, while the engine-driven hooks
+-- (HUDItemPickedUp, HudElementShouldDraw) demonstrably DO reach Lua.  "Nothing
+-- draws, but engine hooks work" is therefore either "this hook never fires"
+-- (a C++ viewport problem -- cs_scriptedhudviewport) or "it fires and the draw
+-- is skipped".  This line separates the two; with hl2sb_hud_debug 1 and no
+-- such line in the log, the hook is not firing.
+local bFirstViewportPaint = false
+
 hook.add( "HudViewportPaint", "gmod_cl_hudpickup", function()
+	if ( not bFirstViewportPaint ) then
+		bFirstViewportPaint = true
+		HL2SB_HUDDebug( "HudViewportPaint: fired (first call)" )
+	end
+
 	GM:HUDDrawPickupHistory()
 end )
 
