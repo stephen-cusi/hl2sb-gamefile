@@ -139,6 +139,47 @@ if ( CLIENT and surface and vgui ) then
 					return EngineSetFont( self, font )
 				end
 			end
+
+			-- HL2SB: Label:SetFont must take a font NAME too.
+			--
+			-- lua/vgui/dlabel.lua:39 is self:SetFont( "DermaDefault" ) and DLabel's
+			-- base is Label, whose engine binding is HFont-only
+			-- (public/lua/vgui_controls/lLabel.cpp:162 -> luaL_checkfont):
+			--
+			--     Hook 'hl2sb_notification' (OnUndo) Failed:
+			--       lua/vgui/DLabel.lua:39: bad argument #1 to 'SetFont'
+			--                              (HFont expected, got string)
+			--
+			-- Same resolution as above: name -> HFont through surface.SetFont
+			-- (per-state font registry first, then the scheme), draw.GetFont as
+			-- the fallback.
+			local LabelMeta = FindMetaTable( "Label" )
+			Msg( "[HL2SB] panel method aliases: FindMetaTable(Label) = " .. tostring( LabelMeta ) .. "\n" )
+
+			if ( LabelMeta ~= nil and LabelMeta.SetFont ~= nil ) then
+				local EngineLabelSetFont = LabelMeta.SetFont
+
+				LabelMeta.SetFont = function( self, font )
+					if ( type( font ) == "string" ) then
+						local hfont = nil
+						if ( surface ~= nil and surface.SetFont ~= nil ) then
+							hfont = surface.SetFont( font )
+						end
+						if ( hfont == nil and _G.draw ~= nil and draw.GetFont ~= nil ) then
+							hfont = draw.GetFont( font )
+						end
+						if ( hfont == nil ) then
+							Msg( "[HL2SB] Label:SetFont: cannot resolve font '" .. tostring( font ) .. "'\n" )
+							return
+						end
+						font = hfont
+					end
+
+					return EngineLabelSetFont( self, font )
+				end
+
+				Msg( "[HL2SB]   Label:SetFont wrapped for name strings\n" )
+			end
 		end
 	end
 
