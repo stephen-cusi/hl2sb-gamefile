@@ -217,7 +217,18 @@ end
 -----------------------------------------------------------]]
 function GM:HUDWeaponPickedUp( wep )
 
-	if ( not LocalAlive() ) then return end
+	if ( not LocalAlive() ) then
+		-- HL2SB: this was a silent return, and it is the last gate before an
+		-- entry is queued -- so "hook fired, queued nothing, printed nothing"
+		-- meant either LocalPlayer() is invalid or Alive() is false.  Say which.
+		local ply = LocalPlayer()
+		HL2SB_HUDDebug( "  -> dropped: LocalAlive() false",
+			"LocalPlayer()=" .. tostring( ply ),
+			"IsValid=" .. tostring( IsValid( ply ) ),
+			"Alive=" .. tostring( isfunction( ply and ply.Alive ) and ply:Alive() ),
+			"IsAlive=" .. tostring( isfunction( ply and ply.IsAlive ) and ply:IsAlive() ) )
+		return
+	end
 	if ( wep == nil ) then return end
 
 	local name = wep
@@ -236,7 +247,18 @@ end
 -----------------------------------------------------------]]
 function GM:HUDItemPickedUp( itemname )
 
-	if ( not LocalAlive() ) then return end
+	if ( not LocalAlive() ) then
+		-- HL2SB: this was a silent return, and it is the last gate before an
+		-- entry is queued -- so "hook fired, queued nothing, printed nothing"
+		-- meant either LocalPlayer() is invalid or Alive() is false.  Say which.
+		local ply = LocalPlayer()
+		HL2SB_HUDDebug( "  -> dropped: LocalAlive() false",
+			"LocalPlayer()=" .. tostring( ply ),
+			"IsValid=" .. tostring( IsValid( ply ) ),
+			"Alive=" .. tostring( isfunction( ply and ply.Alive ) and ply:Alive() ),
+			"IsAlive=" .. tostring( isfunction( ply and ply.IsAlive ) and ply:IsAlive() ) )
+		return
+	end
 
 	local pickup = AddGenericPickup( self, "#" .. itemname )
 	pickup.color = Color( 180, 255, 180, 255 )
@@ -249,7 +271,18 @@ end
 -----------------------------------------------------------]]
 function GM:HUDAmmoPickedUp( itemname, amount )
 
-	if ( not LocalAlive() ) then return end
+	if ( not LocalAlive() ) then
+		-- HL2SB: this was a silent return, and it is the last gate before an
+		-- entry is queued -- so "hook fired, queued nothing, printed nothing"
+		-- meant either LocalPlayer() is invalid or Alive() is false.  Say which.
+		local ply = LocalPlayer()
+		HL2SB_HUDDebug( "  -> dropped: LocalAlive() false",
+			"LocalPlayer()=" .. tostring( ply ),
+			"IsValid=" .. tostring( IsValid( ply ) ),
+			"Alive=" .. tostring( isfunction( ply and ply.Alive ) and ply:Alive() ),
+			"IsAlive=" .. tostring( isfunction( ply and ply.IsAlive ) and ply:IsAlive() ) )
+		return
+	end
 
 	-- Try to tack it onto an exisiting ammo pickup
 	if ( self.PickupHistory ) then
