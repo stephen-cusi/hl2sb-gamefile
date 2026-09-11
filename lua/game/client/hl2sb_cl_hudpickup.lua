@@ -147,8 +147,24 @@ end
 -- convar lookup per event (not per frame).
 -- ===========================================================================
 if ( HL2SB_HUDDebug == nil ) then
+	-- The convar has to be CREATED, not merely read.  Reading a name that was
+	-- never registered returns 0 (so the debug stayed silent) and the console
+	-- answered "Unknown command: hl2sb_hud_debug" -- which is exactly what
+	-- happened the first time this shipped.
+	local HUDDebugCvar = nil
+	if ( CreateClientConVar ) then
+		HUDDebugCvar = CreateClientConVar( "hl2sb_hud_debug", "0", false, false,
+			"Print pickup / undo HUD events to the console and log (1 = on)" )
+	end
+
 	function HL2SB_HUDDebug( ... )
-		if ( GetConVarNumber( "hl2sb_hud_debug" ) == 0 ) then return end
+		local bOn
+		if ( HUDDebugCvar ) then
+			bOn = HUDDebugCvar:GetBool()
+		else
+			bOn = ( GetConVarNumber( "hl2sb_hud_debug" ) ~= 0 )
+		end
+		if ( not bOn ) then return end
 
 		local out = {}
 		for i = 1, select( "#", ... ) do out[ i ] = tostring( ( select( i, ... ) ) ) end

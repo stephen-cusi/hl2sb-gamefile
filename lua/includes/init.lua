@@ -49,7 +49,25 @@ include( "util.lua" )
 -- vgui_base.lua's 54 lua/vgui controls then all fail with
 -- "attempt to index a nil value (global 'derma')".  Guarding here is what stops
 -- the server from importing the entire client VGUI layer.
-if ( CLIENT ) then
+-- HL2SB: one line of realm evidence, because "which realm is this and does it
+-- have surface/vgui" has been the difference between a clean load and 54 FAILED
+-- lines more than once.  Grep the log for "lua/includes/init.lua:".
+Msg( string.format(
+	"[HL2SB] lua/includes/init.lua: CLIENT=%s SERVER=%s _CLIENT=%s _GAME=%s surface=%s vgui=%s\n",
+	tostring( CLIENT ), tostring( SERVER ), tostring( _CLIENT ), tostring( _GAME ),
+	tostring( surface ~= nil ), tostring( vgui ~= nil ) ) )
+
+-- HL2SB: guard on CAPABILITY, not only on the realm flag.
+--
+-- `CLIENT` is the GMod spelling and the engine does set it (luamanager.cpp
+-- base_open), but a wrong or missing flag here is NOT a harmless no-op:
+-- derma/init.lua opens by indexing `surface`, so on a realm that has no surface
+-- it throws before creating the global `derma`, and vgui_base.lua's 54
+-- lua/vgui controls then each fail with
+-- "attempt to index a nil value (global 'derma')" -- 54 FAILED lines, no
+-- controls registered.  surface + vgui exist exactly where the client VGUI
+-- layer really is, so test for them directly as well.
+if ( CLIENT and surface and vgui ) then
 
 	-- GMod's scripted-panel layer: vgui.Register / vgui.Create / vgui.CreateX and
 	-- the Panel metatable extensions.  MUST precede derma/init.lua -- derma.lua's

@@ -158,6 +158,30 @@ ScrH = ScrH or function()
 	return h or 0
 end
 
+-- HL2SB: GMod's ScreenScale family.  These are ENGINE globals in GMod (C++),
+-- not util.lua helpers -- GMod's own lua/includes/util.lua (ours, byte for
+-- byte) does not define them, and lua/includes/notification.lua needs them on
+-- line 2:
+--
+--     local textH = math.max( 12, math.ceil( ScreenScaleH( 9 ) ) )
+--
+-- Without them that file fails to load completely, which shows up as exactly
+-- one [Lua] FAILED line -- that is how the undo notification vanished.
+--
+-- GMod semantics: ScreenScale and ScreenScaleH scale by height against the
+-- 480-unit baseline, ScreenScaleW scales by width against 640.
+ScreenScale = ScreenScale or function( size )
+	return size * ( ScrH() / 480 )
+end
+
+ScreenScaleH = ScreenScaleH or function( size )
+	return size * ( ScrH() / 480 )
+end
+
+ScreenScaleW = ScreenScaleW or function( size )
+	return size * ( ScrW() / 640 )
+end
+
 -- ConVar access (see above for the shape)
 CreateConVar = CreateConVar or function( name, def, flags, help, min, max )
 	return ConVar( name, def, flags, help, min, max )
