@@ -66,6 +66,26 @@ local function Font( name )
 	return "Default"
 end
 
+-- HL2SB: GMod's cl_hudpickup calls LocalPlayer():Alive().  The alias is not
+-- reliably present on the client's player metatable here, so resolve it by hand
+-- -- otherwise every pickup hook failed with "attempt to call a nil value
+-- (method 'Alive')" and nothing was ever drawn.
+local function LocalAlive()
+	local ply = LocalPlayer()
+	if ( not IsValid( ply ) ) then return false end
+	if ( isfunction( ply.Alive ) ) then return ply:Alive() end
+	if ( isfunction( ply.IsAlive ) ) then return ply:IsAlive() end
+	return true
+end
+
+-- HL2SB: hide the stock HL2MP pickup-history element (the battery / weapon
+-- circle icons) so the GMod bar is the only pickup feedback.  Returning nil for
+-- every other element lets the engine's own ShouldDraw logic run.
+hook.add( "HudElementShouldDraw", "gmod_cl_hudpickup", function( name )
+	if ( name == "CHudHistoryResource" ) then return false end
+	return nil
+end )
+
 GM.PickupHistory = GM.PickupHistory or {}
 GM.PickupHistoryLast = 0
 GM.PickupHistoryTop = ScrH() / 2
@@ -97,7 +117,7 @@ end
 -----------------------------------------------------------]]
 function GM:HUDWeaponPickedUp( wep )
 
-	if ( !IsValid( LocalPlayer() ) || !LocalPlayer():Alive() ) then return end
+	if ( not LocalAlive() ) then return end
 	if ( wep == nil ) then return end
 
 	local name = wep
@@ -116,7 +136,7 @@ end
 -----------------------------------------------------------]]
 function GM:HUDItemPickedUp( itemname )
 
-	if ( !IsValid( LocalPlayer() ) || !LocalPlayer():Alive() ) then return end
+	if ( not LocalAlive() ) then return end
 
 	local pickup = AddGenericPickup( self, "#" .. itemname )
 	pickup.color = Color( 180, 255, 180, 255 )
@@ -129,7 +149,7 @@ end
 -----------------------------------------------------------]]
 function GM:HUDAmmoPickedUp( itemname, amount )
 
-	if ( !IsValid( LocalPlayer() ) || !LocalPlayer():Alive() ) then return end
+	if ( not LocalAlive() ) then return end
 
 	-- Try to tack it onto an exisiting ammo pickup
 	if ( self.PickupHistory ) then

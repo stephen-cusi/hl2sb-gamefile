@@ -123,7 +123,11 @@ end
 -- HL2SB: expose the cached-font helper.  GMod-style HUD code measures text with
 -- surface.GetTextSize, which needs an HFont rather than a face name, so it has
 -- to be able to resolve one (GMod's cl_hudpickup.lua does exactly this).
-GetFont = GetFont
+--
+-- Must be spelled draw.GetFont = GetFont: a bare `GetFont = GetFont` resolves
+-- the name on BOTH sides to the local above and is a no-op, leaving
+-- draw.GetFont nil -- which made hl2sb_undo_notify.lua fail every frame.
+draw.GetFont = GetFont
 
 -- Height of a single line of the given font name (cached).
 function GetFontHeight( font )
