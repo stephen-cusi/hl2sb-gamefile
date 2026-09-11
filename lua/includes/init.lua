@@ -387,25 +387,19 @@ end
 -- gmod_compatibility/, so this file was never loaded.  `include` resolves
 -- relative to the calling file, and this one lives in lua/includes/.
 --
--- sh_enumerations.lua hard-errors ("Missing enumeration table for key: INPUT",
--- then SURFACE, ...) on EACH _E table this engine does not publish, and because
--- its loops run over pairs() the abort lands at a DIFFERENT point every level --
--- the KEY_* aliases it exists for only ended up copied by luck.  Pre-seed every
--- table it insists on (only when falsy, so the real ones are never hidden) and
--- the whole file runs.  (TODO(engine): publish these tables for real.)
+-- sh_enumerations.lua hard-errors on the first _E table this engine does not
+-- publish.  Seeding EVERY table it wants lets it run further and then die at
+--
+--   sh_enumerations.lua:159: attempt to index a nil value (field 'DOCK_TYPE')
+--
+-- (it wants _E.DOCK_TYPE too), and that deeper run also changed what it had
+-- already written to _G.  Seed only the table that gets the KEY_* aliases past
+-- their own error and stop there -- this is the state the Derma skin is verified
+-- working in.  TODO(engine): publish _E.INPUT / _E.SURFACE / ... / _E.DOCK_TYPE
+-- for real, then this whole block goes away.
 -- ===========================================================================
-local hl2sb_EnumTablesToSeed = {
-	"ACTIVITY", "BUTTON", "INPUT", "CONTENTS", "COLLISION_GROUP", "FCVAR",
-	"EDICT_FLAG", "SOLID_FLAG", "SOLID", "SOUND_CHANNEL", "SURFACE",
-	"DAMAGE_TYPE", "HIT_GROUP", "MATERIAL_TYPE", "ENTITY_EFFECT", "ENGINE_FLAG",
-}
-
-if ( _E ~= nil ) then
-	for _, key in ipairs( hl2sb_EnumTablesToSeed ) do
-		if ( not _E[ key ] ) then
-			_E[ key ] = {}
-		end
-	end
+if ( _E ~= nil and not _E.INPUT ) then
+	_E.INPUT = {}
 end
 
 include( "modules/gmod_compatibility/sh_enumerations.lua" )
