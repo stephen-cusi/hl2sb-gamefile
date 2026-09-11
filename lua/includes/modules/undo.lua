@@ -42,6 +42,23 @@ require( "concommand" )
 require( "table" )
 require( "timer" )
 
+-- HL2SB: re-entrancy guard.
+--
+-- lua/includes/modules/ is loaded as a folder of plain files (luasrc_dofolder),
+-- which does not write package.loaded, so a later require("undo") runs this
+-- whole file a SECOND time.  The body registers net receivers at load time, and
+-- the engine's net.Receive appends rather than replaces, so the second run left
+-- two receivers for "Undo_FireUndo":
+--
+--     one undo  ->  Undo_FireUndo handled twice  ->  hook.Run( "OnUndo" ) twice
+--               ->  two undo notices on screen
+--
+-- Same class of bug, same guard as lua/includes/modules/hook.lua.  (The marker
+-- has to be a module function: ClientUndos is a file-local.)
+if ( _G.undo ~= nil and _G.undo.GetTable ~= nil ) then
+	return _G.undo
+end
+
 module( "undo", package.seeall )
 
 -- HL2SB debug: hl2sb_hud_debug 1 traces the whole undo chain.  Every step below
