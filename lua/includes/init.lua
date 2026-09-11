@@ -368,3 +368,33 @@ if ( CLIENT and surface and vgui ) then
 	include( "notification.lua" )
 
 end
+
+-- ===========================================================================
+-- GMod's sh_enumerations.lua (lua/includes/modules/gmod_compatibility/)
+--
+-- It copies the engine's _E.* enumerations to globals under GMod's spellings.
+-- This engine publishes KEY_CONTROL_LEFT where GMod Lua says KEY_LCONTROL, and
+-- lua/vgui/DListView.lua:382 needs KEY_LCONTROL just to select a line:
+--
+--   lua/vgui/DListView.lua:382: bad argument #1 to 'IsKeyDown' (number expected, got nil)
+--     in method 'OnClickLine'
+--     in function <lua/vgui/DListView_Line.lua:81>
+--
+-- so clicking a row in a DListView threw instead of selecting it -- which is why
+-- the player model list could not be clicked.
+--
+-- The engine's folder pass (luasrc_dofolder) does not recurse into
+-- gmod_compatibility/, so this file was never loaded.  `include` resolves
+-- relative to the calling file, and this one lives in lua/includes/.
+--
+-- sh_enumerations.lua hard-errors ("Missing enumeration table for key: INPUT")
+-- on the first _E table this engine does not publish, and because its loop runs
+-- over pairs() that abort landed at a DIFFERENT point every level: the KEY_*
+-- aliases it exists for worked only by luck.  Pre-seed the one table it demands
+-- and lets it finish.  (TODO(engine): publish a real _E.INPUT.)
+-- ===========================================================================
+if ( _E ~= nil and _E.INPUT == nil ) then
+	_E.INPUT = {}
+end
+
+include( "modules/gmod_compatibility/sh_enumerations.lua" )

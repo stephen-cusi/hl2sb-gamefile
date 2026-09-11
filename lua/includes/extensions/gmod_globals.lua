@@ -256,3 +256,53 @@ end
 -- ===========================================================================
 SysTime = SysTime or RealTime
 RealFrameTime = RealFrameTime or FrameTime
+
+-- ===========================================================================
+-- RunConsoleCommand( cmd, ... )   (GMod global, both realms)
+--
+-- This fork has no binding for it at all: there is no engine Lua function for
+-- "execute this console command line" (no ClientCmd / ServerCommand exposure),
+-- and lua/includes/modules/concommand.lua only offers Dispatch() for commands
+-- registered *in Lua*.  GMod Lua calls RunConsoleCommand constantly -- the
+-- player model panel is one of them:
+--
+--     RunConsoleCommand( "cl_playermodel", entry.name )
+--
+-- Two paths cover what GMod scripts actually do:
+--   1. a Lua concommand (concommand.Create / concommand.Add) -> Dispatch it, so
+--      its callback runs with GMod's ( ply, cmd, args ) signature;
+--   2. anything else (an engine ConVar, which is what cl_playermodel is) ->
+--      set the ConVar, which is what typing it in the console does for a plain
+--      cvar anyway.
+--
+-- TODO(engine): bind the real thing once an engine command executor is
+-- exposed; this cannot run commands that are neither a cvar nor a Lua
+-- concommand ("say", "noclip", ...).
+-- ===========================================================================
+if ( RunConsoleCommand == nil ) then
+	function RunConsoleCommand( cmd, ... )
+		local strCmd = tostring( cmd )
+		local name, inlineArgs = string.match( strCmd, "^(%S+)%s*(.*)$" )
+
+		if ( name == nil ) then return end
+
+		local strArgs = inlineArgs or ""
+
+		for i = 1, select( "#", ... ) do
+			local arg = select( i, ... )
+			strArgs = ( strArgs == "" ) and tostring( arg ) or ( strArgs .. " " .. tostring( arg ) )
+		end
+
+		if ( concommand ~= nil and concommand.Dispatch ~= nil and concommand.Dispatch( nil, name, strArgs ) ) then
+			return
+		end
+
+		if ( strArgs ~= "" ) then
+			local cv = ( GetConVar_Internal ~= nil ) and GetConVar_Internal( name ) or nil
+
+			if ( cv ~= nil and cv.SetString ~= nil ) then
+				cv:SetString( strArgs )
+			end
+		end
+	end
+end
