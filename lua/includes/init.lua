@@ -221,6 +221,46 @@ if ( CLIENT and surface and vgui ) then
 			end
 
 			--=================================================================
+			-- HL2SB: Panel:HasHierarchicalFocus()
+			--
+			-- GMod addition to vgui -- it does NOT exist in this engine's vgui2
+			-- (zero hits for HasHierarchicalFocus in public/vgui_controls and
+			-- vgui2), so it has to be implemented, not aliased.  The Derma skin
+			-- calls it every frame:
+			--
+			--     lua/skins/default.lua:350  if ( panel:HasHierarchicalFocus() ) then
+			--         -> "attempt to call a nil value (method 'HasHierarchicalFocus')"
+			--         (79 times in one log -- once per frame, because the frame
+			--          WAS created and WAS painting; this was the last error
+			--          between the new player model panel and a visible window)
+			--
+			-- GMod semantics: true if this panel OR any descendant has the
+			-- keyboard focus.  Built from the bindings this engine already has
+			-- (HasFocus / GetChildCount / GetChild), so the focused-frame
+			-- highlight behaves the same.
+			--=================================================================
+			if ( PanelMeta.HasHierarchicalFocus == nil ) then
+				function PanelMeta:HasHierarchicalFocus()
+					if ( self.HasFocus ~= nil and self:HasFocus() ) then
+						return true
+					end
+
+					if ( self.GetChildCount ~= nil and self.GetChild ~= nil ) then
+						for i = 0, self:GetChildCount() - 1 do
+							local child = self:GetChild( i )
+							if ( child ~= nil and child.HasHierarchicalFocus ~= nil and child:HasHierarchicalFocus() ) then
+								return true
+							end
+						end
+					end
+
+					return false
+				end
+
+				Msg( "[HL2SB]   Panel:HasHierarchicalFocus implemented\n" )
+			end
+
+			--=================================================================
 			-- HL2SB: the last GMod Label/Panel methods notification.lua needs.
 			--
 			-- Listed from notification.lua itself rather than added one per log
