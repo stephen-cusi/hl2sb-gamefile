@@ -32,21 +32,34 @@
     derma/init.lua has to precede vgui_base.lua: every control in lua/vgui/
     calls derma.DefineControl at file scope.
 
-    Loaded from lua/includes/ by luasrc_dofolder_sorted() (see the
-    LUA_PATH_INCLUDES block in cdll_client_int.cpp and gameinterface.cpp).
+    Loaded from lua/includes/ by luasrc_dofile_includes( L, "init.lua" ) -- one
+    named file, NOT a directory scan (see that call site in cdll_client_int.cpp
+    and gameinterface.cpp: a scan re-runs vgui_base.lua and kills all 54
+    controls).
     Note that include() resolves relative to the calling file first, then falls
     back to lua/ -- which is how "derma/init.lua" is found from here.
 -----------------------------------------------------------------------------]]--
 
 include( "util.lua" )
 
--- GMod's scripted-panel layer: vgui.Register / vgui.Create / vgui.CreateX and
--- the Panel metatable extensions.  MUST precede derma/init.lua -- derma.lua's
--- DefineControl calls vgui.Register, and scriptedpanels.lua is the version that
--- resolves a base class through PanelFactory instead of requiring it to be a
--- registered vgui[] factory.
-include( "extensions/client/panel.lua" )
+-- Everything below is CLIENT ONLY, and GMod's own bootstrap guards it the same
+-- way.  On the server these files do not merely no-op: derma/init.lua opens by
+-- indexing `surface` (nil server-side), so it throws before it ever reaches
+-- include("derma.lua") -- which means the global `derma` is never created, and
+-- vgui_base.lua's 54 lua/vgui controls then all fail with
+-- "attempt to index a nil value (global 'derma')".  Guarding here is what stops
+-- the server from importing the entire client VGUI layer.
+if ( CLIENT ) then
 
-include( "derma/init.lua" )
+	-- GMod's scripted-panel layer: vgui.Register / vgui.Create / vgui.CreateX and
+	-- the Panel metatable extensions.  MUST precede derma/init.lua -- derma.lua's
+	-- DefineControl calls vgui.Register, and scriptedpanels.lua is the version that
+	-- resolves a base class through PanelFactory instead of requiring it to be a
+	-- registered vgui[] factory.
+	include( "extensions/client/panel.lua" )
 
-include( "vgui_base.lua" )
+	include( "derma/init.lua" )
+
+	include( "vgui_base.lua" )
+
+end
