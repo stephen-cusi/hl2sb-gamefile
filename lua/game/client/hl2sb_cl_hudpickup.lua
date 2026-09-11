@@ -19,15 +19,22 @@
     Differences from GMod's file, all "HL2SB:" marked:
       * GM           -> _G._GAMEMODE (the engine's gamemode table; created if
                         the gamemode has not registered itself yet).
-      * corners      -> GMod blits materials/gui/corner8 through
-                        surface.DrawTexturedRectRotated.  Source 2013's
-                        vgui::ISurface has no rotated textured rect, so the
-                        corners are drawn with draw.RoundedBox instead.  Every
-                        timing / alpha / layout / merge rule below is GMod's.
-      * fonts        -> HL2SB's clientscheme only defines Default /
-                        DefaultSmall / DefaultVerySmall; other names come back
-                        INVALID_FONT and render nothing, so GMod's
-                        "DermaDefaultBold" maps onto "Default".
+      * corners      -> NONE ANY MORE.  This used to approximate the strip with
+                        two draw.RoundedBox calls because Source 2013's
+                        vgui::ISurface had no rotated textured rect.  HL2SB's
+                        binding layer now provides
+                        surface.DrawTexturedRectRotated (built on
+                        ISurface::DrawTexturedPolygon -- see
+                        public/lua/vgui/LISurface.cpp), so the drawing block
+                        below is GMod's, verbatim.
+      * fonts        -> NONE ANY MORE.  GMod names its HUD font
+                        "DermaDefaultBold"; that font is now created at load
+                        through the GMod form of surface.CreateFont
+                        (lua/includes/modules/gmod_vgui.lua), so the name
+                        resolves here exactly as it does in GMod.
+      * localization -> GMod draws "#item_battery" and lets the engine resolve
+                        the token; HL2SB's surface.DrawPrintText does not, so
+                        LocalName() resolves it up front.
       * input        -> GMod's CHudHistoryResource calls GM:HUD*PickedUp.
                         HL2SB's CHudKillFeed forwards the engine's item_pickup
                         game event to the Lua hook HUDItemPickedUp( userid,
@@ -105,9 +112,13 @@ local function LocalName( raw )
 	return ( s:gsub( "^%l", string.upper ) )
 end
 
--- HL2SB: font mapping (GMod name -> a font HL2SB's scheme actually has).
+-- HL2SB: GMod names its HUD font "DermaDefaultBold".  That font is created at
+-- load time the same way GMod does it (surface.CreateFont with the FontData
+-- table -- see lua/includes/modules/gmod_vgui.lua), so the name resolves through
+-- surface.SetFont exactly as it does in GMod.  Should it ever fail to resolve,
+-- surface.SetFont falls back to the scheme's Default by itself.
 local function Font( name )
-	return "Default"
+	return name
 end
 
 -- HL2SB: GMod's cl_hudpickup calls LocalPlayer():Alive().  The alias is not
@@ -134,6 +145,8 @@ GM.PickupHistory = GM.PickupHistory or {}
 GM.PickupHistoryLast = 0
 GM.PickupHistoryTop = ScrH() / 2
 GM.PickupHistoryWide = 300
+-- GMod: GM.PickupHistoryCorner = surface.GetTextureID( "gui/corner8" ).
+GM.PickupHistoryCorner = GM.PickupHistoryCorner or surface.GetTextureID( "gui/corner8" )
 
 local function AddGenericPickup( self, itemname )
 	local pickup		= {}
@@ -267,21 +280,23 @@ function GM:HUDDrawPickupHistory()
 			local rx, ry, rw, rh = math.Round( v.x - 4 ), math.Round( v.y - ( v.height / 2 ) - 4 ), math.Round( self.PickupHistoryWide + 9 ), math.Round( v.height + 8 )
 			local bordersize = 8
 
-			-- HL2SB: GMod builds the strip out of four rotated copies of
-			-- materials/gui/corner8 plus flat DrawRect runs.  vgui::ISurface has
-			-- no DrawTexturedRectRotated here, so the same geometry is drawn as
-			-- two rounded boxes: the coloured tab on the left, the body on the
-			-- right.  The measurements are GMod's.
-			local tabW = v.height - 4
+			-- GMod's strip, verbatim: four rotated blits of gui/corner8 plus
+			-- four flat runs.  HL2SB now has surface.DrawTexturedRectRotated
+			-- (LISurface.cpp, built on ISurface::DrawTexturedPolygon), so this
+			-- no longer has to be faked with two RoundedBoxes.
+			surface.SetTexture( self.PickupHistoryCorner )
 
-			-- Coloured tab (object type).
-			draw.RoundedBox( bordersize / 2, rx, ry, tabW + bordersize, rh,
-				Color( v.color.r, v.color.g, v.color.b, alpha ) )
+			surface.SetDrawColor( v.color.r, v.color.g, v.color.b, alpha )
+			surface.DrawTexturedRectRotated( rx + bordersize / 2, ry + bordersize / 2, bordersize, bordersize, 0 )
+			surface.DrawTexturedRectRotated( rx + bordersize / 2, ry + rh - bordersize / 2, bordersize, bordersize, 90 )
+			surface.DrawRect( rx, ry + bordersize, bordersize, rh - bordersize * 2 )
+			surface.DrawRect( rx + bordersize, ry, v.height - 4, rh )
 
-			-- Body.
-			local bodyC = 230 * colordelta
-			draw.RoundedBox( bordersize / 2, rx + tabW, ry, rw - tabW, rh,
-				Color( bodyC, bodyC, bodyC, alpha ) )
+			surface.SetDrawColor( 230 * colordelta, 230 * colordelta, 230 * colordelta, alpha )
+			surface.DrawTexturedRectRotated( rx + rw - bordersize / 2, ry + rh - bordersize / 2, bordersize, bordersize, 180 )
+			surface.DrawTexturedRectRotated( rx + rw - bordersize / 2, ry + bordersize / 2, bordersize, bordersize, 270 )
+			surface.DrawRect( rx + rw - bordersize, ry + bordersize, bordersize, rh - bordersize * 2 )
+			surface.DrawRect( rx + bordersize + v.height - 4, ry, rw - ( v.height - 4 ) - bordersize * 2, rh )
 
 			-- HL2SB: v.text is the localized form of v.name (see LocalName).
 			-- GMod renders "#item_battery" and lets the engine resolve it; we

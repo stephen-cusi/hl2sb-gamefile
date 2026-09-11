@@ -8,11 +8,13 @@
     cl_hudpickup.lua needs SetDrawColor / DrawRect / SetTexture / GetTextureID,
     and most HUD addons need the same.
 
-    Deliberately NOT provided:
-      surface.DrawTexturedRectRotated( x, y, w, h, rot )
-        Source 2013's vgui::ISurface has no rotated textured rect (GMod's engine
-        added one).  Defining it as an unrotated draw would silently produce
-        wrong output, so it stays undefined and fails loudly instead.
+    What is NOT here anymore (2026-09-11):
+      surface.DrawTexturedRectRotated( x, y, w, h, rot ) and
+      surface.DrawTexturedRectUV( x, y, w, h, u0, v0, u1, v1 )
+        These used to be missing/emulated in Lua.  They are now real engine
+        bindings in public/lua/vgui/LISurface.cpp -- rotated rects are built as a
+        quad and handed to ISurface::DrawTexturedPolygon, so no interface change
+        was needed.  Nothing here may shadow them.
 
     Loaded every level from lua/includes/extensions/.
 -----------------------------------------------------------------------------]]--

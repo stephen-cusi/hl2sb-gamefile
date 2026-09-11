@@ -186,6 +186,36 @@ end
 
 derma = derma or {}
 
+--- GMod's lua/derma/init.lua creates these three fonts at load time, and the
+--- whole Derma tree plus the stock HUD reference them by name
+--- ("DermaDefaultBold" in cl_hudpickup.lua, "DermaLarge" in Derma itself).
+--- Values are copied verbatim from GMod's init.lua; the engine's
+--- surface.CreateFont( name, fontData ) files each one under its name so
+--- surface.SetFont() can resolve it later.
+---
+--- NOTE: fonts are static and expensive -- created once, at load, exactly as
+--- GMod does.  When the real lua/derma/init.lua is copied in, delete this block.
+surface.CreateFont( "DermaDefault", {
+	font		= "Tahoma",
+	size		= 13,
+	weight		= 500,
+	extended	= true
+} )
+
+surface.CreateFont( "DermaDefaultBold", {
+	font		= "Tahoma",
+	size		= 13,
+	weight		= 800,
+	extended	= true
+} )
+
+surface.CreateFont( "DermaLarge", {
+	font		= "Roboto",
+	size		= 32,
+	weight		= 500,
+	extended	= true
+} )
+
 --- GMod calls this from every control's Paint/Think to let the skin draw.  HL2SB
 --- has no skins, so it is a no-op -- but it has to exist, because GMod's control
 --- tables assign it as a function value at load time.

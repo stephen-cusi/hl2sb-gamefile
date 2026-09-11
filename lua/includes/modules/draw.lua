@@ -275,21 +275,62 @@ function RoundedBoxEx( bordersize, x, y, w, h, color, tl, tr, bl, br )
 
   SetDrawColour( color )
 
+  -- Do not waste performance if they don't want rounded corners.
   if ( bordersize <= 0 ) then
     surface.DrawFilledRect( x, y, x + w, y + h )
     return
   end
 
-  bordersize = math.min( math.max( math.Round( bordersize ), 0 ), math.floor( w / 2 ), math.floor( h / 2 ) )
+  bordersize = math.min( math.Round( bordersize ), math.floor( w / 2 ), math.floor( h / 2 ) )
   x = math.Round( x )
   y = math.Round( y )
   w = math.Round( w )
   h = math.Round( h )
 
-  -- Plain solid rectangle.  The HL2SB gui/cornerX textures render as crisp
-  -- round corners, but the user chose to keep the simple sharp-cornered box,
-  -- so we just fill the whole rect with the draw colour.
-  surface.DrawFilledRect( x, y, x + w, y + h )
+  -- GMod's body: three flat rects, then four corners blitted from gui/cornerN.
+  -- The UVs are what place a *single*-corner texture in the four screen corners
+  -- (this is the same mapping surface.DrawTexturedRectRotated( 0/90/180/270 )
+  -- gets from rotating the quad):
+  --     top-left (0,0,1,1)   top-right (1,0,0,1)
+  --     bottom-left (0,1,1,0) bottom-right (1,1,0,0)
+  surface.DrawFilledRect( x + bordersize, y, x + w - bordersize, y + h )
+  surface.DrawFilledRect( x, y + bordersize, x + bordersize, y + h - bordersize )
+  surface.DrawFilledRect( x + w - bordersize, y + bordersize, x + w, y + h - bordersize )
+
+  local tex = cornerTex[ 8 ]
+  if ( bordersize > 8 ) then tex = cornerTex[ 16 ] end
+  if ( bordersize > 16 ) then tex = cornerTex[ 32 ] end
+  if ( bordersize > 32 ) then tex = cornerTex[ 64 ] end
+  if ( bordersize > 64 ) then tex = cornerTex[ 512 ] end
+
+  -- surface.SetTexture() is what GMod's draw.lua does, and it is mandatory:
+  -- without it the bound texture is still the engine's default white one and
+  -- the "corners" paint solid white over the box.
+  surface.SetTexture( GetTexture( tex ) )
+
+  if ( tl ) then
+    surface.DrawTexturedRectUV( x, y, bordersize, bordersize, 0, 0, 1, 1 )
+  else
+    surface.DrawFilledRect( x, y, x + bordersize, y + bordersize )
+  end
+
+  if ( tr ) then
+    surface.DrawTexturedRectUV( x + w - bordersize, y, bordersize, bordersize, 1, 0, 0, 1 )
+  else
+    surface.DrawFilledRect( x + w - bordersize, y, x + w, y + bordersize )
+  end
+
+  if ( bl ) then
+    surface.DrawTexturedRectUV( x, y + h - bordersize, bordersize, bordersize, 0, 1, 1, 0 )
+  else
+    surface.DrawFilledRect( x, y + h - bordersize, x + bordersize, y + h )
+  end
+
+  if ( br ) then
+    surface.DrawTexturedRectUV( x + w - bordersize, y + h - bordersize, bordersize, bordersize, 1, 1, 0, 0 )
+  else
+    surface.DrawFilledRect( x + w - bordersize, y + h - bordersize, x + w, y + h )
+  end
 end
 
 function RoundedBox( bordersize, x, y, w, h, color )
