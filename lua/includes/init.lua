@@ -105,6 +105,40 @@ if ( CLIENT and surface and vgui ) then
 			end
 
 			Msg( "[HL2SB]   SetKeyboardInputEnabled = " .. tostring( PanelMeta.SetKeyboardInputEnabled ) .. "\n" )
+
+			-- HL2SB: Panel:SetFont must also accept a font NAME string.
+			--
+			-- GMod's Panel:SetFont( font ) takes either an HFont or a font name,
+			-- and its own panel files pass names:
+			--
+			--     lua/vgui/DLabel.lua:39: bad argument #1 to 'SetFont'
+			--                             (HFont expected, got string)
+			--
+			-- This fork's binding only takes an HFont, so resolve the name first
+			-- through the same path surface.SetFont( name ) uses (the per-state
+			-- font registry, then the scheme) and hand the HFont to the engine
+			-- function.  draw.GetFont is the fallback.
+			local EngineSetFont = PanelMeta.SetFont
+			if ( EngineSetFont ~= nil ) then
+				PanelMeta.SetFont = function( self, font )
+					if ( type( font ) == "string" ) then
+						local hfont = nil
+						if ( surface ~= nil and surface.SetFont ~= nil ) then
+							hfont = surface.SetFont( font )
+						end
+						if ( hfont == nil and _G.draw ~= nil and draw.GetFont ~= nil ) then
+							hfont = draw.GetFont( font )
+						end
+						if ( hfont == nil ) then
+							Msg( "[HL2SB] Panel:SetFont: cannot resolve font '" .. tostring( font ) .. "'\n" )
+							return
+						end
+						font = hfont
+					end
+
+					return EngineSetFont( self, font )
+				end
+			end
 		end
 	end
 
