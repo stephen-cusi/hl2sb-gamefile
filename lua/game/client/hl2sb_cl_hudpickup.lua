@@ -127,10 +127,19 @@ end
 -- (method 'Alive')" and nothing was ever drawn.
 local function LocalAlive()
 	local ply = LocalPlayer()
-	if ( not IsValid( ply ) ) then return false end
-	if ( isfunction( ply.Alive ) ) then return ply:Alive() end
+	if ( not ply ) then return false end
+
+	-- HL2SB: do NOT lead with IsValid().  Measured with hl2sb_hud_debug 1 on the
+	-- local player: "LocalPlayer()=CBasePlayer: 2 hut  IsValid=false
+	-- Alive=false  IsAlive=true" -- the entity is valid and alive, but the global
+	-- IsValid() (hl2sb_GlobalIsValid, game/shared/lua/lhl2sb.cpp:213) answers
+	-- false for it.  Testing IsValid() first therefore rejected EVERY pickup and
+	-- this HUD never queued a single entry.  Ask the entity itself first and keep
+	-- IsValid() only as the fallback.
 	if ( isfunction( ply.IsAlive ) ) then return ply:IsAlive() end
-	return true
+	if ( isfunction( ply.Alive ) ) then return ply:Alive() end
+
+	return IsValid( ply )
 end
 
 -- ===========================================================================
