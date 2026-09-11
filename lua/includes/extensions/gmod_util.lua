@@ -38,9 +38,12 @@ if ( _G.Msg == nil ) then
 		local s = table.concat( out )
 
 		-- GMod's Msg writes to the console without adding a newline; dbg.Msg is
-		-- the HL2SB binding that does exactly that.  Fall back to print().
+		-- the HL2SB binding that does exactly that.  It is printf-style, so a
+		-- literal '%' in Lua text would be read as a format specifier and read
+		-- unpushed varargs -- double them.  (Same bug the engine's own print
+		-- binding had.)  Fall back to print().
 		if ( _G.dbg ~= nil and dbg.Msg ~= nil ) then
-			dbg.Msg( s )
+			dbg.Msg( ( string.gsub( s, "%%", "%%%%" ) ) )
 		else
 			print( s )
 		end
