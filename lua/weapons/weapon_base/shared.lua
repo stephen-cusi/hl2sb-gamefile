@@ -366,13 +366,6 @@ function SWEP:DoImpactEffect( tr, nDamageType )
 end
 
 --[[---------------------------------------------------------
-	HL2SB fire-rate helpers.  GMod's engine calls SetNextPrimaryFire/
-	SetNextSecondaryFire; HL2SB caches them in the weapon fields.
------------------------------------------------------------]]
-function SWEP:SetNextPrimaryFire( t ) self.m_flNextPrimaryAttack = t end
-function SWEP:SetNextSecondaryFire( t ) self.m_flNextSecondaryAttack = t end
-
---[[---------------------------------------------------------
 	Name: SWEP:ItemBusyFrame
 -----------------------------------------------------------]]
 function SWEP:ItemBusyFrame()
