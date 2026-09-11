@@ -44,6 +44,29 @@ require( "timer" )
 
 module( "undo", package.seeall )
 
+-- HL2SB: do NOT trust the global IsValid() inside this module.
+--
+-- Measured in game with hl2sb_hud_debug 1:
+--     [HL2SB HUD] undo.Finish REJECTED: IsValid(Owner)=false owner=nil entities=0
+-- while the same run had already reported
+--     [HL2SB undo] HL2SB_UndoRecord( hut, prop_physics )
+-- with a valid owner and entity.  AddEntity() and SetPlayer() BOTH begin with
+-- "if ( !IsValid( x ) ) then return end", so both returned immediately, nothing
+-- was ever added to Current_Undo, and undo.Finish() then rejected the empty
+-- record.  No error is raised anywhere on that path, which is why the undo
+-- command kept answering "no undo entry recorded" with a clean log.
+--
+-- So accept a non-nil entity here.  A stale pointer is still caught by
+-- Do_Undo(), which validity-checks every entity before removing it, and by
+-- Finish()'s own "empty Entities and Functions" test.
+local function UndoValid( ent )
+	if ( ent == nil ) then return false end
+	if ( IsValid( ent ) == true ) then return true end
+	if ( isfunction( ent.IsValid ) and ent:IsValid() == true ) then return true end
+
+	return true
+end
+
 -- undo.Create("Wheel")
 -- undo.AddEntity( axis )
 -- undo.AddEntity( constraint )
@@ -300,7 +323,7 @@ end
 function AddEntity( ent )
 
 	if ( !Current_Undo ) then return end
-	if ( !IsValid( ent ) ) then return end
+	if ( !UndoValid( ent ) ) then return end
 
 	table.insert( Current_Undo.Entities, ent )
 
@@ -351,7 +374,7 @@ end
 function SetPlayer( ply )
 
 	if ( !Current_Undo ) then return end
-	if ( !IsValid( ply ) ) then return end
+	if ( !UndoValid( ply ) ) then return end
 
 	Current_Undo.Owner = ply
 
@@ -363,7 +386,7 @@ end
 -----------------------------------------------------------]]
 local function SendUndoneMessage( ent, id, ply )
 
-	if ( !IsValid( ply ) ) then return end
+	if ( !UndoValid( ply ) ) then return end
 
 	-- For further optimization we could queue up the ids and send them
 	-- in one batch every 0.5 seconds or something along those lines.
@@ -393,7 +416,7 @@ function Finish( NiceText )
 	if ( !Current_Undo ) then return end
 
 	-- Do not add undos that have no owner or anything to undo
-	if ( !IsValid( Current_Undo.Owner ) or ( table.IsEmpty( Current_Undo.Entities ) && table.IsEmpty( Current_Undo.Functions ) ) or !Can_CreateUndo( Current_Undo ) ) then
+	if ( !UndoValid( Current_Undo.Owner ) or ( table.IsEmpty( Current_Undo.Entities ) && table.IsEmpty( Current_Undo.Functions ) ) or !Can_CreateUndo( Current_Undo ) ) then
 
 		-- HL2SB: this branch is why "undo" reported "no undo entry recorded"
 		-- while the C++ recorder ran cleanly and reported no error -- it returns
@@ -405,7 +428,7 @@ function Finish( NiceText )
 			local nFuncs = 0
 			for _ in pairs( Current_Undo.Functions or {} ) do nFuncs = nFuncs + 1 end
 
-			print( "[HL2SB HUD] undo.Finish REJECTED: IsValid(Owner)=" .. tostring( IsValid( Current_Undo.Owner ) )
+			print( "[HL2SB HUD] undo.Finish REJECTED: IsValid(Owner)=" .. tostring( UndoValid( Current_Undo.Owner ) )
 				.. " owner=" .. tostring( Current_Undo.Owner )
 				.. " entities=" .. tostring( nEnts )
 				.. " functions=" .. tostring( nFuncs )
@@ -433,7 +456,7 @@ function Finish( NiceText )
 	net.Send( Current_Undo.Owner )
 
 	-- Have one of the entities in the undo tell us when it gets undone.
-	if ( IsValid( Current_Undo.Entities[ 1 ] ) ) then
+	if ( UndoValid( Current_Undo.Entities[ 1 ] ) ) then
 
 		local ent = Current_Undo.Entities[ 1 ]
 		ent:CallOnRemove( "undo" .. id, SendUndoneMessage, id, Current_Undo.Owner )
@@ -464,7 +487,7 @@ local function CleanupInvalidUndos()
 
 			local allInvalid = true
 			for entIdx, ent in pairs( undoData.Entities or {} ) do
-				if ( IsValid( ent ) ) then
+				if ( UndoValid( ent ) ) then
 					allInvalid = false
 				else
 					undoData.Entities[ entIdx ] = nil
@@ -521,7 +544,7 @@ local function IsCarriedByPlayer( ent )
 	local owner = nil
 
 	if ( ent.GetOwnerEntity ) then owner = ent:GetOwnerEntity() end
-	if ( !IsValid( owner ) and ent.GetOwner ) then owner = ent:GetOwner() end
+	if ( !UndoValid( owner ) and ent.GetOwner ) then owner = ent:GetOwner() end
 
 	if ( IsValid( owner ) and owner.GetClass and owner:GetClass() == "player" ) then
 		return true
@@ -558,7 +581,7 @@ function Do_Undo( undo )
 	if ( undo.Entities ) then
 		for index, entity in pairs( undo.Entities ) do
 
-			if ( IsValid( entity ) ) then
+			if ( UndoValid( entity ) ) then
 
 				-- HL2SB: leave anything a player is carrying alone.  An
 				-- admin-spawned weapon gets an undo record when it is created,
