@@ -616,7 +616,15 @@ function Do_Undo( undo )
 				-- but once a player picks it up that record is stale and
 				-- undoing it would rip the weapon out of their hands.
 				if ( !IsCarriedByPlayer( entity ) ) then
+					-- HL2SB: name the entity that is being removed.  The game
+					-- crashes (execute access violation in server.dll, inside a
+					-- C++ throw/unwind) at some point during the removal of a
+					-- spawned NPC or weapon; with hl2sb_hud_debug 1 the last line
+					-- of the log then says exactly which one it died on.
+					UndoDebug( "undo: removing entity", tostring( index ),
+						( entity.GetClassname ~= nil ) and tostring( entity:GetClassname() ) or "?" )
 					entity:Remove()
+					UndoDebug( "undo: removed entity", tostring( index ) )
 					count = count + 1
 				end
 
