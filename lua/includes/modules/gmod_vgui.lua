@@ -112,59 +112,27 @@ end
 ---
 --- and the name is required by Label's factory (luaL_checkstring( L, 2 )).
 ---]]
-function vgui.Create( name, parent, panelName, text )
-    local base = controlBases[ name ]
-    if ( not base ) then
-        error( "vgui.Create: no control registered as '" .. tostring( name ) .. "'", 2 )
-    end
-
-    local factory = vgui[ base ]
-    if ( not factory ) then
-        error( "vgui.Create: base class '" .. tostring( base ) .. "' has no factory", 2 )
-    end
-
-    local trailing
-    if ( base == "Label" or base == "Button" ) then
-        -- Button has no SetText in this engine -- the text can only be given at
-        -- construction -- so it has to be threaded through here.
-        trailing = text or ""
-    elseif ( base == "Frame" or base == "EditablePanel" ) then
-        trailing = true
-    end
-
-    local panel = factory( parent, panelName or name, trailing )
-    if ( not panel ) then
-        error( "vgui.Create: '" .. base .. "' factory returned nothing", 2 )
-    end
-
-    local control = controlTables[ name ]
-    if ( control ) then
-        -- Name the class in the failure.  "attempt to call a nil value (method
-        -- 'GetRefTable')" pointed at this line but not at *which* factory produced
-        -- the panel, and the factories do not all answer the same way: a console
-        -- vgui.Panel( nil, "diag" ) hands back a panel whose GetRefTable is a real
-        -- function, while something on this path does not.
-        if ( panel.GetRefTable == nil ) then
-            error( string.format(
-                "vgui.Create( %s ): the %s factory returned a %s whose metatable has no GetRefTable (metatable = %s)",
-                tostring( name ), tostring( base ), type( panel ),
-                tostring( getmetatable( panel ) ) ), 2 )
-        end
-
-        local refTable = panel:GetRefTable()
-        if ( refTable ) then
-            table.merge( refTable, control )
-        end
-    end
-
-    if ( panel.Init ) then
-        -- The text goes through Init because a control's own SetText may not exist
-        -- yet (and C Button has none at all in this engine).
-        panel:Init( text )
-    end
-
-    return panel
-end
+-- HL2SB: vgui.Create() used to be defined here.  It is DELETED on purpose.
+--
+-- lua/includes/extensions/client/panel/scriptedpanels.lua:13 does
+--
+--     vgui.CreateX = vgui.Create
+--
+-- so it captures whatever vgui.Create is AT THAT MOMENT.  This file is in
+-- lua/includes/modules/, which the engine loads BEFORE lua/includes/, so the
+-- hand-written shim below used to become scriptedpanels.CreateX -- and its
+-- fallback only knew this file's own five controls, never the engine's
+-- factories.  Creating any Derma panel therefore died on the root class:
+--
+--     scriptedpanels.lua:30: vgui.Create: no control registered as 'Panel'
+--
+-- which is why the GMod undo notification could not be built even though the
+-- undo itself worked.  With this gone, vgui.Create stays the engine dispatch
+-- that luaopen_vgui() installed (public/lua/vgui_controls/lvgui_controls.cpp),
+-- scriptedpanels captures that, and vgui.Panel / vgui.EditablePanel resolve.
+--
+-- The rest of this file is still needed (vgui.GetHoveredPanel / GetWorldPanel
+-- have no engine equivalent), so it is not deleted yet -- see the plan's P4.
 
 function vgui.GetControlTable( name )
     return controlTables[ name ]
