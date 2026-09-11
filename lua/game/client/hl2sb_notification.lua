@@ -73,16 +73,39 @@ local function UndoText( name, customtext )
 	return "Undone " .. tostring( name )
 end
 
+-- HL2SB: the engine delivers one undo TWICE.  Measured with hl2sb_hud_debug 1,
+-- the OnUndo hook ran twice for every single undo (two "[HL2SB HUD] OnUndo:"
+-- lines per key press), so this hook produced two notices.  undo.lua registers
+-- exactly one net receiver, and lua/includes/modules/undo.lua now carries a
+-- re-entrancy guard, so the duplication is below that layer (two receivers or a
+-- double dispatch inside the net path).
+--
+-- Deduplicate here: an identical undo arriving within a quarter of a second is
+-- the second half of one event.
+local flLastUndoTime = 0
+local strLastUndoText = nil
+
 hook.add( "OnUndo", "hl2sb_notification", function( name, customtext )
 	if ( notification == nil or notification.AddLegacy == nil ) then
 		Msg( "[HL2SB] OnUndo: notification.AddLegacy missing\n" )
 		return
 	end
 
+	local strText = UndoText( name, customtext )
+	local flNow = ( SysTime ~= nil and SysTime() ) or 0
+
+	if ( strText == strLastUndoText and ( flNow - flLastUndoTime ) < 0.25 ) then
+		HL2SB_HUDDebug( "OnUndo: duplicate suppressed:", strText )
+		return
+	end
+
+	flLastUndoTime = flNow
+	strLastUndoText = strText
+
 	HL2SB_HUDDebug( "OnUndo:", tostring( name ), "custom=" .. tostring( customtext ) )
 
 	-- GMod: self:AddNotify( text, NOTIFY_UNDO, 2 )
-	notification.AddLegacy( UndoText( name, customtext ), NOTIFY_UNDO, 2 )
+	notification.AddLegacy( strText, NOTIFY_UNDO, 2 )
 
 	if ( surface and surface.PlaySound ) then
 		surface.PlaySound( "buttons/button15.wav" )
