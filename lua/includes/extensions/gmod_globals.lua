@@ -112,7 +112,23 @@ if ( not _CLIENT ) then
 	RealTime = RealTime or function() return gpGlobals.realtime() end
 
 	CreateConVar = CreateConVar or function( name, def, flags, help, min, max )
-		return ConVar( name, def, flags, help, min, max )
+		-- HL2SB: GMod passes FLAGS AS A TABLE, and the engine ConVar takes a
+		-- number plus a DIFFERENT positional layout:
+		--     GMod    ( name, default, flags, helptext, min, max )
+		--     engine  ( name, default, flags, help, bMin, fMin, bMax, fMax )
+		-- Passing GMod's min/max straight through put them in boolean slots, and
+		-- a flags table produced
+		--     gmod_globals.lua:115: bad argument #3 to 'ConVar' (number expected, got table)
+		-- which is exactly what killed modules/constraint.lua (52 KB).
+		local iFlags = flags
+		if ( type( flags ) == "table" ) then
+			iFlags = 0
+			for _, flag in ipairs( flags ) do
+				iFlags = bit.bor( iFlags, flag )
+			end
+		end
+
+		return ConVar( name, def, iFlags or 0, help, min ~= nil, min or 0, max ~= nil, max or 0 )
 	end
 
 	GetConVar = GetConVar or function( name )
@@ -184,8 +200,24 @@ end
 
 -- ConVar access (see above for the shape)
 CreateConVar = CreateConVar or function( name, def, flags, help, min, max )
-	return ConVar( name, def, flags, help, min, max )
-end
+		-- HL2SB: GMod passes FLAGS AS A TABLE, and the engine ConVar takes a
+		-- number plus a DIFFERENT positional layout:
+		--     GMod    ( name, default, flags, helptext, min, max )
+		--     engine  ( name, default, flags, help, bMin, fMin, bMax, fMax )
+		-- Passing GMod's min/max straight through put them in boolean slots, and
+		-- a flags table produced
+		--     gmod_globals.lua:115: bad argument #3 to 'ConVar' (number expected, got table)
+		-- which is exactly what killed modules/constraint.lua (52 KB).
+		local iFlags = flags
+		if ( type( flags ) == "table" ) then
+			iFlags = 0
+			for _, flag in ipairs( flags ) do
+				iFlags = bit.bor( iFlags, flag )
+			end
+		end
+
+		return ConVar( name, def, iFlags or 0, help, min ~= nil, min or 0, max ~= nil, max or 0 )
+	end
 
 GetConVar = GetConVar or function( name )
 	return ConVar( name )
