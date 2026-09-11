@@ -654,7 +654,32 @@ local function Can_Undo( ply, undo )
 end
 
 
+-- HL2SB: one press of "undo" reaches this function TWICE.
+--
+-- Measured in engine.log for a single press:
+--
+--   [HL2SB HUD] undo: sending Undo_FireUndo
+--   [HL2SB HUD] undo: Do_Undo returned count= 1
+--   [HL2SB HUD] undo: sending Undo_FireUndo      <- second run
+--   ... "OnUndo" twice, then the log stops: access violation in server.dll
+--
+-- The second Do_Undo deletes entities the first one already removed, so it ends
+-- up calling through a freed object -- an execute fault, which is the crash, and
+-- it is also why every undo produced two notices.  Only one registration of
+-- "undo" exists (concommand.Add at the bottom of this file), so the duplicate is
+-- in the dispatch, not the registration.  Ignore a repeat within 0.25s.
+local flLastUndoCommandTime = 0
+
 local function CC_UndoLast( pl, command, args )
+
+	local flNow = ( SysTime ~= nil and SysTime() ) or 0
+
+	if ( flNow - flLastUndoCommandTime < 0.25 ) then
+		UndoDebug( "undo: duplicate command suppressed (it is dispatched twice per press)" )
+		return
+	end
+
+	flLastUndoCommandTime = flNow
 
 	local index = pl:UniqueID()
 	PlayerUndo[ index ] = PlayerUndo[ index ] or {}
