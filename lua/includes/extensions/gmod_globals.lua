@@ -205,3 +205,22 @@ GetConVarBool = GetConVarBool or function( name )
 	local c = ConVar( name )
 	return c and c:GetBool() or false
 end
+
+-- ===========================================================================
+-- HL2SB: GMod's SysTime() and RealFrameTime()
+--
+-- lua/includes/notification.lua uses SysTime() for every notice lifetime --
+-- Panel.StartTime = SysTime() (line 83), the timeleft/velocity maths that drives
+-- the whole slide-in animation, and KillSelf's StartTime + Length test -- and
+-- RealFrameTime() for the friction term and the spring step.
+--
+-- Neither existed in this fork, so the GMod undo notice died at
+--
+--     notification.lua:83: attempt to call a nil value (global 'SysTime')
+--
+-- RealTime() and FrameTime() (defined above, on gpGlobals) are the same
+-- quantities here.  Aliased rather than wrapped so a real high-precision
+-- SysTime can replace it later without touching notification.lua.
+-- ===========================================================================
+SysTime = SysTime or RealTime
+RealFrameTime = RealFrameTime or FrameTime
