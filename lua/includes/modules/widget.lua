@@ -133,6 +133,11 @@ hook.Add( "OnEntityCreated", "CreateWidgets", function( ent )
 
 	timer.Simple( 0.001, function()
 
+		-- HL2SB: an entity can already be gone by the time this 0.001s timer runs,
+		-- and on a deleted entity every method lookup returns nil: the call then
+		-- RAISES a Lua error, and on this ARM64EC host raising is where the game
+		-- can die.  Check validity first.
+		if ( not IsValid( ent ) ) then return end
 		if ( !ent:IsWidget() ) then return end
 
 		table.insert( widgetEntities, ent )

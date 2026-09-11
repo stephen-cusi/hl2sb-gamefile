@@ -398,8 +398,18 @@ end
 -- working in.  TODO(engine): publish _E.INPUT / _E.SURFACE / ... / _E.DOCK_TYPE
 -- for real, then this whole block goes away.
 -- ===========================================================================
-if ( _E ~= nil and not _E.INPUT ) then
-	_E.INPUT = {}
+if ( _E ~= nil ) then
+	local hl2sb_EnumStubs = {
+		"ACTIVITY", "BUTTON", "INPUT", "CONTENTS", "COLLISION_GROUP", "FCVAR",
+		"EDICT_FLAG", "SOLID_FLAG", "SOLID", "SOUND_CHANNEL", "SURFACE",
+		"DAMAGE_TYPE", "HIT_GROUP", "MATERIAL_TYPE", "ENTITY_EFFECT", "ENGINE_FLAG",
+	}
+
+	for _, hl2sb_Key in ipairs( hl2sb_EnumStubs ) do
+		if ( not _E[ hl2sb_Key ] ) then
+			_E[ hl2sb_Key ] = {}
+		end
+	end
 end
 
 include( "modules/gmod_compatibility/sh_enumerations.lua" )
