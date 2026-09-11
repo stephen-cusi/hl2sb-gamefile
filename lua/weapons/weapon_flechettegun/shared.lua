@@ -58,7 +58,18 @@ function SWEP:PrimaryAttack()
 	SuppressHostEvents( NULL ) -- Do not suppress the flechette effects
 
 	local ent = ents.Create( "hunter_flechette" )
-	if ( !IsValid( ent ) ) then return end
+	if ( !IsValid( ent ) ) then
+		-- HL2SB: EP2's "hunter_flechette" entity is not registered in this build
+		-- (HL2SB's server links server_base + server_hl2mp + server_lua, not
+		-- server_episodic, and the class lives in episodic/npc_hunter.cpp), so
+		-- Create() fails and the gun used to fire nothing at all.  Fall back to a
+		-- hitscan shot with the same damage until the real projectile is ported.
+		local owner = self:GetOwner()
+		if ( IsValid( owner ) ) then
+			self:ShootBullet( 12, 1, 0.01, self.Primary.Ammo, 5, 0 )
+		end
+		return
+	end
 
 	local owner = self:GetOwner()
 
