@@ -81,3 +81,39 @@ do
 		end
 	end
 end
+
+-- ===========================================================================
+-- GMod's DOCK enum
+--
+-- https://wiki.facepunch.com/gmod/Enums/DOCK -- and that page notes this enum is
+-- the one exception that has NO DOCK_ prefix, so the globals are bare names.
+-- notification.lua:174 is `self.Label:Dock( FILL )`.
+--
+-- The numbers must match the DOCK_* defines in
+-- source-engine/vgui2/vgui_controls/Panel.cpp and the bindings in
+-- source-engine/public/lua/vgui_controls/lPanel.cpp.
+--
+-- Set defensively: this engine may already own one of these very generic names,
+-- and silently overwriting it would break whatever else uses it.  A warning says
+-- which one clashed and what it was.
+-- ===========================================================================
+local DOCK_ENUM = {
+	{ "NODOCK", 0 },
+	{ "FILL",   1 },
+	{ "LEFT",   2 },
+	{ "RIGHT",  3 },
+	{ "TOP",    4 },
+	{ "BOTTOM", 5 },
+}
+
+for _, entry in ipairs( DOCK_ENUM ) do
+	local name, value = entry[ 1 ], entry[ 2 ]
+
+	if ( _G[ name ] == nil ) then
+		_G[ name ] = value
+	elseif ( _G[ name ] ~= value ) then
+		Msg( "[HL2SB] WARNING: global '" .. name .. "' is already " .. tostring( _G[ name ] )
+			.. ", but GMod's DOCK enum needs it to be " .. tostring( value )
+			.. " -- docking may misbehave\n" )
+	end
+end
