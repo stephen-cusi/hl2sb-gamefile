@@ -693,7 +693,7 @@ local function HL2SB_UndoNow()
 	return flTime
 end
 
-local function CC_UndoLast( pl, command, args )
+local function CC_UndoLast_Body( pl, command, args )
 
 	local flNow = HL2SB_UndoNow()
 
@@ -781,6 +781,23 @@ local function CC_UndoNum( ply, command, args )
 
 end
 
+-- HL2SB: run the whole undo inside pcall.
+--
+-- Every undo of a spawned entity ended with the log stopping right after the
+-- notice went out: something in the post-undo bookkeeping RAISED a Lua error, and
+-- on this ARM64EC host (Windows on ARM, x64 emulation) raising is where the game
+-- dies -- both of Lua's mechanisms fault there (_CxxThrowException, and
+-- __longjmp_internal with LUA_USE_LONGJMP: execute access violation at a heap
+-- address in the minidumps).  pcall-based catching does work on the ordinary
+-- paths (that is why "[timer] ... failed:" lines appear), so catching here keeps
+-- the error visible as text instead of killing the process.
+local function CC_UndoLast( pl, command, args )
+	local ok, err = pcall( CC_UndoLast_Body, pl, command, args )
+
+	if ( !ok ) then
+		print( "[HL2SB] undo failed (caught instead of crashing): " .. tostring( err ) .. "\n" )
+	end
+end
 concommand.Add( "undo",			CC_UndoLast, nil, "", { FCVAR_DONTRECORD } )
 concommand.Add( "gmod_undo",	CC_UndoLast, nil, "", { FCVAR_DONTRECORD } )
 concommand.Add( "gmod_undonum",	CC_UndoNum, nil, "", { FCVAR_DONTRECORD } )
