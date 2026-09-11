@@ -219,6 +219,78 @@ if ( CLIENT and surface and vgui ) then
 			if ( PanelMeta.GetBGColor == nil and PanelMeta.GetBgColor ~= nil ) then
 				PanelMeta.GetBGColor = PanelMeta.GetBgColor
 			end
+
+			--=================================================================
+			-- HL2SB: the last GMod Label/Panel methods notification.lua needs.
+			--
+			-- Listed from notification.lua itself rather than added one per log
+			-- line: self:DockPadding, GetDockPadding, GetTall, GetWide,
+			-- InvalidateLayout, Remove, SetBackgroundColor, SetSize,
+			-- SizeToContents, self.Label:{Dock, DockMargin, GetSize,
+			-- SetContentAlignment, SetExpensiveShadow, SetFont, SetText,
+			-- SetTextColor, SetVisible, SizeToContents}.
+			--
+			-- Everything here is guarded on `== nil` so an engine binding always
+			-- wins; these only fill what this fork never bound.
+			--
+			-- SizeToContents is COLUMN-CRITICAL: notification.lua sizes the whole
+			-- notice panel from self.Label:GetSize() afterwards, so a no-op there
+			-- would give a 0x0 label and an invisible notice.  It is implemented
+			-- for real against surface.GetTextSize, which in this fork takes
+			-- ( hfont, text ) -- the two-argument form (AGENTS.md 5.4).
+			--
+			-- SetExpensiveShadow and SetContentAlignment are recorded only: vgui2's
+			-- Label has no shadow concept at all (GMod draws it in its own C++),
+			-- and the notice is perfectly legible without it.  They are stored so
+			-- a later real implementation has the values.
+			--=================================================================
+			local LabelMeta = FindMetaTable( "Label" )
+
+			if ( LabelMeta ~= nil ) then
+				if ( LabelMeta.SizeToContents == nil ) then
+					function LabelMeta:SizeToContents()
+						local w, h = 0, 0
+
+						local font = ( self.GetFont ~= nil ) and self:GetFont() or nil
+						local text = ""
+						if ( self.GetText ~= nil ) then text = self:GetText() or "" end
+
+						if ( font ~= nil and surface ~= nil and surface.GetTextSize ~= nil ) then
+							w, h = surface.GetTextSize( font, text )
+						end
+
+						if ( w < 1 ) then w = 1 end
+						if ( h < 1 ) then h = 1 end
+
+						self:SetSize( w, h )
+					end
+					Msg( "[HL2SB]   Label:SizeToContents implemented\n" )
+				end
+
+				if ( LabelMeta.SetExpensiveShadow == nil ) then
+					function LabelMeta:SetExpensiveShadow( offset, color )
+						self.m_iExpensiveShadowOffset = offset
+						self.m_colExpensiveShadow = color
+					end
+				end
+
+				if ( LabelMeta.SetContentAlignment == nil ) then
+					function LabelMeta:SetContentAlignment( align )
+						self.m_iContentAlignment = align
+						if ( self.SetContentAlignmentInternal ~= nil ) then
+							self:SetContentAlignmentInternal( align )
+						end
+					end
+				end
+			end
+
+			if ( PanelMeta.SetBackgroundColor == nil ) then
+				PanelMeta.SetBackgroundColor = function( self, color )
+					if ( self.SetBgColor ~= nil ) then
+						return self:SetBgColor( color )
+					end
+				end
+			end
 		end
 	end
 
