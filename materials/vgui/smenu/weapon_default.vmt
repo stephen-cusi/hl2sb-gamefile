@@ -1,0 +1,9 @@
+// HL2SB: the generic SWEP icon - GMod's own default weapon icon
+// (materials/weapons/swep.png, a sheet of paper).  Shown by SMenu for any weapon
+// that has no icon of its own, so ported SWEPs are always spawnable.
+UnlitGeneric
+{
+		$basetexture vgui/smenu/weapon_default
+		$translucent 1
+		$vertexalpha 1
+}
