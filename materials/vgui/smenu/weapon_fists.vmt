@@ -1,0 +1,8 @@
+// HL2SB: SMenu icon for the ported GMod fists SWEP.  GMod has no fists icon of
+// its own, so this is the generic SWEP paper (same image as weapon_default).
+UnlitGeneric
+{
+		$basetexture vgui/smenu/weapon_fists
+		$translucent 1
+		$vertexalpha 1
+}

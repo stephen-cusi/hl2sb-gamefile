@@ -128,4 +128,27 @@ concommand.Add( "hl2sb_spawnprop", function( ply, cmd, args )
 	RecordUndo( ply, ent, "#prop_physics (" .. model .. ")" )
 end, nil, "Spawn a prop and record it in the undo stack (GMod-style)" )
 
+--[[----------------------------------------------------------------------------
+	hl2sb_giveweapon <classname>
+
+	SMenu's weapon page runs this instead of the engine's own "give", which is
+	cheat flagged: with sv_cheats 0 (the multiplayer default) clicking a weapon in
+	the spawn menu did nothing at all.  GiveNamedItem() is what "give" calls
+	internally, so this is the same thing without the cheat check.
+------------------------------------------------------------------------------]]
+concommand.Add( "hl2sb_giveweapon", function( ply, cmd, args )
+	if ( not IsValid( ply ) ) then return end
+
+	local class = args and args[ 1 ]
+	if ( class == nil or class == "" ) then
+		Dbg( "hl2sb_giveweapon <classname>" )
+		return
+	end
+
+	local ent = ply:GiveNamedItem( class )
+	if ( not IsValid( ent ) ) then
+		Dbg( "hl2sb_giveweapon: could not give '" .. class .. "'" )
+	end
+end, nil, "Give a weapon/item to the calling player (not cheat protected)" )
+
 print( "[HL2SB] hl2sb_spawn_undo.lua loaded (GMod-style undo recording)" )
