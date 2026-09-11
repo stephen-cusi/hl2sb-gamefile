@@ -40,6 +40,13 @@
 
 include( "util.lua" )
 
+-- GMod's scripted-panel layer: vgui.Register / vgui.Create / vgui.CreateX and
+-- the Panel metatable extensions.  MUST precede derma/init.lua -- derma.lua's
+-- DefineControl calls vgui.Register, and scriptedpanels.lua is the version that
+-- resolves a base class through PanelFactory instead of requiring it to be a
+-- registered vgui[] factory.
+include( "extensions/client/panel.lua" )
+
 include( "derma/init.lua" )
 
 include( "vgui_base.lua" )
