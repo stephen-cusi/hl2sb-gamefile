@@ -117,3 +117,43 @@ for _, entry in ipairs( DOCK_ENUM ) do
 			.. " -- docking may misbehave\n" )
 	end
 end
+
+-- ===========================================================================
+-- GMod vs vgui2 spelling differences on the Panel metatable
+--
+-- This fork spells these with a capital B -- vgui2's own spelling, e.g.
+-- scriptedhudviewport.cpp calls SetKeyBoardInputEnabled( false ) -- while GMod's
+-- Lua API spells them with a lowercase b, and GMod's own panel files use the
+-- GMod spelling:
+--
+--     Hook 'hl2sb_notification' (OnUndo) Failed:
+--       lua/vgui/DLabel.lua:29: attempt to call a nil value (method 'SetKeyboardInputEnabled')
+--
+-- Alias both ways instead of renaming, so vgui2 C++ and GMod Lua both work.
+--
+-- Add to this table whenever the log names the next one; that is what the whole
+-- class of failures looks like (GetRefTable/GetTable, call/Call, this).
+-- ===========================================================================
+local PANEL_METHOD_ALIASES = {
+	{ "SetKeyboardInputEnabled", "SetKeyBoardInputEnabled" },
+	{ "IsKeyboardInputEnabled",  "IsKeyBoardInputEnabled"  },
+	{ "SetMouseInputEnabled",    "SetMouseInputEnabled"    },
+	{ "IsMouseInputEnabled",     "IsMouseInputEnabled"     },
+}
+
+do
+	local panelMeta = FindMetaTable and FindMetaTable( "Panel" )
+	if ( panelMeta ~= nil ) then
+		for _, pair in ipairs( PANEL_METHOD_ALIASES ) do
+			local gmodName, engineName = pair[ 1 ], pair[ 2 ]
+
+			if ( panelMeta[ gmodName ] == nil and panelMeta[ engineName ] ~= nil ) then
+				panelMeta[ gmodName ] = panelMeta[ engineName ]
+			end
+
+			if ( panelMeta[ engineName ] == nil and panelMeta[ gmodName ] ~= nil ) then
+				panelMeta[ engineName ] = panelMeta[ gmodName ]
+			end
+		end
+	end
+end
