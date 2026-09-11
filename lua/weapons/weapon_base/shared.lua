@@ -470,3 +470,42 @@ end
 -----------------------------------------------------------]]
 function SWEP:ItemBusyFrame()
 end
+
+--[[---------------------------------------------------------
+	SWEP:NetworkVar( type, slot, name )
+
+	GMod declares network variables inside SWEP:SetupDataTables(), and its
+	engine turns each declaration into the Set<name>/Get<name> methods the SWEP
+	calls (weapon_medkit declares LastAmmoRegen, for instance).  HL2SB's engine
+	has no DataTable slots for Lua weapons, so the accessors are defined here and
+	keep their value on the weapon's own table -- one table per entity, because
+	the engine hands every weapon a copy of the class table in InitScriptedWeapon.
+
+	SetupDataTables() itself is called by the engine, the same place GMod calls it.
+-----------------------------------------------------------]]
+local NW_DEFAULTS = {
+	Float = 0,
+	Int = 0,
+	Bool = false,
+	String = "",
+}
+
+function SWEP:NetworkVar( nwType, slot, name )
+	local key = "__nw_" .. name
+
+	self[ "Set" .. name ] = function( self, value )
+		self[ key ] = value
+	end
+
+	self[ "Get" .. name ] = function( self )
+		local value = self[ key ]
+
+		if ( value == nil ) then
+			if ( nwType == "Vector" ) then return Vector( 0, 0, 0 ) end
+			if ( nwType == "Angle" ) then return Angle( 0, 0, 0 ) end
+			return NW_DEFAULTS[ nwType ]
+		end
+
+		return value
+	end
+end

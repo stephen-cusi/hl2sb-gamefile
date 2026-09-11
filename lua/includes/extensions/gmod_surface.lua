@@ -255,4 +255,23 @@ if ( surface.SetMaterial == nil ) then
 	end
 end
 
+--[[---------------------------------------------------------
+	DisableClipping( b ) -- GMod exposes this as a *global*, not just a surface
+	method, and GMod's own skins/derma call it that way:
+
+	    local wasEnabled = DisableClipping( true )
+	    ...
+	    DisableClipping( wasEnabled )
+
+	It returns the previous state, which is exactly what the engine binding
+	(built in the same commit as this shim) returns, so this is a passthrough.
+	Without it every painted panel threw
+	    lua/skins/default.lua:344: attempt to call a nil value (global 'DisableClipping')
+-----------------------------------------------------------]]
+if ( CLIENT and !DisableClipping ) then
+	function DisableClipping( b )
+		return surface.DisableClipping( b and true or false )
+	end
+end
+
 print( "[HL2SB] gmod surface extension loaded" )

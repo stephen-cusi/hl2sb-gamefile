@@ -10,7 +10,13 @@ function GWEN.CreateTextureBorder( _xo, _yo, _wo, _ho, l, t, r, b, material_over
 
 	return function( x, y, w, h, col )
 
-		local tex = mat:GetTexture( "$basetexture" )
+		-- HL2SB: the GWEN sheet is an image material this engine can fail to
+		-- resolve (error material -> GetTexture returns nil).  Without this
+		-- guard the drawer threw "attempt to index a nil value (local 'tex')"
+		-- on every frame it painted -- 150k log lines in a single session.
+		local tex = mat && mat:GetTexture( "$basetexture" )
+		if ( !tex ) then return end
+
 		local texW, texH = tex:Width(), tex:Height()
 
 		local _x = _xo / texW
@@ -62,7 +68,13 @@ function GWEN.CreateTextureNormal( _xo, _yo, _wo, _ho, material_override )
 
 	return function( x, y, w, h, col )
 
-		local tex = mat:GetTexture( "$basetexture" )
+		-- HL2SB: the GWEN sheet is an image material this engine can fail to
+		-- resolve (error material -> GetTexture returns nil).  Without this
+		-- guard the drawer threw "attempt to index a nil value (local 'tex')"
+		-- on every frame it painted -- 150k log lines in a single session.
+		local tex = mat && mat:GetTexture( "$basetexture" )
+		if ( !tex ) then return end
+
 		local texW, texH = tex:Width(), tex:Height()
 
 		local _x = _xo / texW
@@ -91,7 +103,13 @@ function GWEN.CreateTextureCentered( _xo, _yo, _wo, _ho, material_override )
 
 	return function( x, y, w, h, col )
 
-		local tex = mat:GetTexture( "$basetexture" )
+		-- HL2SB: the GWEN sheet is an image material this engine can fail to
+		-- resolve (error material -> GetTexture returns nil).  Without this
+		-- guard the drawer threw "attempt to index a nil value (local 'tex')"
+		-- on every frame it painted -- 150k log lines in a single session.
+		local tex = mat && mat:GetTexture( "$basetexture" )
+		if ( !tex ) then return end
+
 		local texW, texH = tex:Width(), tex:Height()
 
 		local _x = _xo / texW
