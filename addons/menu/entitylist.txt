@@ -656,4 +656,5 @@
 "entity"          "xen_spore_small"
 "entity"          "xen_tree"
 "entity"          "xen_ttrigger"
-}
+	"entity"          "sent_ball"
+  }
