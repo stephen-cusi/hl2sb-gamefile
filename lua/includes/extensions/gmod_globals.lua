@@ -449,3 +449,58 @@ if ( achievements == nil ) then
 	}
 
 end
+-- ===========================================================================
+-- HL2SB: gui.MouseX / gui.MouseY  and  game.GetWorld()   (2026-09-13)
+--
+-- Both came out of tools/globals_audit.py, which diffs every bare global call
+-- and every library.Member( in the spawnmenu path against what this fork binds.
+-- Both are on the Derma surface the spawnmenu builds with.
+--
+-- gui.MouseX / gui.MouseY
+--   lua/vgui/dframe.lua uses them for window dragging (11 + 17 sites, e.g.
+--   :139,:140,:212) and lua/includes/extensions/client/panel/dragdrop.lua:216,262
+--   and selections.lua:79 use them for spawn-icon drag & drop.  This fork's `gui`
+--   library binds only IsGameUIVisible / ScreenToVector / ... -- no MouseX/MouseY.
+--   input.GetCursorPos() (public/lua/vgui/LIInput.cpp, bound in round 2) is the
+--   same cursor the engine's ISurface reads, so these are exact.
+--
+-- game.GetWorld()
+--   gamemodes/sandbox/gamemode/spawnmenu/toolpanel.lua:148 builds its CanTool
+--   argument with it while the tool tabs are populated:
+--       local fakeTrace = { Entity = game.GetWorld(), Hit = false }
+--   so without it UpdateToolDisabledStatus throws and the whole tool panel fails
+--   to build.  lua/includes/modules/constraint.lua and duplicator.lua use it too.
+--   Implemented through ents.FindByClass (extensions/gmod_compat.lua:384, which
+--   wraps the working gEntList.FindEntityByClassname) rather than guessing at a
+--   world accessor: it returns the real worldspawn entity, or nil if the entity
+--   list cannot answer.
+-- ===========================================================================
+if ( CLIENT and _G.gui ~= nil and _G.input ~= nil and input.GetCursorPos ~= nil ) then
+
+	if ( gui.MouseX == nil ) then
+		function gui.MouseX()
+			local x = input.GetCursorPos()
+			return x or 0
+		end
+	end
+
+	if ( gui.MouseY == nil ) then
+		function gui.MouseY()
+			local _, y = input.GetCursorPos()
+			return y or 0
+		end
+	end
+
+end
+
+if ( _G.game ~= nil and game.GetWorld == nil and _G.ents ~= nil and ents.FindByClass ~= nil ) then
+
+	function game.GetWorld()
+		local found = ents.FindByClass( "worldspawn" )
+		if ( found ~= nil ) then
+			return found[ 1 ]
+		end
+		return nil
+	end
+
+end
