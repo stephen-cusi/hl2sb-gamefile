@@ -9,6 +9,39 @@ BOX_LEFT                  = 3
 BOX_TOP                   = 4
 BOX_BOTTOM                = 5
 
+-- HL2SB: the engine's _E table does not publish every GMod enumeration.
+-- Pre-create the missing ones with GMod's values so this file (and the
+-- scripts that read the globals it produces) does not die on
+-- "attempt to index a nil value (field 'DOCK_TYPE')".
+_E = _E or {}
+
+_E.DOCK_TYPE = _E.DOCK_TYPE or {
+	NONE = 0, FILL = 1, LEFT = 2, TOP = 3, RIGHT = 4, BOTTOM = 5,
+}
+
+_E.CULL_MODE = _E.CULL_MODE or {
+	COUNTER_CLOCKWISE = 0, CLOCKWISE = 1,
+}
+
+_E.STENCIL_COMPARISON_FUNCTION = _E.STENCIL_COMPARISON_FUNCTION or {
+	NEVER = 0, LESS = 1, EQUAL = 2, LESS_OR_EQUAL = 3,
+	GREATER = 4, NOT_EQUAL = 5, GREATER_OR_EQUAL = 6, ALWAYS = 7,
+}
+
+_E.STENCIL_OPERATION = _E.STENCIL_OPERATION or {
+	KEEP = 0, ZERO = 1, REPLACE = 2, INCRSAT = 3, DECRSAT = 4,
+	INVERT = 5, INCR = 6, DECR = 7,
+}
+
+-- GMod-only enums the merge loop below would error on if absent.
+_E.INPUT = _E.INPUT or {}
+_E.SURFACE = _E.SURFACE or {}
+_E.USABILITY_TYPE = _E.USABILITY_TYPE or {}
+_E.RENDER_MODE = _E.RENDER_MODE or {}
+_E.RENDER_GROUP = _E.RENDER_GROUP or {}
+_E.EDICT_FLAG = _E.EDICT_FLAG or {}
+_E.PLAYER_ANIMATION = _E.PLAYER_ANIMATION or {}
+
 -- Copy all ACT_* and BUTTON_*/KEY_* enums to the global table
 local enumsToCopyToGlobal = {
     ACTIVITY = false,

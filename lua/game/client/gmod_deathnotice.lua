@@ -408,12 +408,26 @@ local bDrawError = false
 --
 -- Argument order is CHudKillFeed's (hud_killfeed.cpp, the AddDeathNotice
 -- forward): attacker, attackerTeam, inflictor, victim, victimTeam, suicide,
--- victimIsNPC, killerIsPlayer.
+-- victimIsNPC, killerIsPlayer, weaponClass.
+--
+-- weaponClass (9th) is the full weapon class name (e.g. "weapon_nyangun").
+-- Lua SWEPs register their killicon by class name (killicon.Add), while the
+-- 3rd argument is HL2MP's mod_textures.txt short name ("death_smg1",
+-- "d_skull").  When weaponClass has a killicon of its own it wins.
 -- ===========================================================================
 
 hook.add( "AddDeathNotice", "gmod_deathnotice", function( attacker, attackerTeam, inflictor,
                                                           victim, victimTeam,
-                                                          suicide, victimIsNPC, killerIsPlayer )
+                                                          suicide, victimIsNPC, killerIsPlayer,
+                                                          weaponClass )
+	-- Prefer the weapon's own killicon (Lua SWEPs) over the engine short name.
+	-- HL2SB debug: one line per notice so we can see what the engine sent.
+	print( "[KillFeed] inflictor=" .. tostring( inflictor ) ..
+	       " weaponClass=" .. tostring( weaponClass ) ..
+	       " exists=" .. tostring( weaponClass and killicon.Exists( weaponClass ) ) .. "\n" )
+	if ( not suicide and weaponClass and weaponClass ~= "" and killicon.Exists( weaponClass ) ) then
+		inflictor = weaponClass
+	end
 	-- GMod's team codes: -1 = hostile NPC, -2 = friendly NPC, anything else is a
 	-- team id that team.GetColor() knows.
 	local team1, team2
