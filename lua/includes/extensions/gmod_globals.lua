@@ -320,3 +320,39 @@ if ( RunConsoleCommand == nil ) then
 		end
 	end
 end
+
+-- ===========================================================================
+-- HL2SB: server-realm stand-ins for two client-only APIs that the ported GMod
+-- libraries touch at LOAD time.
+--
+-- lua/includes/modules/*.lua are loaded on BOTH realms (the engine's directory
+-- pass cannot know which files are client-only), and two of them fail on the
+-- server at every map load:
+--
+--   halo.lua:7         local rt_Store = render.GetScreenEffectTexture( 0 )
+--                      -> "attempt to index a nil value (global 'render')"
+--   properties.lua:175 net.Receive( "properties", ... )
+--                      -> "attempt to call a nil value (field 'Receive')"
+--
+-- Neither library can do anything useful on a server (one is screen-effect
+-- rendering, the other is the client->server net channel), but the throw takes
+-- the whole module down with it and writes a red line into ds_debug.log once per
+-- load.  The stand-ins below let them load: on the server render.* hands back a
+-- function that yields nil (so `render.Foo()` is nil rather than an error), and
+-- net.Receive accepts a handler and drops it.
+-- ===========================================================================
+if ( SERVER ) then
+
+	if ( render == nil ) then
+		render = setmetatable( {}, {
+			__index = function()
+				return function() return nil end
+			end
+		} )
+	end
+
+	if ( net ~= nil and net.Receive == nil ) then
+		net.Receive = function() end
+	end
+
+end
