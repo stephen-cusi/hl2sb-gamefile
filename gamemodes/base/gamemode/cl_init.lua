@@ -11,13 +11,6 @@
 
 include( "shared.lua" )
 
--- HL2SB: GMod 的 base cl_init.lua:6 在这里 include( "cl_spawnmenu.lua" )。
--- 那个文件不含任何 UI，只有两个 GM:OnSpawnMenuOpen/OnContextMenuOpen 空实现，
--- 以及四个 concommand.Add：+menu / -menu / +menu_context / -menu_context。
--- 也就是说 **+menu 这条命令是 gamemode 用 Lua 注册的**，不是引擎内置的，
--- 而 sandbox 的 spawnmenu.lua 把 GM:OnSpawnMenuOpen 挂成真正的开关。
-include( "cl_spawnmenu.lua" )
-
 -------------------------------------------------------------------------------
 -- 生命周期
 -------------------------------------------------------------------------------

@@ -8,17 +8,6 @@ local pairs = pairs
 local Warning = dbg.Warning
 local tostring = tostring
 local pcall = pcall
--- HL2SB: hook.lua opens with a BARE module( "hook" ) -- no package.seeall -- so
--- after line 31 the chunk's environment is the hook table with NO __index
--- fallback to _G.  Every global this file needs must therefore be captured HERE
--- (which is exactly why pairs/Warning/tostring/pcall are localised the same way).
---
--- GlobalTable is for globals that do not exist yet at load time: GAMEMODE and
--- _GAMEMODE are published by the ENGINE in luasrc_SetGamemode(), long after this
--- file is read, so Run() below has to look them up through the real global table
--- at call time.
-local GlobalTable = _G
-local unpack = unpack or table.unpack
 -- HL2SB: Lua 5.4 moved unpack() into the table library.  The engine installs the
 -- 5.1 alias as well, but keep this defensive so hook.lua works on either runtime.
 local unpack = unpack or table.unpack
@@ -180,37 +169,33 @@ end
 
 -------------------------------------------------------------------------------
 -- Purpose: Run the given hook (GMod-compatible hook.Run).
---
--- HL2SB fix (2026-09-13): this used to run ONLY the registered hooks and never
--- the gamemode method, which is NOT what GMod does.  GMod's contract is
---
---     hook.Run( name, ... )  ==  hook.Call( name, GAMEMODE, ... )
---
--- and GMod's own code depends on that.  The whole spawnmenu open path is proof:
---
---   gamemodes/base/gamemode/cl_spawnmenu.lua:10
---       concommand.Add( "+menu", function() hook.Run( "OnSpawnMenuOpen" ) end )
---   gamemodes/sandbox/gamemode/spawnmenu/spawnmenu.lua:241
---       function GM:OnSpawnMenuOpen() ... end      <-- the ONLY implementation
---
--- With the old body that call reached no implementation at all, so +menu (and
--- every other gamemode callback GMod invokes this way: SpawnMenuEnabled,
--- AddGamemodeToolMenuTabs, AddToolMenuTabs, AddGamemodeToolMenuCategories,
--- AddToolMenuCategories, PopulateToolMenu, PreReloadToolsMenu,
--- PostReloadToolsMenu, SpawnMenuCreated, SpawnMenuOpened, SpawnMenuClosed,
--- OnSpawnMenuClose) silently did nothing: no error, no log line, no menu.
---
--- hook.Call already runs the registered hooks first and falls back to the
--- gamemode method, which is exactly GMod's order, so delegate instead of
--- duplicating the loop.
+--          Calls every hook registered under strEventName in order and returns
+--          the first non-nil result, exactly like GMod's hook.Run(name, ...).
+--          This is the entry point most GMod addons use to fire callbacks, so
+--          ported scripts calling hook.Run("PlayerSpawn", ply) keep working.
 -- Input  : strEventName - Name of the hook
 -- Output : first non-nil result, else nil
 -------------------------------------------------------------------------------
 function Run( strEventName, ... )
-  -- GlobalTable, not _G: see the capture next to `local pcall` at the top --
-  -- this module has NO package.seeall, so a bare _G here is nil and reading
-  -- _G.GAMEMODE threw "attempt to index a nil value (global '_G')".
-  return call( strEventName, GlobalTable.GAMEMODE or GlobalTable._GAMEMODE, ... )
+  local tHooks = tHooks[ strEventName ]
+  if ( tHooks ~= nil ) then
+    for k, v in pairs( tHooks ) do
+      if ( v == nil ) then
+        Warning( "Hook '" .. tostring( k ) .. "' (" .. tostring( strEventName ) .. ") tried to call a nil function!\n" )
+        tHooks[ k ] = nil
+        break
+      else
+        tReturns = { pcall( v, ... ) }
+        if ( tReturns[ 1 ] == false ) then
+          Warning( "Hook '" .. tostring( k ) .. "' (" .. tostring( strEventName ) .. ") Failed: " .. tostring( tReturns[ 2 ] ) .. "\n" )
+          tHooks[ k ] = nil
+        elseif ( tReturns[ 2 ] ~= nil ) then
+          return unpack( tReturns, 2 )
+        end
+      end
+    end
+  end
+  return nil
 end
 
 -- ===========================================================================
