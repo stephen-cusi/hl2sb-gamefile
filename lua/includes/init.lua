@@ -331,12 +331,103 @@ if ( CLIENT and surface and vgui ) then
 					end
 				end
 			end
+
+			--=================================================================
+			-- HL2SB: Panel:HasParent( pnl )
+			--
+			-- GMod's vgui2 has Panel::HasParent(VPANEL) and binds it; this
+			-- fork's lPanel.cpp never did (its own IPanel has the call --
+			-- public/vgui/IPanel.h:66 -- but nothing exposes it to Lua).
+			--
+			-- Needed by the GMod spawnmenu's own focus plumbing:
+			--   gamemodes/sandbox/gamemode/spawnmenu/spawnmenu.lua:274,277,290,294
+			--       pnl:HasParent( g_SpawnMenu )
+			-- and by lua/includes/extensions/client/panel.lua:493 (Derma
+			-- drag/drop).  Without it those throw and hook.lua UNREGISTERS the
+			-- OnTextEntryGetFocus / OnTextEntryLoseFocus hooks on their first
+			-- run, so the spawnmenu's search box can never take the keyboard.
+			--
+			-- GMod's semantics are the immediate parent, which vgui2's
+			-- HasParent(VPANEL) also is, so GetParent() == pnl is exact.
+			--=================================================================
+			if ( PanelMeta.HasParent == nil and PanelMeta.GetParent ~= nil ) then
+				function PanelMeta:HasParent( pnl )
+					if ( not IsValid( pnl ) ) then return false end
+					return self:GetParent() == pnl
+				end
+
+				Msg( "[HL2SB]   Panel:HasParent implemented\n" )
+			end
+
+			--=================================================================
+			-- HL2SB: Panel:KillFocus()
+			--
+			-- lua/vgui/dtextentry.lua:432 calls it from the global mouse-press
+			-- handler (click outside the text entry -> drop the keyboard).
+			--
+			-- This fork's vgui2 has NO focus primitive to forward to: IInput has
+			-- no SetFocus/KillFocus (public/vgui/IInput.h) and IPanel has no
+			-- equivalent either, so unlike MoveToBack/FocusNext this one cannot
+			-- be exact.  Turning keyboard input off on that panel is what the
+			-- caller actually wants -- the spawnmenu re-enables it through its
+			-- own StartKeyFocus hook when a real text entry is clicked -- and it
+			-- is far better than the alternative, which is an error on every
+			-- mouse press.
+			--=================================================================
+			if ( PanelMeta.KillFocus == nil ) then
+				function PanelMeta:KillFocus()
+					if ( self.SetKeyboardInputEnabled ~= nil ) then
+						self:SetKeyboardInputEnabled( false )
+					end
+				end
+
+				Msg( "[HL2SB]   Panel:KillFocus approximated\n" )
+			end
 		end
+	end
+
+	-- HL2SB: Player:GetTool( name ), the last thing on the spawnmenu's tool-menu
+	-- population path that this fork cannot answer.
+	--
+	-- gamemodes/sandbox/gamemode/spawnmenu/toolpanel.lua:159 evaluates it while
+	-- building the tool tabs (Lua evaluates arguments before hook.Run):
+	--
+	--     hook.Run( "CanTool", LocalPlayer(), fakeTrace, item.Name,
+	--               LocalPlayer():GetTool( item.Name ), 4 )
+	--
+	-- In GMod it returns the gmod_tool stool table for that tool name.  This
+	-- fork has no stool registry at all (`gmod_tool` is one of the documented
+	-- gaps), so there is nothing to return: nil is the honest answer, and it
+	-- keeps UpdateToolDisabledStatus from throwing and taking the whole tool
+	-- panel down with it.  When stools are ported, delete this.
+	local PlayerMeta = FindMetaTable( "Player" )
+	if ( PlayerMeta ~= nil and PlayerMeta.GetTool == nil ) then
+		function PlayerMeta:GetTool( name )
+			return nil
+		end
+
+		Msg( "[HL2SB]   Player:GetTool stubbed (no gmod_tool stools in this fork)\n" )
 	end
 
 	include( "derma/init.lua" )
 
 	include( "vgui_base.lua" )
+
+	-- HL2SB: the OTHER 39 controls GMod ships in lua/vgui/.
+	--
+	-- vgui_base.lua is GMod's own file and names only 54 of the 93 control
+	-- files; GMod's engine walks lua/vgui/ for the rest and this fork never did.
+	-- DHorizontalDivider -- the first panel the sandbox spawnmenu creates,
+	-- spawnmenu/spawnmenu.lua:21 -- was in the missing 39, so vgui.Create
+	-- returned nil and the menu died on its own Init:
+	--
+	--     Hook 'CreateSpawnMenu' (OnGamemodeLoaded) Failed:
+	--         spawnmenu/spawnmenu.lua:22: attempt to index a nil value
+	--                                    (field 'HorizontalDivider')
+	--
+	-- See the header of vgui_extra.lua for why it is a GENERATED explicit list
+	-- rather than a directory scan, and why it is not folded into GMod's file.
+	include( "vgui_extra.lua" )
 
 	-- HL2SB: GMod's default Derma skin.  Nothing loaded it, so derma.DefaultSkin
 	-- stayed the empty table derma.lua starts with -- and SkinHook() silently
