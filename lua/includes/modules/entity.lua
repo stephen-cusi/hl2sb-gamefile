@@ -6,6 +6,28 @@
 
 _BASE_ENTITY_CLASS = "prop_scripted"
 
+--========== HL2SB - GMod compat ==========--
+-- GMod's engine registers its own base class NAMES in C++, so no
+-- lua/entities/<name> script exists for them here.  A stock GMod entity script
+-- starts with DEFINE_BASECLASS( "base_anim" ), which the engine-side preprocessor
+-- turns into `local BaseClass = baseclass.Get( "base_anim" )`; that call sets
+-- ENT.Base = "base_anim" (lua/includes/modules/baseclass.lua:24).
+--
+-- Without this map the lookup below finds nothing, and then two things go wrong:
+-- it warns, and - much worse - it returns the entity table WITHOUT inheriting
+-- anything, so the fallback to __base (HL2SB's own prop_scripted, which carries
+-- the real entity Lua methods) never happens either.  sent_ball hit exactly this.
+--
+-- Aliasing to prop_scripted is the honest mapping: in GMod these names resolve to
+-- the engine's scripted-entity base, and prop_scripted IS this fork's equivalent.
+local GMOD_BASE_ALIASES = {
+	base_anim       = _BASE_ENTITY_CLASS,
+	base_entity     = _BASE_ENTITY_CLASS,
+	base_gmodentity = _BASE_ENTITY_CLASS,
+	base_ai         = _BASE_ENTITY_CLASS,
+	base_nextbot    = _BASE_ENTITY_CLASS,
+}
+
 local table = table
 local type = type
 local string = string
@@ -34,6 +56,11 @@ function get( strClassname )
   local sBase = tEntity.Base
   if ( type( sBase ) ~= "string" or sBase == "" or sBase == strClassname ) then
     sBase = tEntity.__base
+  elseif ( GMOD_BASE_ALIASES[ sBase ] ) then
+    -- GMod's engine-level base names (base_anim and friends) -> this fork's
+    -- scripted entity base, so the entity inherits a real Lua table instead of
+    -- coming back bare with a warning.
+    sBase = GMOD_BASE_ALIASES[ sBase ]
   end
 
   if ( sBase ~= strClassname ) then
