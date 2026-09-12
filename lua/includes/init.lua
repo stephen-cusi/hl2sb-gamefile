@@ -99,6 +99,104 @@ Msg( string.format(
 -- layer really is, so test for them directly as well.
 if ( CLIENT and surface and vgui ) then
 
+	--==========================================================================
+	-- HL2SB: register the custom .ttf files this mod ships BEFORE anything
+	-- creates a font with them.
+	--
+	-- WHY THIS IS NEEDED AT ALL -- having the file in resource/ is not enough:
+	-- the Windows font manager resolves a family through GDI, and a game-supplied
+	-- .ttf only becomes visible to GDI once it has been handed to
+	-- CMatSystemSurface::AddCustomFontFile
+	--
+	--     vguimatsurface/MatSystemSurface.cpp:1840
+	--         AddCustomFontFile( fontName, fontFileName )
+	--           -> g_pFullFileSystem->GetLocalPath( fontFileName, ... )
+	--           -> AddFontResourceExA( fullPath, 0x10 /*FR_PRIVATE*/, NULL )
+	--              (MatSystemSurface.cpp:1893)
+	--
+	-- There is NO resource/*.ttf scan anywhere in vgui2 or vguimatsurface (the
+	-- only other implementation, vgui2/src/Surface.cpp:3253, is the stand-alone
+	-- Win32 surface; and the family->file table in
+	-- materialsystem/shaderapidx9/shaderapidx8.cpp:13375 is inside
+	-- `#if defined( _X360 )`, so it does not apply to this build).  On Windows the
+	-- name argument is not used for matching either -- GDI keys the font by the
+	-- family recorded INSIDE the ttf -- which is why the argument below must spell
+	-- the real family, and why tools/ttf_family.py exists to check it.
+	--
+	-- Consequence before this block: "Roboto" (DermaLarge) could never resolve.
+	-- lua/derma/init.lua:41 creates DermaLarge with font="Roboto", and the GMod
+	-- spawnmenu draws through it -- spawnmenu/toolpanel.lua:66
+	-- markup.Parse( "<font=DermaLarge>" ... ).  It silently fell back to Verdana
+	-- (LISurface.cpp:195 retries with Verdana when SetFontGlyphSet fails), so the
+	-- menu's own labels were the wrong face.
+	--
+	-- Every family below was read out of the shipped file with
+	-- tools/ttf_family.py, so the name and the file cannot drift.  Windows system
+	-- families (Tahoma, Arial, Verdana, Trebuchet MS, Courier New, Times New
+	-- Roman, Lucida Console, Marlett) need no registration -- they are in the OS
+	-- font database; they are listed in the test's system-font allowlist instead.
+	--==========================================================================
+	local hl2sb_CustomFonts = {
+		-- family        file (relative to the game dir)
+		--
+		-- The name is only a label here: on Windows CMatSystemSurface::
+		-- AddCustomFontFile ends in AddFontResourceExA(path, FR_PRIVATE) and GDI
+		-- then keys the face by the family recorded INSIDE the ttf, not by this
+		-- argument.  For the Roboto style variants those differ: GDI sees
+		-- Roboto-Regular/Bold/Italic/BoldItalic as family "Roboto", but the
+		-- Medium/Light face as "Roboto Lt", Black as "Roboto Bk" and the
+		-- Condensed face as "Roboto Cn" (the Windows nameID 1 record carries the
+		-- width; the Macintosh one does not).  So "Roboto" -- what DermaLarge and
+		-- the spawnmenu markup ask for -- is supplied by the four straight faces
+		-- below; the variants are registered for completeness and appear under
+		-- their own families.  tools/ttf_gdi_families.lua prints this mapping.
+		{ "Roboto",            "resource/Roboto-Regular.ttf" },          -- DermaLarge
+		{ "Roboto",            "resource/Roboto-Bold.ttf" },
+		{ "Roboto",            "resource/Roboto-Italic.ttf" },
+		{ "Roboto",            "resource/Roboto-BoldItalic.ttf" },
+		{ "Roboto",            "resource/Roboto-Medium.ttf" },            -- GDI: Roboto Lt
+		{ "Roboto",            "resource/Roboto-MediumItalic.ttf" },      -- GDI: Roboto Lt
+		{ "Roboto",            "resource/Roboto-Light.ttf" },             -- GDI: Roboto Lt
+		{ "Roboto",            "resource/Roboto-LightItalic.ttf" },       -- GDI: Roboto Lt
+		{ "Roboto",            "resource/Roboto-Thin.ttf" },              -- GDI: Roboto Th
+		{ "Roboto",            "resource/Roboto-ThinItalic.ttf" },        -- GDI: Roboto Th
+		{ "Roboto",            "resource/Roboto-Black.ttf" },             -- GDI: Roboto Bk
+		{ "Roboto",            "resource/Roboto-BlackItalic.ttf" },       -- GDI: Roboto Bk
+		{ "Roboto",            "resource/Roboto-Condensed.ttf" },         -- GDI: Roboto Cn
+		{ "Roboto",            "resource/Roboto-BoldCondensed.ttf" },     -- GDI: Roboto Cn
+		{ "Roboto",            "resource/Roboto-BoldCondensedItalic.ttf" }, -- GDI: Roboto Cn
+		{ "Roboto",            "resource/Roboto-CondensedItalic.ttf" },   -- GDI: Roboto Cn
+		-- game icon/hud families named by resource/clientscheme.res and by GMod's
+		-- own Lua; the files were already in the tree, just never registered
+		{ "HalfLife2",         "resource/halflife2.ttf" },
+		{ "HL2MP",             "resource/hl2mp.ttf" },
+		{ "HL2SB",             "resource/hl2sb.ttf" },
+		{ "HL2EP2",            "resource/hl2ep2.ttf" },
+		{ "HL2cross",          "resource/HL2crosshairs.ttf" },
+		{ "cs",                "resource/cs.ttf" },
+		{ "cs",                "resource/csd.ttf" },                     -- csd.ttf declares family "cs"
+		{ "Counter-Strike",    "resource/cstrike.ttf" },
+		{ "Akbar",             "resource/akbar.ttf" },
+		{ "Coolvetica",        "resource/coolvetica.ttf" },
+		-- NOT registered, deliberately:
+		--   lucidaconsole.ttf / marlett.ttf -- Windows already ships both
+		--   families, so the files are redundant here.
+	}
+
+	for _, hl2sb_font in ipairs( hl2sb_CustomFonts ) do
+
+		local hl2sb_ok = surface.AddCustomFontFile( hl2sb_font[ 1 ], hl2sb_font[ 2 ] )
+
+		if ( not hl2sb_ok ) then
+			-- Not fatal: LISurface.cpp:195 falls back to Verdana, so the family
+			-- degrades to a visible face rather than to nothing.  Say so loudly
+			-- anyway, because "my font is the wrong face" is otherwise invisible.
+			Msg( "[HL2SB] AddCustomFontFile failed for '" .. hl2sb_font[ 1 ] ..
+				"' (" .. hl2sb_font[ 2 ] .. ") -- that family will fall back\n" )
+		end
+
+	end
+
 	-- GMod's scripted-panel layer: vgui.Register / vgui.Create / vgui.CreateX and
 	-- the Panel metatable extensions.  MUST precede derma/init.lua -- derma.lua's
 	-- DefineControl calls vgui.Register, and scriptedpanels.lua is the version that
