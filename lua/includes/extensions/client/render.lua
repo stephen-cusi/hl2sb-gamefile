@@ -194,3 +194,52 @@ function render.Model( tbl, ent )
 	end
 
 end
+
+-- ===========================================================================
+-- HL2SB: GMod's render.* filter / scissor spellings (2026-09-13).
+--
+-- The engine binds the *upstream* names -- lrender.cpp:549 PushFilterMinification,
+-- :575 PopFilterMinification, :584 PushFilterMagnification, :610
+-- PopFilterMagnification, :475 SetScissorRectangle -- while GMod's Lua API (and
+-- therefore GMod's own UI code) uses the short ones.  It matters here because the
+-- spawnmenu's content icons paint through them:
+--
+--   gamemodes/sandbox/gamemode/spawnmenu/creationmenu/content/contenticon.lua:132
+--       render.PushFilterMag( TEXFILTER.ANISOTROPIC )
+--   ...:137  render.PopFilterMin()
+--   ...:182  render.SetScissorRect( px, py, pw, ph, true )
+--   ...:199  render.SetScissorRect( 0, 0, 0, 0, false )
+--
+-- A nil there throws inside the spawnicon's Paint, so every model thumbnail came
+-- out blank.
+--
+-- SetScissorRect is NOT a straight alias: the engine's SetScissorRectangle takes
+-- ( left, top, RIGHT, BOTTOM, enable ) -- lrender.cpp:481/484 hands them
+-- straight to IMatRenderContext::SetScissorRect -- while GMod passes
+-- ( x, y, WIDTH, HEIGHT, enable ).  So convert before forwarding.
+-- ===========================================================================
+if ( render ~= nil ) then
+
+	if ( render.PushFilterMag == nil and render.PushFilterMagnification ~= nil ) then
+		render.PushFilterMag = render.PushFilterMagnification
+	end
+
+	if ( render.PopFilterMag == nil and render.PopFilterMagnification ~= nil ) then
+		render.PopFilterMag = render.PopFilterMagnification
+	end
+
+	if ( render.PushFilterMin == nil and render.PushFilterMinification ~= nil ) then
+		render.PushFilterMin = render.PushFilterMinification
+	end
+
+	if ( render.PopFilterMin == nil and render.PopFilterMinification ~= nil ) then
+		render.PopFilterMin = render.PopFilterMinification
+	end
+
+	if ( render.SetScissorRect == nil and render.SetScissorRectangle ~= nil ) then
+		render.SetScissorRect = function( x, y, w, h, bEnable )
+			return render.SetScissorRectangle( x, y, x + w, y + h, bEnable )
+		end
+	end
+
+end

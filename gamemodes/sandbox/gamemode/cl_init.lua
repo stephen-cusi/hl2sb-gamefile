@@ -12,6 +12,13 @@ include( "shared.lua" )
 include( "in_main.lua" )
 include( "scripted_controls/buildmenu.lua" )
 
+-- HL2SB: GMod 的 sandbox cl_init.lua:11 在这里 include( "cl_spawnmenu.lua" )。
+-- 这一行就是"GMod 的 spawnmenu 到底有没有被加载"的开关：cl_spawnmenu.lua
+-- include 了 spawnmenu/spawnmenu.lua（整个 UI），并定义 GM:SpawnMenuOpen /
+-- GM:OnSpawnMenuOpen / GM:AddGamemodeToolMenuTabs / GM:PopulatePropMenu 等。
+-- Team Sandbox 的 buildmenu（上一行）保留不动，两者互不冲突。
+include( "cl_spawnmenu.lua" )
+
 local bor = bit.bor
 local FONTFLAG_ANTIALIAS = _E.FONTFLAG.ANTIALIAS
 local FONTFLAG_ADDITIVE = _E.FONTFLAG.ADDITIVE

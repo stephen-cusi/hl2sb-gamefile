@@ -489,3 +489,187 @@ function table.insert( t, a, b )
   rawinsert( t, a, b )
   return a
 end
+-- ===========================================================================
+-- HL2SB: the remaining GMod table/pairs helpers (2026-09-13).
+--
+-- Ported verbatim from GMod's lua/includes/extensions/table.lua, which defines
+-- 42 top-level names; this file only had 33.  The missing ones were not merely
+-- "unused":  SortedPairsByMemberValue is called by the GMod sandbox spawnmenu
+--
+--   gamemodes/sandbox/gamemode/spawnmenu/creationmenu.lua:31
+--       for k, v in SortedPairsByMemberValue( tabs, "Order" ) do
+--
+-- so PANEL:Populate() threw "attempt to call a nil value (global
+-- 'SortedPairsByMemberValue')" and CreationMenu:Init() aborted the whole
+-- spawnmenu build.  (properties.lua:90, dcombobox.lua:206, dentityproperties.lua:50,
+-- dform.lua:114 and propselect.lua:136 were already calling it and silently
+-- failing.)
+--
+-- Deliberately NOT ported: table.Sanitise / table.DeSanitise, which need the
+-- GMod entity/Vector/Color userdata predicates this fork does not have (the
+-- reason the rest of this file is a subset).  Nothing in lua/ or gamemodes/
+-- calls them.
+-- ===========================================================================
+
+--[[---------------------------------------------------------
+	Name: table.CollapseKeyValue( table )
+	Desc: Collapses a table with keyvalue structure
+-----------------------------------------------------------]]
+function table.CollapseKeyValue( Table )
+
+	local OutTable = {}
+
+	for k, v in pairs( Table ) do
+
+		local Val = v.Value
+
+		if ( istable( Val ) ) then
+			Val = table.CollapseKeyValue( Val )
+		end
+
+		OutTable[ v.Key ] = Val
+
+	end
+
+	return OutTable
+
+end
+
+--[[---------------------------------------------------------
+	Name: table.ClearKeys( table, bSaveKey )
+	Desc: Clears the keys, converting to a numbered format
+-----------------------------------------------------------]]
+function table.ClearKeys( Table, bSaveKey )
+
+	local OutTable = {}
+
+	for k, v in pairs( Table ) do
+		if ( bSaveKey ) then
+			v.__key = k
+		end
+		table.insert( OutTable, v )
+	end
+
+	return OutTable
+
+end
+
+local function hl2sb_keyValuePairs( state )
+
+	state.Index = state.Index + 1
+
+	local keyValue = state.KeyValues[ state.Index ]
+	if ( !keyValue ) then return end
+
+	return keyValue.key, keyValue.val
+
+end
+
+local function hl2sb_toKeyValues( tbl )
+
+	local result = {}
+
+	for k, v in pairs( tbl ) do
+		table.insert( result, { key = k, val = v } )
+	end
+
+	return result
+
+end
+
+--[[---------------------------------------------------------
+	A Pairs function
+		Sorted by VALUE
+-----------------------------------------------------------]]
+function SortedPairsByValue( pTable, Desc )
+
+	local sortedTbl = hl2sb_toKeyValues( pTable )
+
+	if ( Desc ) then
+		table.sort( sortedTbl, function( a, b ) return a.val > b.val end )
+	else
+		table.sort( sortedTbl, function( a, b ) return a.val < b.val end )
+	end
+
+	return hl2sb_keyValuePairs, { Index = 0, KeyValues = sortedTbl }
+
+end
+
+--[[---------------------------------------------------------
+	A Pairs function
+		Sorted by Member Value (All table entries must be a table!)
+-----------------------------------------------------------]]
+function SortedPairsByMemberValue( pTable, pValueName, Desc )
+
+	local sortedTbl = hl2sb_toKeyValues( pTable )
+
+	for k, v in pairs( sortedTbl ) do
+		v.member = v.val[ pValueName ]
+	end
+
+	table.SortByMember( sortedTbl, "member", !Desc )
+
+	return hl2sb_keyValuePairs, { Index = 0, KeyValues = sortedTbl }
+
+end
+
+--[[---------------------------------------------------------
+	A Pairs function
+-----------------------------------------------------------]]
+function RandomPairs( pTable, Desc )
+
+	local sortedTbl = hl2sb_toKeyValues( pTable )
+
+	for k, v in pairs( sortedTbl ) do
+		v.rand = math.random( 1, 1000000 )
+	end
+
+	if ( Desc ) then
+		table.sort( sortedTbl, function( a, b ) return a.rand > b.rand end )
+	else
+		table.sort( sortedTbl, function( a, b ) return a.rand < b.rand end )
+	end
+
+	return hl2sb_keyValuePairs, { Index = 0, KeyValues = sortedTbl }
+
+end
+
+function table.GetLastKey( t )
+	local k, _ = next( t, table.Count( t ) - 1 )
+	return k
+end
+
+function table.GetLastValue( t )
+	local _, v = next( t, table.Count( t ) - 1 )
+	return v
+end
+
+function table.FindNext( tab, val )
+	local bfound = false
+	for k, v in pairs( tab ) do
+		if ( bfound ) then return v end
+		if ( val == v ) then bfound = true end
+	end
+
+	return table.GetFirstValue( tab )
+end
+
+function table.FindPrev( tab, val )
+
+	local last = table.GetLastValue( tab )
+	for k, v in pairs( tab ) do
+		if ( val == v ) then return last end
+		last = v
+	end
+
+	return last
+
+end
+
+function table.MemberValuesFromKey( tab, key )
+	local res = {}
+	for k, v in pairs( tab ) do
+		if ( istable( v ) and v[ key ] != nil ) then res[ #res + 1 ] = v[ key ] end
+	end
+	return res
+end

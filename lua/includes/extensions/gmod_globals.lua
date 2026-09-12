@@ -366,3 +366,86 @@ end
 -- ends the server's pass with the bare `return` above (inside the
 -- `if ( not _CLIENT )` block), so anything after that point never runs on the
 -- server.  They live near the top of the file instead.
+
+-- ===========================================================================
+-- HL2SB: input.IsKeyTrapping()  (GMod global on the input library)
+--
+-- gamemodes/base/gamemode/cl_spawnmenu.lua:15 is
+--
+--     concommand.Add( "-menu", function()
+--         if ( input.IsKeyTrapping() ) then return end
+--         hook.Run( "OnSpawnMenuClose" )
+--     end, ... )
+--
+-- (and lua/vgui/dbinder.lua:81 calls it too).  This fork's vgui IInput has no
+-- IsKeyTrapping at all (public/vgui/IInput.h has no such virtual -- GMod added
+-- it to its fork of vgui2), so it cannot be bound; the only definition anywhere
+-- was lua/includes/modules/gmod_compatibility/sh_init.lua:1298, which is inert
+-- behind GMOD_COMPATIBILITY = false.
+--
+-- GMod's semantics: true while the console or a text entry is trapping the
+-- keyboard.  input.GetFocus() IS bound (public/lua/vgui/LIInput.cpp:312) and
+-- returns the panel holding keyboard focus, which is the same signal, so test
+-- the focused panel's class.  It only needs to be conservative: returning true
+-- keeps a text entry from being closed under the user's fingers.
+-- ===========================================================================
+if ( input ~= nil and input.IsKeyTrapping == nil ) then
+
+	function input.IsKeyTrapping()
+
+		if ( input.GetFocus == nil ) then return false end
+
+		local pnl = input.GetFocus()
+		if ( not IsValid( pnl ) ) then return false end
+
+		if ( pnl.GetClassName == nil ) then return false end
+
+		local class = pnl:GetClassName()
+
+		return class == "TextEntry" or class == "EditablePanel"
+
+	end
+
+end
+-- ===========================================================================
+-- HL2SB: the `achievements` table (GMod global, client)
+--
+-- GMod ships the achievement callbacks in lua/includes/init.lua; this fork has
+-- no achievement system at all.  The only definition anywhere was
+-- lua/includes/modules/gmod_compatibility/sh_init.lua:1172, which is inert
+-- behind GMOD_COMPATIBILITY = false -- so the global was nil, and
+--
+--   gamemodes/sandbox/gamemode/spawnmenu/spawnmenu.lua:109
+--       achievements.SpawnMenuOpen()      -- last line of PANEL:Open()
+--
+-- threw every time the spawnmenu was opened.  PANEL:Open() has already run
+-- MakePopup / SetVisible by then, so the menu still appeared -- but the error
+-- propagated out through hook.Run("OnSpawnMenuOpen"), which means the
+-- SpawnMenuOpened hook never ran (GMod's opening hints and the menubar parent
+-- hand-off both live there) and ds_debug.log got one red line per press.
+--
+-- Shapes copied from sh_init.lua:1172 so nothing else can notice: no-ops, and
+-- false/0/"" for the getters.
+-- ===========================================================================
+if ( achievements == nil ) then
+
+	achievements = {
+		BalloonPopped  = function() end,
+		Count          = function() return 0 end,
+		EatBall        = function() end,
+		GetCount       = function() return 0 end,
+		GetDesc        = function() return "" end,
+		GetGoal        = function() return 0 end,
+		GetName        = function() return "" end,
+		IncBaddies     = function() end,
+		IncBystander   = function() end,
+		IncGoodies     = function() end,
+		IsAchieved     = function() return false end,
+		Remover        = function() end,
+		SpawnedNPC     = function() end,
+		SpawnedProp    = function() end,
+		SpawnedRagdoll = function() end,
+		SpawnMenuOpen  = function() end,
+	}
+
+end
