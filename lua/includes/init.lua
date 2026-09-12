@@ -42,6 +42,36 @@
 
 include( "util.lua" )
 
+-- HL2SB: util/sql.lua -- GMod's own bootstrap loads this immediately after
+-- util.lua (its lua/includes/init.lua lines 6-7), and this fork never did.  The
+-- file has been sitting in lua/includes/util/ the whole time, byte-identical to
+-- GMod's, defining exactly what was missing:
+--
+--     line  9  sql.SQLStr
+--     line 27  SQLStr = sql.SQLStr          <-- the BARE GLOBAL
+--     line 33  sql.TableExists
+--     line 44  sql.IndexExists
+--     line 56  sql.QueryRow
+--     line 72  sql.QueryValue
+--     line 91  sql.Begin   /  line 99 sql.Commit
+--     line 107 sql.LastError
+--
+-- Without it, modules/cookie.lua:27 died on
+--     attempt to call a nil value (global 'SQLStr')
+-- the first time the spawnmenu called SetCookieName (spawnmenu.lua:25 ->
+-- DHorizontalDivider:LoadCookies -> cookie.GetNumber -> GetCache), which took
+-- the whole CreateSpawnMenu hook down with it:
+--
+--     Hook 'CreateSpawnMenu' (OnGamemodeLoaded) Failed:
+--         lua/includes/modules/cookie.lua:27: attempt to call a nil value
+--         (global 'SQLStr')
+--
+-- The engine installs a `sql` table (lsrcinit.cpp) whose SQLStr-only stub was
+-- never enough; this file is the other half, and it must come after it.
+-- `if ( !sql ) then return end` at the top makes it a no-op if sql ever goes
+-- away.
+include( "util/sql.lua" )
+
 -- Everything below is CLIENT ONLY, and GMod's own bootstrap guards it the same
 -- way.  On the server these files do not merely no-op: derma/init.lua opens by
 -- indexing `surface` (nil server-side), so it throws before it ever reaches
