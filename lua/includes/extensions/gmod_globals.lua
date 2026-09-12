@@ -104,10 +104,51 @@ Model = Model or function( s )
 	return s
 end
 
+-- ===========================================================================
+-- HL2SB: server-realm stand-ins for two client-only APIs that the ported GMod
+-- libraries touch at LOAD time.
+--
+-- lua/includes/modules/*.lua are loaded on BOTH realms (the engine's directory
+-- pass cannot know which files are client-only), and two of them fail on the
+-- server at every map load:
+--
+--   halo.lua:7         local rt_Store = render.GetScreenEffectTexture( 0 )
+--                      -> "attempt to index a nil value (global 'render')"
+--   properties.lua:175 net.Receive( "properties", ... )
+--                      -> "attempt to call a nil value (field 'Receive')"
+--
+-- Neither library can do anything useful on a server (one is screen-effect
+-- rendering, the other is the client->server net channel), but the throw takes
+-- the whole module down with it and writes a red line into ds_debug.log once per
+-- load.  The stand-ins below let them load: on the server render.* hands back a
+-- function that yields nil (so `render.Foo()` is nil rather than an error), and
+-- net.Receive accepts a handler and drops it.
+--
+-- ⚠️ This block MUST sit above the `if ( not _CLIENT )` section below: that
+-- section ends with a bare `return`, so on the server the rest of this file
+-- never runs.  It used to be at the end of the file, where it was dead code and
+-- the two errors kept appearing every load (log lines properties.lua:175 and
+-- halo.lua:7 at 01:25 on 2026-09-13, AFTER gmod_globals.lua had loaded).
+-- ===========================================================================
+if ( SERVER ) then
+
+	if ( render == nil ) then
+		render = setmetatable( {}, {
+			__index = function()
+				return function() return nil end
+			end
+		} )
+	end
+
+	if ( net ~= nil and net.Receive == nil ) then
+		net.Receive = function() end
+	end
+
+end
+
 if ( not _CLIENT ) then
 	-- Server side has no surface / skin; still bridge time + convar.
 	gpGlobals = gpGlobals or _G.gpGlobals
-
 	CurTime  = CurTime  or function() return gpGlobals.curtime() end
 	RealTime = RealTime or function() return gpGlobals.realtime() end
 
@@ -321,38 +362,7 @@ if ( RunConsoleCommand == nil ) then
 	end
 end
 
--- ===========================================================================
--- HL2SB: server-realm stand-ins for two client-only APIs that the ported GMod
--- libraries touch at LOAD time.
---
--- lua/includes/modules/*.lua are loaded on BOTH realms (the engine's directory
--- pass cannot know which files are client-only), and two of them fail on the
--- server at every map load:
---
---   halo.lua:7         local rt_Store = render.GetScreenEffectTexture( 0 )
---                      -> "attempt to index a nil value (global 'render')"
---   properties.lua:175 net.Receive( "properties", ... )
---                      -> "attempt to call a nil value (field 'Receive')"
---
--- Neither library can do anything useful on a server (one is screen-effect
--- rendering, the other is the client->server net channel), but the throw takes
--- the whole module down with it and writes a red line into ds_debug.log once per
--- load.  The stand-ins below let them load: on the server render.* hands back a
--- function that yields nil (so `render.Foo()` is nil rather than an error), and
--- net.Receive accepts a handler and drops it.
--- ===========================================================================
-if ( SERVER ) then
-
-	if ( render == nil ) then
-		render = setmetatable( {}, {
-			__index = function()
-				return function() return nil end
-			end
-		} )
-	end
-
-	if ( net ~= nil and net.Receive == nil ) then
-		net.Receive = function() end
-	end
-
-end
+-- NOTE: the server-realm render/net.Receive stand-ins are NOT here.  This file
+-- ends the server's pass with the bare `return` above (inside the
+-- `if ( not _CLIENT )` block), so anything after that point never runs on the
+-- server.  They live near the top of the file instead.
