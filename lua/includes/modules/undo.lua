@@ -72,26 +72,50 @@ local function UndoDebug( ... )
 	print( "[HL2SB HUD] " .. table.concat( out, " " ) .. "\n" )
 end
 
--- HL2SB: do NOT trust the global IsValid() inside this module.
+-- HL2SB: validity in this module.
 --
--- Measured in game with hl2sb_hud_debug 1:
+-- Do NOT use the GLOBAL IsValid() here.  Measured in game with hl2sb_hud_debug 1:
 --     [HL2SB HUD] undo.Finish REJECTED: IsValid(Owner)=false owner=nil entities=0
 -- while the same run had already reported
 --     [HL2SB undo] HL2SB_UndoRecord( hut, prop_physics )
--- with a valid owner and entity.  AddEntity() and SetPlayer() BOTH begin with
--- "if ( !IsValid( x ) ) then return end", so both returned immediately, nothing
--- was ever added to Current_Undo, and undo.Finish() then rejected the empty
--- record.  No error is raised anywhere on that path, which is why the undo
--- command kept answering "no undo entry recorded" with a clean log.
+-- with a valid owner and entity.  That shim answered false for live entities, so
+-- this module cannot be built on it.
 --
--- So accept a non-nil entity here.  A stale pointer is still caught by
--- Do_Undo(), which validity-checks every entity before removing it, and by
--- Finish()'s own "empty Entities and Functions" test.
+-- UndoValid() below is the replacement and it is a REAL test (Entity:IsValid(),
+-- resolved through the entity's CBaseHandle) -- see its body.  It must not be
+-- relaxed back to "accept everything" again: doing so let Do_Undo() call
+-- entity:Remove() on entities that were already gone, which is the use-after-free
+-- behind dumps/crash_20260913_234437_1_accessviolation.mdmp.
 local function UndoValid( ent )
 	if ( ent == nil ) then return false end
-	if ( IsValid( ent ) == true ) then return true end
-	if ( isfunction( ent.IsValid ) and ent:IsValid() == true ) then return true end
 
+	-- HL2SB: a REAL validity test.
+	--
+	-- This used to end with an unconditional "return true", so the function
+	-- accepted everything that was not nil and Do_Undo() happily called
+	-- entity:Remove() on entities that had already been removed.  The undone
+	-- entry is deliberately kept in the table (the "playerUndos[ undoIndex ] =
+	-- nil" below is commented out), so pressing undo twice removed the same dead
+	-- entity twice.  That is the use-after-free behind
+	--   dumps/crash_20260913_234437_1_accessviolation.mdmp
+	-- (EXECUTE access violation on recycled heap memory, reached from the
+	-- physics collision solver, which still held the entity as its game data).
+	--
+	-- Entity:IsValid() is the exact test and must be preferred over the global:
+	-- the Lua entity object stores a CBaseHandle (lbaseentity_shared.cpp:65,
+	-- lua_pushentity), and CBaseEntity_IsValid (ib. :2328) resolves it through the
+	-- engine's handle table -- true for a live entity, false for one that has been
+	-- removed, for every entity class.  The GLOBAL IsValid() is the one this
+	-- fork's shim could not be trusted for (it reported false for live players),
+	-- which is exactly why the old body was papered over with "return true".
+	if ( isfunction( ent.IsValid ) ) then
+		local ok, res = pcall( ent.IsValid, ent )
+		if ( ok ) then return res == true end
+		return false
+	end
+
+	-- Nothing to test with: accept, so a non-entity value can never silently
+	-- empty the undo stack (the behaviour this function had before).
 	return true
 end
 
@@ -623,9 +647,17 @@ function Do_Undo( undo )
 					-- of the log then says exactly which one it died on.
 					UndoDebug( "undo: removing entity", tostring( index ),
 						( entity.GetClassname ~= nil ) and tostring( entity:GetClassname() ) or "?" )
-					entity:Remove()
-					UndoDebug( "undo: removed entity", tostring( index ) )
-					count = count + 1
+					-- HL2SB: removing one entity must never abort (or crash) the
+					-- whole undo.  The binding resolves the entity's handle, so a
+					-- stale entry raises a Lua error instead of touching freed
+					-- memory -- catch it, name it, and carry on with the rest.
+					local okRemove, errRemove = pcall( entity.Remove, entity )
+					if ( okRemove ) then
+						UndoDebug( "undo: removed entity", tostring( index ) )
+						count = count + 1
+					else
+						UndoDebug( "undo: entity.Remove() failed, skipped:", tostring( errRemove ) )
+					end
 				end
 
 			end
