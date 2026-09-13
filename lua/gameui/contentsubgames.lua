@@ -1,17 +1,44 @@
 --[[
     HL2SB: Content dialog -- shows detected Source games as checkboxes.
 
-    The list comes from _G.HL2SB_DetectedGames, populated by
-    lua/autorun/detect_source_games.lua (which has the file library).
-    This file runs in the gameui Lua state where 'file' is nil, so it
-    must not touch the filesystem itself.
+    List comes from _G.HL2SB_DetectedGames (autorun).
+    Selections saved to gamecontent.txt as plain text:
+        220
+        320
+        (one AppId per line)
 ]]
 
 include( "../includes/extensions/table.lua" )
 include( "../includes/extensions/vgui.lua" )
-include( "../includes/extensions/keyvalues.lua" )
 
 local vgui = vgui
+
+-- Read selected AppIds from gamecontent.txt as plain lines.
+local function ReadSelectedAppIds()
+    local ids = {}
+    local path = engine.GetGameDirectory() .. "/gamecontent.txt"
+    local f = io.open( path, "r" )
+    if ( not f ) then return ids end
+    for line in f:lines() do
+        local id = tonumber( line:match( "%s*(%d+)%s*" ) )
+        if ( id ) then ids[ id ] = true end
+    end
+    f:close()
+    return ids
+end
+
+-- Write selected AppIds as plain lines.
+local function WriteSelectedAppIds( ids )
+    local path = engine.GetGameDirectory() .. "/gamecontent.txt"
+    local f = io.open( path, "w" )
+    if ( not f ) then return end
+    for _, entry in ipairs( m_CheckBoxes ) do
+        if ( entry.panel:IsSelected() and entry.appId > 0 ) then
+            f:write( tostring( entry.appId ), "\n" )
+        end
+    end
+    f:close()
+end
 
 local CContentSubGames = {}
 local m_CheckBoxes = {}
@@ -53,45 +80,16 @@ function CContentSubGames:Init( parent )
 end
 
 function CContentSubGames:OnResetData()
-    local kv = KeyValues( "GameContent" )
-    if ( not kv:LoadFromFile( engine.GetGameDirectory() .. "/gamecontent.txt", "MOD" ) ) then
-        kv:deleteThis()
-        return
-    end
-
-    local fs = kv:GetData( "FileSystem" )
-    if ( fs ) then
-        local appIds = {}
-        local appId = fs:GetFirstSubKey()
-        while ( appId ) do
-            local id = tonumber( appId:GetString() )
-            if ( id ) then appIds[ id ] = true end
-            appId = appId:GetNextKey()
-        end
-        for _, entry in ipairs( m_CheckBoxes ) do
-            if ( entry.appId > 0 and appIds[ entry.appId ] ) then
-                entry.panel:SetSelected( true )
-            end
+    local ids = ReadSelectedAppIds()
+    for _, entry in ipairs( m_CheckBoxes ) do
+        if ( entry.appId > 0 and ids[ entry.appId ] ) then
+            entry.panel:SetSelected( true )
         end
     end
-    kv:deleteThis()
 end
 
 function CContentSubGames:OnApplyChanges()
-    local kv = KeyValues( "GameContent" )
-    local fs  = kv:CreateNewKey()
-    fs:SetName( "FileSystem" )
-
-    for _, entry in ipairs( m_CheckBoxes ) do
-        if ( entry.panel:IsSelected() and entry.appId > 0 ) then
-            local appKv = KeyValues( "AppId" )
-            appKv:SetStringValue( tostring( entry.appId ) )
-            fs:AddSubKey( appKv )
-        end
-    end
-
-    kv:SaveToFile( "gamecontent.txt", "MOD" )
-    kv:deleteThis()
+    WriteSelectedAppIds()
     print( "[HL2SB] gamecontent.txt saved; restart to apply mounts\n" )
 end
 
