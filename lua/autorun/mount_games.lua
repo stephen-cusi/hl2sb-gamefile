@@ -1,37 +1,27 @@
 --[[
     HL2SB: mount extra Source games listed in gamecontent.txt at startup.
 
-    The Content dialog (lua/gameui/contentsubgames.lua) writes gamecontent.txt
-    with Steam AppIds the user checked.  This autorun reads that file and calls
-    filesystem.MountSteamContent( appId ) for each, so the game's maps /
-    materials / models become available.
-
-    Format written by OnApplyChanges:
-
-        "GameContent"
-        {
-            "FileSystem"
-            {
-                "AppId" "220"   // Half-Life 2
-                "AppId" "400"   // Portal
-            }
-        }
+    The Content dialog writes gamecontent.txt with AppIds.  This autorun
+    reads that file, finds the matching sibling game directory, and adds
+    it to the GAME search path via filesystem.AddSearchPath -- the same
+    mechanism the engine uses to mount hl2 / hl2mp.
 ]]
 
 local FILE_PATH = engine.GetGameDirectory() .. "/gamecontent.txt"
 
-local AppNames =
+-- AppId -> sibling folder name (case-sensitive as on disk).
+local AppIdToFolder =
 {
-    [220]  = "Half-Life 2",
-    [240]  = "Counter-Strike: Source",
-    [280]  = "Half-Life: Source",
-    [300]  = "Day of Defeat: Source",
-    [340]  = "Half-Life 2: Lost Coast",
-    [360]  = "Half-Life Deathmatch: Source",
-    [380]  = "Half-Life 2: Episode One",
-    [400]  = "Portal",
-    [420]  = "Half-Life 2: Episode Two",
-    [440]  = "Team Fortress 2",
+    [220] = "hl2",       -- Half-Life 2
+    [320] = "hl2mp",     -- HL2 Deathmatch
+    [380] = "hl2client", -- Episode One
+    [420] = "ep2",       -- Episode Two
+    [400] = "portal",    -- Portal
+    [240] = "cstrike",   -- CS: Source
+    [300] = "dod",       -- DoD: Source
+    [280] = "hl1",       -- Half-Life: Source
+    [360] = "hldeathmatch", -- HL DM: Source
+    [440] = "tf",        -- TF2
 }
 
 local function MountGameApps()
@@ -45,33 +35,46 @@ local function MountGameApps()
         return
     end
 
+    local parentDir = engine.GetGameDirectory():match( "^(.*)[/\\][^/\\]+$" ) or ""
+
     local mounted = 0
     local fs = kv:GetData( "FileSystem" )
     if ( fs ) then
-        local appId = fs:GetFirstSubKey()
-        while ( appId ) do
-            local id = tonumber( appId:GetString() )
-            if ( id and id > 0 ) then
-                local name = AppNames[ id ] or ( "App " .. id )
-                local ret = filesystem.MountSteamContent( id )
-                if ( ret == 0 ) then
-                    Msg( "[HL2SB] Mounted " .. name .. " (appid " .. id .. ")\n" )
+        local appIdKv = fs:GetFirstSubKey()
+        while ( appIdKv ) do
+            local id = tonumber( appIdKv:GetString() )
+            local folder = id and AppIdToFolder[ id ]
+
+            if ( folder ) then
+                local path = parentDir .. "/" .. folder
+                -- Verify the folder exists and has a gameinfo.txt.
+                if ( file.Exists( folder .. "/gameinfo.txt", "GAME" ) ) then
+                    filesystem.AddSearchPath( path .. "/", "GAME", PATH_ADD_TO_HEAD )
+                    -- Also mount its VPKs if present.
+                    local vpkDirs = file.Find( folder .. "/*.vpk", "GAME" )
+                    for _, vpk in ipairs( vpkDirs or {} ) do
+                        filesystem.AddSearchPath( path .. "/" .. vpk, "GAME", PATH_ADD_TO_HEAD )
+                    end
+                    Msg( "[HL2SB] Mounted " .. folder .. " (appid " .. id .. ")\n" )
                     mounted = mounted + 1
                 else
-                    Msg( "[HL2SB] FAILED to mount " .. name ..
-                         " (appid " .. id .. ", ret " .. tostring( ret ) .. ")\n" )
+                    Msg( "[HL2SB] Skipped appid " .. id .. " -- folder '" .. folder ..
+                         "' not found next to game dir\n" )
                 end
+            else
+                Msg( "[HL2SB] Unknown AppId " .. tostring( id ) .. " in gamecontent.txt\n" )
             end
-            appId = appId:GetNextKey()
+
+            appIdKv = appIdKv:GetNextKey()
         end
     end
 
     kv:deleteThis()
 
     if ( mounted > 0 ) then
-        Msg( "[HL2SB] " .. mounted .. " extra game(s) mounted from gamecontent.txt\n" )
+        Msg( "[HL2SB] " .. mounted .. " extra game(s) mounted\n" )
     end
 end
 
--- Small delay so the filesystem is fully up before we add search paths.
+-- Small delay so the filesystem is fully up.
 timer.Simple( 0, MountGameApps )

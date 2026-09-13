@@ -1,179 +1,189 @@
---========= Copyleft © 2010-2013, Team Sandbox, Some rights reserved. ============--
---
--- Purpose: 
---
--- $NoKeywords: $
---
---=============================================================================--
-include( "../includes/extensions/table.lua" );
-include( "../includes/extensions/keyvalues.lua" );
-include( "../includes/extensions/vgui.lua" );
+--[[
+    HL2SB: Content dialog -- dynamically detect installed Source games.
 
-local vgui = vgui;
+    Scans the parent of the mod directory for sibling folders that contain
+    gameinfo.txt (i.e. other Source engine games) and builds the checkbox
+    list from what is actually on disk.  Only games that exist get a row.
 
-local CContentSubGames = {
-	m_pHalfLife2CheckBox = INVALID_PANEL,
-	m_pCounterStrikeCheckBox = INVALID_PANEL,
-	m_pHalfLifeCheckBox = INVALID_PANEL,
-	m_pDayOfDefeatCheckBox = INVALID_PANEL,
-	m_pLostCoastCheckBox = INVALID_PANEL,
-	m_pHalfLifeDeathmatchCheckBox = INVALID_PANEL,
-	m_pEpisodicCheckBox = INVALID_PANEL,
-	m_pPortalCheckBox = INVALID_PANEL,
-	m_pEpisodeTwoCheckBox = INVALID_PANEL,
-	m_pTeamFortressCheckBox = INVALID_PANEL
+    The AppId map is used only for gamecontent.txt compatibility; the
+    mount itself is done by filesystem.AddSearchPath on the sibling dir.
+]]
+
+include( "../includes/extensions/table.lua" )
+include( "../includes/extensions/vgui.lua" )
+include( "../includes/extensions/keyvalues.lua" )
+
+local vgui = vgui
+
+-- Known Source-game folder names -> friendly display name + AppId.
+-- Keys are lowercase folder names under the parent of the mod dir.
+local KnownSourceGames =
+{
+    ["hl2"]               = { name = "Half-Life 2",              appId = 220 },
+    ["hl2base"]           = { name = "Half-Life 2",              appId = 220 },
+    ["hl2mp"]             = { name = "HL2 Deathmatch",           appId = 320 },
+    ["hl2client"]         = { name = "HL2: Episode One",         appId = 380 },
+    ["episodic"]          = { name = "HL2: Episode One",         appId = 380 },
+    ["episodic_two"]      = { name = "HL2: Episode Two",         appId = 420 },
+    ["ep2"]               = { name = "HL2: Episode Two",         appId = 420 },
+    ["lostcoast"]         = { name = "HL2: Lost Coast",          appId = 340 },
+    ["hl2lostcoast"]      = { name = "HL2: Lost Coast",          appId = 340 },
+    ["portal"]            = { name = "Portal",                   appId = 400 },
+    ["portal2"]           = { name = "Portal 2",                 appId = 620 },
+    ["cstrike"]           = { name = "CS: Source",               appId = 240 },
+    ["cstrike:source"]    = { name = "CS: Source",               appId = 240 },
+    ["counter-strike"]    = { name = "CS: Source",               appId = 240 },
+    ["dod"]               = { name = "DoD: Source",              appId = 300 },
+    ["dayofdefeat"]       = { name = "DoD: Source",              appId = 300 },
+    ["hl1"]               = { name = "Half-Life: Source",        appId = 280 },
+    ["hls"]               = { name = "Half-Life: Source",        appId = 280 },
+    ["halflifesource"]    = { name = "Half-Life: Source",        appId = 280 },
+    ["hl1source"]         = { name = "Half-Life: Source",        appId = 280 },
+    ["hldeathmatch"]      = { name = "HL Deathmatch: Source",    appId = 360 },
+    ["hl2deathmatch"]     = { name = "HL Deathmatch: Source",    appId = 360 },
+    ["tf"]                = { name = "Team Fortress 2",          appId = 440 },
+    ["tf2"]               = { name = "Team Fortress 2",          appId = 440 },
+    ["teamfortress2"]     = { name = "Team Fortress 2",          appId = 440 },
+    ["garrysmod"]         = { name = "Garry's Mod",              appId = 4000 },
 }
 
-local g_GameCheckButtons =
-{
-	{ "m_pHalfLife2CheckBox",			220 },
-	{ "m_pCounterStrikeCheckBox",		240 },
-	{ "m_pHalfLifeCheckBox",			280 },
-	{ "m_pDayOfDefeatCheckBox",			300 },
-	{ "m_pLostCoastCheckBox",			340 },
-	{ "m_pHalfLifeDeathmatchCheckBox",	360 },
-	{ "m_pEpisodicCheckBox",			380 },
-	{ "m_pPortalCheckBox",				400 },
-	{ "m_pEpisodeTwoCheckBox",			420 },
-	{ "m_pTeamFortressCheckBox",		440 }
-};
+-- ---------------------------------------------------------------------------
+-- Detect sibling Source games by scanning for gameinfo.txt.
+-- ---------------------------------------------------------------------------
+local function DetectInstalledGames()
+    local gameDir  = engine.GetGameDirectory()   -- e.g. D:\srceng\hl2sb
+    local parentDir = gameDir:match( "^(.*)[/\\][^/\\]+$" )  -- e.g. D:\srceng
 
--------------------------------------------------------------------------------
--- Purpose: 
--------------------------------------------------------------------------------
-local function OnCheckButtonChecked( self )
-	local _propertyDialog = self:GetParent():GetParent():GetParent()
-	_R.PropertyDialog.EnableApplyButton( _propertyDialog, true )
+    if ( not parentDir ) then
+        return {}
+    end
+
+    local found = {}
+    local dirs = file.FindDir( parentDir .. "/*", "GAME" )
+
+    for _, folderName in ipairs( dirs or {} ) do
+        -- Skip the current mod itself.
+        local lower = folderName:lower()
+        if ( lower != "hl2sb" ) then
+            -- A Source game must have gameinfo.txt at its root.
+            local giPath = parentDir .. "/" .. folderName .. "/gameinfo.txt"
+            if ( file.Exists( folderName .. "/gameinfo.txt", "GAME" ) ) then
+                local info = KnownSourceGames[ lower ]
+                if ( info ) then
+                    table.insert( found, {
+                        folder = folderName,
+                        name   = info.name,
+                        appId  = info.appId,
+                    } )
+                else
+                    -- Unknown folder with gameinfo.txt -- still list it so the
+                    -- user can mount custom forks, but mark the name as the
+                    -- folder name itself.
+                    table.insert( found, {
+                        folder = folderName,
+                        name   = folderName,
+                        appId  = 0,
+                    } )
+                end
+            end
+        end
+    end
+
+    table.sort( found, function( a, b ) return a.name:lower() < b.name:lower() end )
+    return found
 end
 
--------------------------------------------------------------------------------
--- Purpose: Constructor
--------------------------------------------------------------------------------
-function CContentSubGames:Init(parent)
-	self.m_pHalfLife2CheckBox = vgui.CheckButton( 
-		self, 
-		"HalfLife2", 
-		"Half-Life 2" );
-	self.m_pHalfLife2CheckBox.OnCheckButtonChecked = OnCheckButtonChecked
-	self.m_pHalfLife2CheckBox:AddActionSignalTarget( self.m_pHalfLife2CheckBox )
+-- ---------------------------------------------------------------------------
+-- ContentSubGames page -- builds checkboxes from the detected list.
+-- ---------------------------------------------------------------------------
+local CContentSubGames = {}
+local m_CheckBoxes = {}   -- populated in Init; each entry is { panel, folder, appId }
 
-	self.m_pCounterStrikeCheckBox = vgui.CheckButton( 
-		self, 
-		"CounterStrike", 
-		"Counter-Strike: Source" );
-	self.m_pCounterStrikeCheckBox.OnCheckButtonChecked = OnCheckButtonChecked
-	self.m_pCounterStrikeCheckBox:AddActionSignalTarget( self.m_pCounterStrikeCheckBox )
+function CContentSubGames:Init( parent )
+    self.m_DetectedGames = DetectInstalledGames()
+    m_CheckBoxes = {}
 
-	self.m_pHalfLifeCheckBox = vgui.CheckButton( 
-		self, 
-		"HalfLife", 
-		"Half-Life: Source" );
-	self.m_pHalfLifeCheckBox.OnCheckButtonChecked = OnCheckButtonChecked
-	self.m_pHalfLifeCheckBox:AddActionSignalTarget( self.m_pHalfLifeCheckBox )
+    local y = 12
+    for i, game in ipairs( self.m_DetectedGames ) do
+        local cb = vgui.CheckButton( self, "game_" .. i, game.name )
+        cb:SetPos( 20, y )
+        cb:SetSize( 380, 24 )
+        cb.OnCheckButtonChecked = function( btn )
+            -- Enable the Apply button on the parent PropertyDialog.
+            local dialog = self:GetParent():GetParent():GetParent()
+            if ( dialog and dialog.EnableApplyButton ) then
+                dialog:EnableApplyButton( true )
+            end
+        end
+        m_CheckBoxes[ i ] = { panel = cb, folder = game.folder, appId = game.appId }
+        y = y + 26
+    end
 
-	self.m_pDayOfDefeatCheckBox = vgui.CheckButton( 
-		self, 
-		"DayOfDefeat", 
-		"Day of Defeat: Source" );
-	self.m_pDayOfDefeatCheckBox.OnCheckButtonChecked = OnCheckButtonChecked
-	self.m_pDayOfDefeatCheckBox:AddActionSignalTarget( self.m_pDayOfDefeatCheckBox )
+    -- Show something if nothing was found.
+    if ( #self.m_DetectedGames == 0 ) then
+        local lbl = vgui.Create( "Label", self )
+        lbl:SetPos( 20, y )
+        lbl:SetSize( 380, 40 )
+        lbl:SetText( "No other Source games found next to this install." )
+    end
 
-	self.m_pLostCoastCheckBox = vgui.CheckButton( 
-		self, 
-		"LostCoast", 
-		"Half-Life 2: Lost Coast" );
-	self.m_pLostCoastCheckBox.OnCheckButtonChecked = OnCheckButtonChecked
-	self.m_pLostCoastCheckBox:AddActionSignalTarget( self.m_pLostCoastCheckBox )
-
-	self.m_pHalfLifeDeathmatchCheckBox = vgui.CheckButton( 
-		self, 
-		"HalfLifeDeathmatch", 
-		"Half-Life Deathmatch: Source" );
-	self.m_pHalfLifeDeathmatchCheckBox.OnCheckButtonChecked = OnCheckButtonChecked
-	self.m_pHalfLifeDeathmatchCheckBox:AddActionSignalTarget( self.m_pHalfLifeDeathmatchCheckBox )
-
-	self.m_pEpisodicCheckBox = vgui.CheckButton( 
-		self, 
-		"Episodic", 
-		"Half-Life 2: Episode One" );
-	self.m_pEpisodicCheckBox.OnCheckButtonChecked = OnCheckButtonChecked
-	self.m_pEpisodicCheckBox:AddActionSignalTarget( self.m_pEpisodicCheckBox )
-
-	self.m_pPortalCheckBox = vgui.CheckButton( 
-		self, 
-		"Portal", 
-		"Portal" );
-	self.m_pPortalCheckBox.OnCheckButtonChecked = OnCheckButtonChecked
-	self.m_pPortalCheckBox:AddActionSignalTarget( self.m_pPortalCheckBox )
-
-	self.m_pEpisodeTwoCheckBox = vgui.CheckButton( 
-		self, 
-		"EpisodeTwo", 
-		"Half-Life 2: Episode Two" );
-	self.m_pEpisodeTwoCheckBox.OnCheckButtonChecked = OnCheckButtonChecked
-	self.m_pEpisodeTwoCheckBox:AddActionSignalTarget( self.m_pEpisodeTwoCheckBox )
-
-	self.m_pTeamFortressCheckBox = vgui.CheckButton( 
-		self, 
-		"TeamFortress", 
-		"Team Fortress 2" );
-	self.m_pTeamFortressCheckBox.OnCheckButtonChecked = OnCheckButtonChecked
-	self.m_pTeamFortressCheckBox:AddActionSignalTarget( self.m_pTeamFortressCheckBox )
-
-	self:LoadControlSettings("Resource\\ContentSubGames.res");
+    -- Restart note at the bottom.
+    local note = vgui.Create( "Label", self )
+    note:SetPos( 20, y + 40 )
+    note:SetSize( 380, 32 )
+    note:SetWrap( true )
+    note:SetFont( "DefaultSmall" )
+    note:SetText( "#GameUI_GamesRestartNote" )
 end
 
--------------------------------------------------------------------------------
--- Purpose: 
--------------------------------------------------------------------------------
 function CContentSubGames:OnResetData()
-	local pMainFile = KeyValues( "gamecontent.txt" );
-	if ( pMainFile:LoadFromFile( engine.GetGameDirectory() .. "/gamecontent.txt", "MOD" ) ) then
-		local tMainFile = pMainFile:ToTable( true )
-		if ( tMainFile[1].value and type( tMainFile[1].value ) == "table" ) then
-			for i, pair in ipairs( tMainFile[1].value ) do
-				local checkButtonName
-				for j=1, #g_GameCheckButtons do
-					if ( tonumber( pair.value ) == g_GameCheckButtons[j][2] ) then
-						checkButtonName = g_GameCheckButtons[j][1]
-					end
-				end
-				if ( checkButtonName ) then
-					self[ checkButtonName ]:SetSelected( true )
-				end
-			end
-		end
-	end
-	pMainFile:deleteThis();
+    -- Load previous selections from gamecontent.txt.
+    local kv = KeyValues( "GameContent" )
+    if ( not kv:LoadFromFile( engine.GetGameDirectory() .. "/gamecontent.txt", "MOD" ) ) then
+        kv:deleteThis()
+        return
+    end
+
+    local fs = kv:GetData( "FileSystem" )
+    if ( fs ) then
+        local appIds = {}
+        local appId = fs:GetFirstSubKey()
+        while ( appId ) do
+            local id = tonumber( appId:GetString() )
+            if ( id ) then appIds[ id ] = true end
+            appId = appId:GetNextKey()
+        end
+        for _, entry in ipairs( m_CheckBoxes ) do
+            if ( entry.appId > 0 and appIds[ entry.appId ] ) then
+                entry.panel:SetSelected( true )
+            end
+        end
+    end
+
+    kv:deleteThis()
 end
 
--------------------------------------------------------------------------------
--- Purpose: 
--------------------------------------------------------------------------------
-function CContentSubGames:OnOK(applyOnly)
-	self:OnApplyChanges()
-end
-
--------------------------------------------------------------------------------
--- Purpose: 
--------------------------------------------------------------------------------
 function CContentSubGames:OnApplyChanges()
-	local pGameContent = KeyValues( "GameContent" )
-	local pFileSystemKey = pGameContent:CreateNewKey()
-	pFileSystemKey:SetName( "FileSystem" )
-	local checkButtonName
-	local pCheckButton
-	for i=1, #g_GameCheckButtons do
-		checkButtonName = g_GameCheckButtons[i][1]
-		pCheckButton = self[ checkButtonName ]
-		if ( pCheckButton and pCheckButton:IsSelected() ) then
-			local AppId = KeyValues( "AppId" )
-			AppId:SetStringValue( tostring( g_GameCheckButtons[i][2] ) )
-			pFileSystemKey:AddSubKey( AppId )
-		end
-	end
-	pGameContent:SaveToFile( "gamecontent.txt", "MOD" )
-	pGameContent:deleteThis()
+    local kv = KeyValues( "GameContent" )
+    local fs  = kv:CreateNewKey()
+    fs:SetName( "FileSystem" )
+
+    for _, entry in ipairs( m_CheckBoxes ) do
+        if ( entry.panel:IsSelected() and entry.appId > 0 ) then
+            local appKv = KeyValues( "AppId" )
+            appKv:SetStringValue( tostring( entry.appId ) )
+            fs:AddSubKey( appKv )
+        end
+    end
+
+    kv:SaveToFile( "gamecontent.txt", "MOD" )
+    kv:deleteThis()
+
+    print( "[HL2SB] gamecontent.txt saved; restart to apply mounts\n" )
+end
+
+function CContentSubGames:OnOK( applyOnly )
+    self:OnApplyChanges()
 end
 
 vgui.register( CContentSubGames, "CContentSubGames", "PropertyPage" )
