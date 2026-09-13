@@ -41,10 +41,10 @@ local function MountGameApps()
             -- own root, so "hl2/gameinfo.txt" resolved to nothing and every
             -- candidate was reported "not found".
             if ( file.Exists( folder .. "/gameinfo.txt", "BASE_PATH" ) ) then
-                filesystem.AddSearchPath( path .. "/", "GAME", PATH_ADD_TO_HEAD )
+                filesystem.AddSearchPath( path .. "/", "GAME", PATH_ADD_TO_TAIL )
                 local vpkFiles = file.Find( folder .. "/*.vpk", "BASE_PATH" )
                 for _, vpk in ipairs( vpkFiles or {} ) do
-                    filesystem.AddSearchPath( path .. "/" .. vpk, "GAME", PATH_ADD_TO_HEAD )
+                    filesystem.AddSearchPath( path .. "/" .. vpk, "GAME", PATH_ADD_TO_TAIL )
                 end
                 Msg( "[HL2SB] Mounted " .. folder .. " (appid " .. id .. ")\n" )
                 mounted = mounted + 1
