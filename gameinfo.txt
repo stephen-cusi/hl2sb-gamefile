@@ -47,7 +47,6 @@ FileSystem
 			game 				|all_source_engine_paths|hl2/hl2_pak.vpk
 			game				|all_source_engine_paths|hl2mp/hl2mp_english.vpk
 			game 				|all_source_engine_paths|hl2mp/hl2mp_pak.vpk
-			mod  				|all_source_engine_paths|garrysmod/garrysmod_dir.vpk
 			// GMod's fallback content: the CS:S / HL2 assets GMod itself relies on
 			// (154 weapon .wav incl. the CS:S name set, ~8.2k materials, 373 models).
 			// GMod SWEPs and addons reference those names directly, so without this
@@ -75,6 +74,40 @@ FileSystem
 			game				|all_source_engine_paths|hl2
 			game 				|all_source_engine_paths|hl2mp
 			game 				|all_source_engine_paths|hl2sb
+
+			// GMod's own content: models (9.5k), materials (3.8k - including the
+			// whole materials/entities/*.png spawnmenu thumbnail set), maps,
+			// shaders, scripts and sounds.  This is the content this fork's
+			// SWEPs/SENTs reference directly and the content SMenu draws its
+			// thumbnails from.
+			//
+			// TWO things matter about this line, and both were wrong before:
+			//
+			// 1. "game+mod", NOT "mod".  A search path is only consulted for the
+			//    pathID it was registered with: CBaseFileSystem::FilterByPathID
+			//    skips every path whose GetPathID() differs from the query's
+			//    (filesystem/basefilesystem.h:914-942).  The engine's content
+			//    systems ask for materials, models and sounds on the GAME path,
+			//    and FileExists() defaults to GAME as well - so registered as
+			//    "mod" alone this VPK is invisible to all of them.  That is
+			//    exactly the "GMod assets are missing / the VPK is not mounted
+			//    right" the user reported.  "game+mod" is also the type GMod's
+			//    own gameinfo.txt uses for garrysmod.vpk.
+			//
+			// 2. LAST, after our own loose hl2sb content.  GMod's VPK collides
+			//    with 13 files this fork already ships loose - including
+			//    scripts/hudlayout.res, scripts/hudanimations.txt,
+			//    scripts/mod_textures.txt, scripts/game_sounds_manifest.txt,
+			//    scripts/surfaceproperties.txt and scripts/propdata*.txt.  Those
+			//    are read at startup, and earlier entries in this file WIN
+			//    (paths are appended to the search list and searched from the
+			//    head), so the VPK has to sit after them or GMod's HUD layout /
+			//    HUD textures / surface properties would replace the fork's.
+			//
+			// It cannot leak GMod's Lua into our Lua loader: the VPK holds 0
+			// lua/, 0 gamemodes/ and 0 addons/ entries (verified against its
+			// tree) - lua/ lives in the loose directory, which stays unmounted.
+			game+mod			|all_source_engine_paths|garrysmod/garrysmod_dir.vpk
 // HL2SB: the whole garrysmod directory is deliberately NOT mounted - that would make
 // the Lua loader enumerate GMod's own lua/ tree (thousands of files).  Only the VPKs
 // above are mounted: they carry materials/models/sounds/particles, and GMod's Lua is
