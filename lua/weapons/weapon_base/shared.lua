@@ -106,32 +106,179 @@ SWEP.m_acttable = {
 	{ ACT_RANGE_ATTACK1, ACT_RANGE_ATTACK_PISTOL, false },
 }
 
--- HoldType -> m_acttable.  For now "pistol"/"normal" cover the HL2SB pistol
--- body animation; more hold types map onto the pistol set as a stable default.
-local HoldTypeActtables = {
-	["pistol"]	=
-	{
-		{ ACT_HL2MP_IDLE, ACT_HL2MP_IDLE_PISTOL, false },
-		{ ACT_HL2MP_RUN, ACT_HL2MP_RUN_PISTOL, false },
-		{ ACT_HL2MP_IDLE_CROUCH, ACT_HL2MP_IDLE_CROUCH_PISTOL, false },
-		{ ACT_HL2MP_WALK_CROUCH, ACT_HL2MP_WALK_CROUCH_PISTOL, false },
-		{ ACT_HL2MP_GESTURE_RANGE_ATTACK, ACT_HL2MP_GESTURE_RANGE_ATTACK_PISTOL, false },
-		{ ACT_HL2MP_GESTURE_RELOAD, ACT_HL2MP_GESTURE_RELOAD_PISTOL, false },
-		{ ACT_HL2MP_JUMP, ACT_HL2MP_JUMP_PISTOL, false },
-		{ ACT_RANGE_ATTACK1, ACT_RANGE_ATTACK_PISTOL, false },
-	},
-	["normal"]	=
-	{
-		{ ACT_HL2MP_IDLE, ACT_HL2MP_IDLE_PISTOL, false },
-		{ ACT_HL2MP_RUN, ACT_HL2MP_RUN_PISTOL, false },
-		{ ACT_HL2MP_IDLE_CROUCH, ACT_HL2MP_IDLE_CROUCH_PISTOL, false },
-		{ ACT_HL2MP_WALK_CROUCH, ACT_HL2MP_WALK_CROUCH_PISTOL, false },
-		{ ACT_HL2MP_GESTURE_RANGE_ATTACK, ACT_HL2MP_GESTURE_RANGE_ATTACK_PISTOL, false },
-		{ ACT_HL2MP_GESTURE_RELOAD, ACT_HL2MP_GESTURE_RELOAD_PISTOL, false },
-		{ ACT_HL2MP_JUMP, ACT_HL2MP_JUMP_PISTOL, false },
-		{ ACT_RANGE_ATTACK1, ACT_RANGE_ATTACK_PISTOL, false },
-	},
+-- ---------------------------------------------------------------------------
+-- HoldType -> m_acttable.
+--
+-- GMod names a weapon's pose with SWEP.HoldType ("pistol", "camera", "fist",
+-- ...) and then translates the player's generic activity into the
+-- weapon-specific one.  We keep the GMod name and build that translation here.
+--
+-- The engine walks the rows IN ORDER and takes the first activity whose
+-- sequence the player's model actually has
+-- (CBaseCombatWeapon::ActivityOverride -> CStudioHdr::HaveSequenceForActivity),
+-- so listing a fallback family after the weapon's own family gives a sensible
+-- pose on a model that only ships the classic HL2MP anims instead of leaving
+-- the player frozen in whatever sequence he was in.
+--
+-- The families come from GMod's anim models (models/m_anm.mdl, f_anm.mdl,
+-- z_anm.mdl - pulled in by GMod playermodels with $includemodel).  Ten of them
+-- are the classic HL2MP sets; the other eight (fist / melee2 / knife / camera /
+-- magic / revolver / passive / duel) only exist there, and the engine now
+-- publishes all of them (see the end of game/shared/ai_activity.h).
+--
+-- Slot order inside a family is GMod's own, from
+-- gamemodes/base/entities/weapons/weapon_base/sh_anim.lua:
+--   +0 IDLE  +1 WALK  +2 RUN  +3 IDLE_CROUCH  +4 WALK_CROUCH
+--   +5 ATTACK  +6 RELOAD  +7 JUMP
+-- ---------------------------------------------------------------------------
+
+-- The eight slots of one hold type, in GMod's order.  A name the engine did not
+-- publish comes back nil, and the row for that slot is then simply not emitted.
+local function Family( suffix )
+	local function slot( act )
+		return _G[ "ACT_HL2MP_" .. act .. "_" .. suffix ]
+	end
+	return {
+		slot( "IDLE" ), slot( "WALK" ), slot( "RUN" ),
+		slot( "IDLE_CROUCH" ), slot( "WALK_CROUCH" ),
+		slot( "GESTURE_RANGE_ATTACK" ), slot( "GESTURE_RELOAD" ),
+		slot( "JUMP" ),
+	}
+end
+
+local Families = {
+	pistol		= Family( "PISTOL" ),
+	revolver	= Family( "REVOLVER" ),
+	smg1		= Family( "SMG1" ),
+	ar2			= Family( "AR2" ),
+	shotgun		= Family( "SHOTGUN" ),
+	rpg			= Family( "RPG" ),
+	crossbow	= Family( "CROSSBOW" ),
+	grenade		= Family( "GRENADE" ),
+	slam		= Family( "SLAM" ),
+	melee		= Family( "MELEE" ),
+	physgun		= Family( "PHYSGUN" ),
+	melee2		= Family( "MELEE2" ),
+	knife		= Family( "KNIFE" ),
+	fist		= Family( "FIST" ),
+	camera		= Family( "CAMERA" ),
+	magic		= Family( "MAGIC" ),
+	passive		= Family( "PASSIVE" ),
+	duel		= Family( "DUEL" ),
 }
+
+-- The bare HL2MP set, i.e. the "no weapon-specific pose" answer.  There is no
+-- bare ACT_HL2MP_JUMP in any anim model, so the jump slot borrows the SLAM jump
+-- exactly the way GMod's own table does ("normal" jump animation doesn't exist).
+Families.normal = {
+	ACT_HL2MP_IDLE, ACT_HL2MP_WALK, ACT_HL2MP_RUN,
+	ACT_HL2MP_IDLE_CROUCH, ACT_HL2MP_WALK_CROUCH,
+	ACT_HL2MP_GESTURE_RANGE_ATTACK, ACT_HL2MP_GESTURE_RELOAD,
+	ACT_HL2MP_JUMP_SLAM,
+}
+
+-- Which generic activity reads which family slot.
+local BaseSlots = {
+	{ ACT_HL2MP_IDLE,					1 },
+	{ ACT_HL2MP_WALK,					2 },
+	{ ACT_HL2MP_RUN,					3 },
+	{ ACT_HL2MP_IDLE_CROUCH,			4 },
+	{ ACT_HL2MP_WALK_CROUCH,			5 },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK,	6 },
+	{ ACT_HL2MP_GESTURE_RELOAD,			7 },
+	{ ACT_HL2MP_JUMP,					8 },
+}
+
+-- Rows for one hold type: every family in the argument list, in order, so the
+-- first family that the player's model can satisfy wins.
+local function HoldTypeRows( ... )
+	local rows = {}
+	for _, unit in ipairs( { ... } ) do
+		for _, slot in ipairs( BaseSlots ) do
+			local act = unit[ slot[ 2 ] ]
+			if ( act ) then
+				rows[ #rows + 1 ] = { slot[ 1 ], act, false }
+			end
+		end
+	end
+	return rows
+end
+
+local HoldTypeActtables = {
+	-- No weapon-specific pose at all: the bare set, then the pistol pose for
+	-- models that do not carry the bare activities (classic HL2MP anims).
+	[ "normal" ]	= HoldTypeRows( Families.normal, Families.pistol ),
+
+	-- Handguns.
+	[ "pistol" ]	= HoldTypeRows( Families.pistol, Families.normal ),
+	[ "revolver" ]	= HoldTypeRows( Families.revolver, Families.pistol ),
+	[ "357" ]		= HoldTypeRows( Families.revolver, Families.pistol ),
+
+	-- Long guns.
+	[ "smg" ]		= HoldTypeRows( Families.smg1, Families.pistol ),
+	[ "smg1" ]		= HoldTypeRows( Families.smg1, Families.pistol ),
+	[ "mg" ]		= HoldTypeRows( Families.smg1, Families.pistol ),
+	[ "ar2" ]		= HoldTypeRows( Families.ar2, Families.pistol ),
+	[ "rifle" ]		= HoldTypeRows( Families.ar2, Families.pistol ),
+	[ "shotgun" ]	= HoldTypeRows( Families.shotgun, Families.pistol ),
+	[ "rpg" ]		= HoldTypeRows( Families.rpg, Families.pistol ),
+	[ "crossbow" ]	= HoldTypeRows( Families.crossbow, Families.pistol ),
+
+	-- Throwables.
+	[ "grenade" ]	= HoldTypeRows( Families.grenade, Families.pistol ),
+	[ "slam" ]		= HoldTypeRows( Families.slam, Families.pistol ),
+
+	-- Melee.  GMod gives each of these its own pose; HL2MP only has the one
+	-- melee set, which is the fallback.
+	[ "melee" ]		= HoldTypeRows( Families.melee, Families.pistol ),
+	[ "melee2" ]	= HoldTypeRows( Families.melee2, Families.melee ),
+	[ "knife" ]		= HoldTypeRows( Families.knife, Families.melee ),
+	[ "fist" ]		= HoldTypeRows( Families.fist, Families.melee ),
+	[ "stunstick" ]	= HoldTypeRows( Families.melee, Families.pistol ),
+	[ "crowbar" ]	= HoldTypeRows( Families.melee, Families.pistol ),
+
+	-- Tools.
+	[ "physgun" ]	= HoldTypeRows( Families.physgun, Families.pistol ),
+
+	-- GMod hold types that only GMod's anim models carry.
+	[ "camera" ]	= HoldTypeRows( Families.camera, Families.normal, Families.pistol ),
+	[ "magic" ]		= HoldTypeRows( Families.magic, Families.normal, Families.pistol ),
+	[ "passive" ]	= HoldTypeRows( Families.passive, Families.normal, Families.pistol ),
+	[ "duel" ]		= HoldTypeRows( Families.duel, Families.pistol ),
+}
+
+-- The engine also asks for ACT_RANGE_ATTACK1 when the weapon fires
+-- (CHL2MP_Player::SetAnimation -> Weapon_TranslateActivity( ACT_RANGE_ATTACK1 )),
+-- so every variant gets that row too.  Missing constants are simply skipped.
+local RangeAttackVariants = {
+	[ "pistol" ]	= ACT_RANGE_ATTACK_PISTOL,
+	[ "revolver" ]	= ACT_RANGE_ATTACK_PISTOL,
+	[ "357" ]		= ACT_RANGE_ATTACK_PISTOL,
+	[ "smg" ]		= ACT_RANGE_ATTACK_SMG1,
+	[ "smg1" ]		= ACT_RANGE_ATTACK_SMG1,
+	[ "mg" ]		= ACT_RANGE_ATTACK_SMG1,
+	[ "ar2" ]		= ACT_RANGE_ATTACK_AR2,
+	[ "rifle" ]		= ACT_RANGE_ATTACK_AR2,
+	[ "shotgun" ]	= ACT_RANGE_ATTACK_SHOTGUN,
+	[ "rpg" ]		= ACT_RANGE_ATTACK_RPG,
+	[ "crossbow" ]	= ACT_RANGE_ATTACK_CROSSBOW,
+	[ "grenade" ]	= ACT_RANGE_ATTACK_GRENADE,
+	[ "slam" ]		= ACT_RANGE_ATTACK_SLAM,
+	[ "melee" ]		= ACT_RANGE_ATTACK_MELEE,
+	[ "melee2" ]	= ACT_RANGE_ATTACK_MELEE,
+	[ "knife" ]		= ACT_RANGE_ATTACK_MELEE,
+	[ "fist" ]		= ACT_RANGE_ATTACK_MELEE,
+	[ "stunstick" ]	= ACT_RANGE_ATTACK_MELEE,
+	[ "crowbar" ]	= ACT_RANGE_ATTACK_MELEE,
+	[ "physgun" ]	= ACT_RANGE_ATTACK_PHYSGUN,
+}
+
+for holdType, rangeAct in pairs( RangeAttackVariants ) do
+	local rows = HoldTypeActtables[ holdType ]
+	if ( rows and rangeAct ) then
+		rows[ #rows + 1 ] = { ACT_RANGE_ATTACK1, rangeAct, false }
+	end
+end
 
 --[[---------------------------------------------------------
 	Name: SWEP:SetHoldType
