@@ -35,9 +35,14 @@ local function MountGameApps()
 
         if ( folder ) then
             local path = parentDir .. "/" .. folder
-            if ( file.Exists( folder .. "/gameinfo.txt", "GAME" ) ) then
+            -- BASE_PATH is the launcher's folder, i.e. this mod's parent -- the
+            -- only place a sibling install is addressable by its folder name.
+            -- "GAME" cannot see "hl2/..." : it mounts each game's CONTENTS at its
+            -- own root, so "hl2/gameinfo.txt" resolved to nothing and every
+            -- candidate was reported "not found".
+            if ( file.Exists( folder .. "/gameinfo.txt", "BASE_PATH" ) ) then
                 filesystem.AddSearchPath( path .. "/", "GAME", PATH_ADD_TO_HEAD )
-                local vpkFiles = file.Find( folder .. "/*.vpk", "GAME" )
+                local vpkFiles = file.Find( folder .. "/*.vpk", "BASE_PATH" )
                 for _, vpk in ipairs( vpkFiles or {} ) do
                     filesystem.AddSearchPath( path .. "/" .. vpk, "GAME", PATH_ADD_TO_HEAD )
                 end
