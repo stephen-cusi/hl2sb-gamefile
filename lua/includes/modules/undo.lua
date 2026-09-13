@@ -629,6 +629,50 @@ function Do_Undo( undo )
 		end
 	end
 
+	-- HL2SB: get the owner OUT of anything this undo is about to delete.
+	--
+	-- GMod's own Do_Undo has no vehicle special-case at all:
+	--     D:\games\garrysmod\garrysmod\lua\includes\modules\undo.lua:438-481
+	-- just calls entity:Remove() on whatever IsValid.  It can afford to, because
+	-- the ENGINE drives the vehicle-exit transition, which GMod surfaces to Lua as
+	-- GM:CanExitVehicle / GM:PlayerLeaveVehicle
+	-- (gamemodes/base/gamemode/player.lua:567-578), and its drive module restores
+	-- the view with Player:SetViewEntity(nil) on the way out
+	-- (lua/includes/modules/drive.lua:231).
+	--
+	-- Our engine had no such transition on removal, so pressing undo while sitting
+	-- in a vehicle left the player parented to a dead entity with the vehicle view
+	-- -> black screen and no way back out.  The engine now ejects on removal too
+	-- (CPropVehicleDriveable::UpdateOnRemove + CBasePlayer::LeaveVehicle, which
+	-- force the on-foot state and the view back); this makes the intent explicit
+	-- BEFORE anything is deleted, using the same two player primitives GMod's own
+	-- Lua uses.
+	if ( undo.Owner and UndoValid( undo.Owner ) and isfunction( undo.Owner.IsInAVehicle ) and undo.Owner:IsInAVehicle() ) then
+
+		for _, entity in pairs( undo.Entities or {} ) do
+
+			if ( entity and isfunction( entity.GetClassname ) ) then
+
+				local ok, classname = pcall( entity.GetClassname, entity )
+
+				if ( ok and isstring( classname )
+					and ( string.sub( classname, 1, 13 ) == "prop_vehicle_" or string.sub( classname, 1, 8 ) == "vehicle_" ) ) then
+
+					UndoDebug( "undo: ejecting the owner before removing", classname )
+					local okLeave, errLeave = pcall( function() undo.Owner:LeaveVehicle() end )
+					if ( !okLeave ) then
+						UndoDebug( "undo: LeaveVehicle() failed:", tostring( errLeave ) )
+					end
+					break
+
+				end
+
+			end
+
+		end
+
+	end
+
 	-- Remove each entity in this undo
 	if ( undo.Entities ) then
 		for index, entity in pairs( undo.Entities ) do
