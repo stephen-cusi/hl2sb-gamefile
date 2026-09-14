@@ -208,6 +208,19 @@ concommand.Add( "hl2sb_comprobe_derma", function()
 	box:SetPos( 5, 25 )
 	box:SizeToContents()
 
+	-- The caption is drawn by a child DLabel, which vgui clips to the panel's
+	-- bounds -- so if SizeToContents measures the wrong string the panel ends up
+	-- too narrow and the text silently disappears (that is exactly what
+	-- "size=24x17" meant the first time this ran).  Print the three numbers that
+	-- tell those apart.
+	local strCaption = box:GetText()
+	local tw, th = derma.GetTextSize( "DermaDefault", strCaption )
+	print( TAG .. "caption: GetText=[" .. tostring( strCaption ) .. "]"
+		.. "  measured=" .. tostring( tw ) .. "x" .. tostring( th )
+		.. "  label=" .. tostring( box.m_Label and box.m_Label:GetWide() ) .. "x" .. tostring( box.m_Label and box.m_Label:GetTall() )
+		.. "  labelX=" .. tostring( box.m_Label and box.m_Label:GetPos() )
+		.. "  panel=" .. tostring( box:GetWide() ) .. "x" .. tostring( box:GetTall() ) )
+
 	print( TAG .. "checkbox: SetConVar=" .. tostring( type( box.SetConVar ) == "function" )
 		.. "  bound=" .. tostring( box:GetConVar() ~= nil )
 		.. "  checked=" .. tostring( box:GetChecked() )
