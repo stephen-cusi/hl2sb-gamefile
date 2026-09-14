@@ -61,7 +61,9 @@ local function fontOf( pnl )
 end
 
 -- Shared text helper: vertical centring inside the panel height.
-local function drawText( self, pnl, strText, x, y )
+-- clr is optional: a panel that set its own text colour (DCheckBoxLabel's
+-- SetTextColor/SetDark) wins over the skin's.
+local function drawText( self, pnl, strText, x, y, clr )
 	local font = fontOf( pnl )
 	local w, h = derma.GetTextSize( font, strText )
 
@@ -69,7 +71,7 @@ local function drawText( self, pnl, strText, x, y )
 		y = math.floor( ( ( pnl:GetTall() ) - h ) / 2 )
 	end
 
-	derma.DrawText( font, x, y, strText, col( self, "Text" ) )
+	derma.DrawText( font, x, y, strText, clr or col( self, "Text" ) )
 	return w, h
 end
 
@@ -143,28 +145,43 @@ end
 
 --[[ CheckBox ----------------------------------------------------------------]]
 
+-- GMod's DCheckBox is a plain panel and the skin draws all of it: the box, the
+-- tick and the caption.  Geometry comes from the control (m_iBoxX / m_iBoxSize /
+-- m_iTextGap, see lua/vgui/dcheckbox.lua) so the skin and SizeToContents cannot
+-- disagree.
+--
+-- ⚠️ surface.DrawFilledRect / DrawOutlinedRect take TWO CORNERS (x0,y0,x1,y1) in
+-- this engine -- the size-shaped DrawRect is the GMod-name shim in
+-- gmod_surface.lua.  This function used to call DrawFilledRect( x, y, size, size ),
+-- which draws from (x,y) to (size,size): a wrong rectangle.  Nobody noticed
+-- because nothing called PaintCheck until DCheckBox became a DPanel.
 function SKIN:PaintCheck( pnl, w, h )
 	local checked = pnl.IsChecked and pnl:IsChecked()
 
-	local size = math.min( h - 4, 16 )	local x = 2
-	local y = math.floor( ( h - size ) / 2 ) + 2
+	local size = pnl.m_iBoxSize or 16
+	local x = pnl.m_iBoxX or 2
+	local y = math.floor( ( h - size ) / 2 )
 
 	local c = checked and col( self, "CheckOn" ) or col( self, "CheckOff" )
 	surface.DrawSetColor( c.r, c.g, c.b, c.a )
-	surface.DrawFilledRect( x, y, size, size )
+	surface.DrawFilledRect( x, y, x + size, y + size )
 
 	local bd = col( self, "EntryBorder" )
 	surface.DrawSetColor( bd.r, bd.g, bd.b, bd.a )
-	surface.DrawOutlinedRect( x, y, size, size )
+	surface.DrawOutlinedRect( x, y, x + size, y + size )
 
 	if ( checked ) then
-		-- simple tick
+		-- a 2px tick (two passes): a single 1px line reads as a scratch next to
+		-- the tick GMod's own skin draws
 		surface.DrawSetColor( 255, 255, 255, 255 )
-		surface.DrawLine( x + 3, y + size / 2, x + size / 2 - 1, y + size - 4 )
-		surface.DrawLine( x + size / 2 - 1, y + size - 4, x + size - 3, y + 3 )
+		for i = 0, 1 do
+			surface.DrawLine( x + 4 + i, y + math.floor( size / 2 ), x + math.floor( size / 2 ) + i, y + size - 4 )
+			surface.DrawLine( x + math.floor( size / 2 ) + i, y + size - 4, x + size - 4 + i, y + 4 )
+		end
 	end
 
-	drawText( self, pnl, pnl:GetText() or "", size + 8, nil )
+	local textX = ( pnl.GetCaptionX and pnl:GetCaptionX() ) or ( size + 8 )
+	drawText( self, pnl, pnl:GetText() or "", textX, nil, pnl.m_colText )
 end
 
 --[[ ScrollBar ----------------------------------------------------------------]]

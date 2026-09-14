@@ -1,71 +1,91 @@
---[[ DCheckBox -- a check box with caption (original implementation).
+--[[ DCheckBox -- GMod-style check box (original implementation).
 
-	The engine's vgui::CheckButton already paints the whole control:
+	NOT the engine's vgui::CheckButton.  GMod's DCheckBox/DCheckBoxLabel is a
+	plain panel whose box is painted by the Derma skin (the wiki says
+	DCheckBoxLabel "derives from DPanel"), and it has to be that here too:
 
-	  * it owns a CheckImage child -- the tick box and the check glyph, drawn as
-	    text images through the scheme's checkbox font, and
-	  * because vgui::CheckButton derives from vgui::Label, the caption is
-	    painted in the same pass with the image/caption spacing the engine lays
-	    out itself.
+	  * vgui::CheckButton draws a scheme-font check glyph through its CheckImage
+	    child (26px in this scheme) and paints its caption in the panel's scheme
+	    font -- so it always looks like a big Source checkbox and ignores the
+	    Derma skin completely.  That is exactly what the first version of this
+	    control produced: twice GMod's size, with a big official-looking tick.
+	  * the fork's skin ALREADY has SKIN:PaintCheck (lua/skins/hl2sb_default.lua)
+	    doing the GMod look -- 16px box, thin tick, caption in DermaDefault --
+	    and nothing was calling it.
 
-	So the Lua side must NOT draw a caption of its own.  The first version made a
-	child DLabel at a hard-coded x = 22 and painted the same string a second
-	time, right on top of the engine's tick -- which is why DCheckBoxLabel's
-	caption looked smeared into the check mark (tick and "Enable HUD?" printed
-	over each other).  That DLabel is gone; there is one caption, the engine's.
+	So this is a DPanel: the skin paints it, Lua handles the click, and the
+	geometry below is the single source of truth for both the skin and
+	SizeToContents (they cannot drift apart).
 
-	Where the caption bindings come from: they are Label methods -- vgui::CheckButton
-	derives from vgui::Label and paints its own caption -- but Label's *bindings*
-	cannot be used from a checkbox panel: luaL_checklabel() validates the
-	metatable NAME ("Label") with luaL_checkudata, so it rejects a CheckButton
-	before lua_tolabel()'s dynamic_cast ever runs:
-
-	    bad argument #1 to 'EngineSetText' (Label expected, got INVALID_PANEL)
-
-	The engine therefore publishes SetText / GetText / SizeToContents /
-	GetContentSize / GetTextInset / SetTextInset on the CheckButton metatable
-	itself (game/client/lua/scripted_controls/lCheckButton.cpp, plain Label
-	forwarders), and this control uses those.
+	Mouse/click: LPanel's Lua dispatch delivers OnMousePressed to this class, so
+	the toggle is ours -- there is no engine CheckButton underneath to do it.
 --]]
 
 local PANEL = {}
 
-local CheckButtonMeta = FindMetaTable( "CheckButton" )
-
-local EngineSetChecked = CheckButtonMeta and CheckButtonMeta.SetChecked
-local EngineGetChecked = CheckButtonMeta and CheckButtonMeta.GetChecked
-local EngineSetText = CheckButtonMeta and CheckButtonMeta.SetText
-local EngineGetText = CheckButtonMeta and CheckButtonMeta.GetText
+-- Geometry (read by SKIN:PaintCheck as pnl.m_iBoxX / pnl.m_iBoxSize / ...).
+PANEL.m_iBoxX    = 2			-- box origin inside the panel
+PANEL.m_iBoxSize = 16			-- GMod's checkbox is 16x16
+PANEL.m_iTextGap = 6			-- gap between box and caption
 
 function PANEL:Init()
+	self.m_bChecked = false
+	self.m_bHover   = false
+
 	self:SetMouseInputEnabled( true )
 	self:SetKeyBoardInputEnabled( false )
+
+	if ( self.SetCursor ) then self:SetCursor( "hand" ) end
 end
 
+-------------------------------------------------------------------------------
+-- Caption.  Painted by the skin from m_strText -- deliberately NOT a child
+-- DLabel: a second caption on top of the skin's is exactly the double-paint
+-- bug this control went through.
+-------------------------------------------------------------------------------
 function PANEL:SetText( strText )
-	if ( EngineSetText ) then EngineSetText( self, tostring( strText or "" ) ) end
+	self.m_strText = tostring( strText or "" )
+	self:InvalidateLayout( true )
 end
 
 function PANEL:GetText()
-	if ( not EngineGetText ) then return "" end
-	return EngineGetText( self ) or ""
+	return self.m_strText or ""
 end
 
+function PANEL:GetCaptionX()
+	return ( self.m_iBoxX or 2 ) + ( self.m_iBoxSize or 16 ) + ( self.m_iTextGap or 6 ) + ( self:GetIndent() or 0 )
+end
+
+-------------------------------------------------------------------------------
+-- State.  SetChecked notifies (see derma/init.lua's convar wiring: it wraps
+-- OnCheckButtonChecked, which is what writes the convar back).
+-------------------------------------------------------------------------------
 function PANEL:SetChecked( b )
-	if ( EngineSetChecked ) then EngineSetChecked( self, b and true or false ) end
+	b = b and true or false
+	if ( self.m_bChecked == b ) then return end
+
+	self.m_bChecked = b
+	self:OnCheckButtonChecked()
 end
 
 function PANEL:GetChecked()
-	if ( EngineGetChecked ) then return EngineGetChecked( self ) end
-	return false
+	return self.m_bChecked and true or false
 end
 
 function PANEL:IsChecked()
-	return self:GetChecked() and true or false
+	return self:GetChecked()
 end
 
---- Stage-1 dispatch (lCheckButton.cpp).  Reads the engine state so the value is
---- always the truth, never a copy that a stray click desynced.
+function PANEL:SetValue( b )
+	self:SetChecked( b )
+end
+
+function PANEL:Toggle()
+	self:SetChecked( not self:GetChecked() )
+end
+
+--- The hook the convar wiring hangs off (hl2sb derma/init.lua
+--- InstallConVar( "DCheckBox", { name = "OnCheckButtonChecked", ... } )).
 function PANEL:OnCheckButtonChecked()
 	if ( self.OnChange ) then
 		local ok, err = pcall( self.OnChange, self, self:GetChecked() )
@@ -73,4 +93,27 @@ function PANEL:OnCheckButtonChecked()
 	end
 end
 
-derma.DefineControl( "DCheckBox", "HL2SB check box", PANEL, "CheckButton" )
+-------------------------------------------------------------------------------
+-- Input
+-------------------------------------------------------------------------------
+function PANEL:OnMousePressed( iMouseCode )
+	-- MOUSE_LEFT is 107 (Source's BUTTON_CODE); if the global is missing, accept
+	-- any button rather than making the box dead.
+	if ( MOUSE_LEFT ~= nil and iMouseCode ~= MOUSE_LEFT ) then return end
+	if ( self.IsEnabled and not self:IsEnabled() ) then return end
+
+	self:Toggle()
+end
+
+function PANEL:OnCursorEntered() self.m_bHover = true end
+function PANEL:OnCursorExited() self.m_bHover = false end
+
+-------------------------------------------------------------------------------
+-- Paint: the skin owns the look (GMod's split, and this fork's skin has the
+-- implementation already).
+-------------------------------------------------------------------------------
+function PANEL:Paint( w, h )
+	derma.SkinHook( "Paint", "Check", self, w or self:GetWide(), h or self:GetTall() )
+end
+
+derma.DefineControl( "DCheckBox", "HL2SB check box", PANEL, "DPanel" )
