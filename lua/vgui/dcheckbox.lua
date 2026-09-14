@@ -1,61 +1,53 @@
---[[ DCheckBox -- a check box with label (original implementation).
+--[[ DCheckBox -- a check box with caption (original implementation).
 
-	Uses the engine's scripted CheckButton: the tick box and click toggling are
-	native vgui2 (ToggleButton), and the Lua side adds GMod's API surface --
-	SetChecked / GetChecked / IsChecked and OnChange -- plus a DLabel caption.
-	Checked state lives in the engine control (no Lua mirror to go stale); the
-	stage-1 lCheckButton.cpp SetSelected override dispatches OnCheckButtonChecked
-	for both user clicks and programmatic SetChecked. --]]
+	The engine's vgui::CheckButton already paints the whole control:
+
+	  * it owns a CheckImage child -- the tick box and the check glyph, drawn as
+	    text images through the scheme's checkbox font, and
+	  * because vgui::CheckButton derives from vgui::Label, the caption is
+	    painted in the same pass with the image/caption spacing the engine lays
+	    out itself.
+
+	So the Lua side must NOT draw a caption of its own.  The first version made a
+	child DLabel at a hard-coded x = 22 and painted the same string a second
+	time, right on top of the engine's tick -- which is why DCheckBoxLabel's
+	caption looked smeared into the check mark (tick and "Enable HUD?" printed
+	over each other).  That DLabel is gone; there is one caption, the engine's.
+
+	Where the caption bindings come from: lCheckButton.cpp binds only
+	SetChecked / GetChecked / SetSelected / SetCheckButtonCheckable / ..., so
+	FindMetaTable( "CheckButton" ).SetText is nil -- reading it there and bailing
+	out was how GetText() ended up returning "" (which made DCheckBoxLabel's
+	SizeToContents measure an empty string and clip the caption away).  The
+	caption methods live on the *Label* metatable instead, and lua_tolabel() is a
+	dynamic_cast< vgui::Label * >: a CheckButton IS-A Label, so Label's bindings
+	apply to this panel unchanged.
+--]]
 
 local PANEL = {}
 
--- Engine CheckButton bindings, captured before the class methods below shadow
--- them on the ref table.
 local CheckButtonMeta = FindMetaTable( "CheckButton" )
+local LabelMeta = FindMetaTable( "Label" )
+
 local EngineSetChecked = CheckButtonMeta and CheckButtonMeta.SetChecked
 local EngineGetChecked = CheckButtonMeta and CheckButtonMeta.GetChecked
-local EngineSetText = CheckButtonMeta and CheckButtonMeta.SetText
+
+-- Label's bindings (see the header): usable on a CheckButton panel.
+local EngineSetText = LabelMeta and LabelMeta.SetText
+local EngineGetText = LabelMeta and LabelMeta.GetText
 
 function PANEL:Init()
 	self:SetMouseInputEnabled( true )
 	self:SetKeyBoardInputEnabled( false )
-
-	self.m_Label = vgui.Create( "DLabel", self, "Label" )
-	self.m_Label:SetText( "" )
-	self:LayoutLabel()
-end
-
-function PANEL:LayoutLabel()
-	local h = self:GetTall()
-	self.m_Label:SetPos( 22, math.floor( ( h - 14 ) / 2 ) )
-	self.m_Label:SizeToContents()
 end
 
 function PANEL:SetText( strText )
-	if ( EngineSetText ) then EngineSetText( self, strText ) end
-	self.m_Label:SetText( strText )
-	self:LayoutLabel()
+	if ( EngineSetText ) then EngineSetText( self, tostring( strText or "" ) ) end
 end
 
 function PANEL:GetText()
-	-- ⚠️ 2026-09-15: the caption is the DLabel mirror, NOT the native CheckButton.
-	--
-	-- The engine's "CheckButton" metatable (game/client/lua/scripted_controls/
-	-- lCheckButton.cpp:337-358) binds SetChecked/GetChecked/SetSelected/... and
-	-- has NO SetText at all, so `EngineSetText` above is nil.  The old body was
-	--
-	--     if ( EngineSetText == nil ) then return "" end
-	--     return self.m_Label:GetText()
-	--
-	-- i.e. it returned the EMPTY STRING on this engine -- which made
-	-- DCheckBoxLabel:SizeToContents() measure "" and size the panel to 24px, so
-	-- the caption (drawn at x=22 inside a 24px parent) was clipped away and
-	-- looked like "the label does not render".  The tick kept painting, which is
-	-- why it looked like a text bug.
-	--
-	-- The mirror is always kept in sync by SetText below, so it is the truth.
-	if ( self.m_Label ) then return self.m_Label:GetText() end
-	return ""
+	if ( not EngineGetText ) then return "" end
+	return EngineGetText( self ) or ""
 end
 
 function PANEL:SetChecked( b )

@@ -1,44 +1,64 @@
 --[[ DCheckBoxLabel -- a check box with its caption next to it.
 
-	Wiki: DCheckBoxLabel -- "a DCheckBox with a DLabel next to it".  GMod builds
-	it as a DPanel holding both; this fork's DCheckBox is already box + caption
-	(see its header), so this control is that, plus the label-shaped API the page
-	documents:
+	Wiki: DCheckBoxLabel -- "a DCheckBox with a DLabel next to it".  This fork's
+	DCheckBox IS the engine's vgui::CheckButton, which already paints the tick
+	box and (being a vgui::Label) the caption beside it, so this control only
+	adds the label-shaped API the wiki page documents:
 
 		SetValue / Toggle / SetIndent / GetIndent / SetDark / SetBright /
 		SetFont / SetTextColor / SizeToContents / OnChange
 
-	Inherited through the DCheckBox base, which is what the wiki promises too:
-		SetText / GetText, SetChecked / GetChecked / IsChecked, OnChange,
-		and the whole Panel:SetConVar family (installed onto DCheckBox by
-		derma/init.lua -- see derma.InstallConVarLink).
+	Inherited through the DCheckBox base: SetText / GetText,
+	SetChecked / GetChecked / IsChecked, OnChange, and the whole
+	Panel:SetConVar family (installed onto DCheckBox by derma/init.lua through
+	derma.InstallConVarLink).
 
-	Init does NOT chain to DCheckBox:Init by hand: vgui.Create runs Init for
-	every link of the chain, root-most first (hl2sb_derma.lua), so the box and
-	its DLabel are built before this one runs.
+	SizeToContents is NOT hand-rolled: Label::SizeToContents (bound) already
+	computes "the size of the content" -- check image + caption + insets -- from
+	the live fonts, so there is no magic number to keep in sync.
 
 	⚠️ Documented deviation: the wiki says SetChecked does not notify while
 	SetValue does.  Here they are equivalent -- lCheckButton.cpp's SetSelected
 	override dispatches OnCheckButtonChecked for programmatic changes as well as
 	clicks, and that is the hook the convar write hangs off.  SetValue therefore
-	also writes the convar, which is exactly what the wiki example relies on
-	(SetConVar + SetValue( true ) to push the initial state). --]]
+	also writes the convar, which is what the wiki example relies on.
+--]]
 
 local PANEL = {}
+
+local LabelMeta = FindMetaTable( "Label" )
+
+local EngineSizeToContents = LabelMeta and LabelMeta.SizeToContents
+local EngineSetFont = LabelMeta and LabelMeta.SetFont
+local EngineGetTextInset = LabelMeta and LabelMeta.GetTextInset
+local EngineSetTextInset = LabelMeta and LabelMeta.SetTextInset
 
 function PANEL:Init()
 	self.m_iIndent = 0
 	self.m_bDark = false
+
+	-- The engine puts the caption at its own inset (CHECK_INSET + the gap after
+	-- the check image).  Remember it: the indent is added to THAT, so GetIndent
+	-- stays 0 by default and nothing moves unless the caller asks.
+	if ( EngineGetTextInset ) then
+		local xInset, yInset = EngineGetTextInset( self )
+		self.m_iBaseInsetX, self.m_iBaseInsetY = xInset or 0, yInset or 0
+	end
 end
 
---- GMod: AccessorFunc -- X offset of the caption relative to the tick box.
+--- GMod: AccessorFunc -- X offset of the caption.
 function PANEL:GetIndent()
 	return self.m_iIndent or 0
 end
 
 function PANEL:SetIndent( iIndent )
 	self.m_iIndent = tonumber( iIndent ) or 0
-	self:LayoutLabel()
+
+	if ( EngineSetTextInset ) then
+		EngineSetTextInset( self, ( self.m_iBaseInsetX or 0 ) + self.m_iIndent, self.m_iBaseInsetY or 0 )
+	end
+
+	self:InvalidateLayout( true )
 end
 
 --- GMod: sets the checked state AND notifies (OnChange + the convar write).
@@ -50,29 +70,29 @@ function PANEL:Toggle()
 	self:SetValue( not self:GetChecked() )
 end
 
+--- GMod: SetFont( name ) -- a font NAME.  The engine's Label:SetFont wants an
+--- HFont, so it goes through the framework's font resolver like everything else.
 function PANEL:SetFont( strFont )
-	if ( self.m_Label and self.m_Label.SetFont ) then
-		self.m_Label:SetFont( strFont )
-		self:LayoutLabel()
-	end
+	self.m_strDermaFont = strFont
+
+	local hfont = ( derma.GetFontHandle and derma.GetFontHandle( strFont ) ) or nil
+	if ( hfont and EngineSetFont ) then EngineSetFont( self, hfont ) end
+
+	self:InvalidateLayout( true )
 end
 
 function PANEL:SetTextColor( clr )
 	self.m_colText = clr
-	if ( self.m_Label and self.m_Label.SetTextColor ) then
-		self.m_Label:SetTextColor( clr )
-	end
+	if ( self.SetFgColor ) then self:SetFgColor( clr ) end
 end
 
 --- GMod: "sets the text of the DCheckBoxLabel to be dark colored in accordance
 --- with the currently active Derma skin".  This fork's built-in skin does not
---- define DCheckBoxLabel text colours yet, so the two values below are what
---- actually paints; they are the ones this control is verified with.
+--- define DCheckBoxLabel text colours yet, so these two are what paints.
 function PANEL:SetDark( bDark )
 	self.m_bDark = bDark and true or false
 
-	local col = self.m_bDark and Color( 60, 60, 60, 255 ) or Color( 255, 255, 255, 255 )
-	self:SetTextColor( col )
+	self:SetTextColor( self.m_bDark and Color( 60, 60, 60, 255 ) or Color( 255, 255, 255, 255 ) )
 end
 
 function PANEL:SetBright( bBright )
@@ -80,22 +100,11 @@ function PANEL:SetBright( bBright )
 end
 
 --- GMod: "sizes the panel to the size of the internal DLabel and DButton".
---- Tick box is 16 wide plus a 6px gap (the caption's x in DCheckBox), then the
---- text, then the indent.
+--- Label::SizeToContents does exactly that natively (check image + caption +
+--- the insets above), so this is a passthrough -- and it follows the checkbox
+--- font, which a hard-coded "22 + text" could not.
 function PANEL:SizeToContents()
-	local strFont = ( self.m_Label and self.m_Label:GetFont() ) or derma.DefaultFont
-	local w, h = derma.GetTextSize( strFont, self:GetText() or "" )
-
-	self:SetSize( self:GetIndent() + 22 + w + 2, math.max( h + 4, 16 ) )
-	self:LayoutLabel()
-end
-
---- Caption to the right of the tick box, vertically centred, shifted by indent.
-function PANEL:LayoutLabel()
-	if ( not self.m_Label ) then return end
-
-	self.m_Label:SetPos( self:GetIndent() + 22, math.floor( ( self:GetTall() - 14 ) / 2 ) )
-	self.m_Label:SizeToContents()
+	if ( EngineSizeToContents ) then EngineSizeToContents( self ) end
 end
 
 derma.DefineControl( "DCheckBoxLabel", "HL2SB check box with label", PANEL, "DCheckBox" )
