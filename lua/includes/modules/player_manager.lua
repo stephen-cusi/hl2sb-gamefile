@@ -255,3 +255,39 @@ function GetPlayerModel( ply )
 
 	return ply:GetModelName() or ""
 end
+
+-------------------------------------------------------------------------------
+-- Purpose: GMod 的 AddPlayerModel —— 一次注册「模型 + 手模」
+--
+--   GMod 的 lua/includes/modules/player_manager.lua 里它是 **file-local** 的
+--   （它自己就是拿这个函数铺出那张默认模型表的），wiki 上也没有它。之所以导出，
+--   是因为 HL2SB 这边没有 GMod 那份内置模型表，gamemode / addon 要按 GMod 的写法
+--   补条目时只能靠它。0 个调用者，纯新增。
+--
+--   ⚠️ 参数顺序是 GMod 的，和本模块的 AddValidModel **不一样**：
+--       AddPlayerModel( name, title, model, handsModel, handsSkin, handsBody )
+--       AddValidModel ( name, model, title, category )
+--   （GMod 把 title 放在 model 前面。）
+-------------------------------------------------------------------------------
+function AddPlayerModel( name, title, model, handsModel, handsSkin, handsBody, category )
+	if ( type( name ) ~= "string" or type( model ) ~= "string" ) then return end
+
+	AddValidModel( name, model, title, category )
+
+	if ( handsModel ~= nil ) then
+		AddValidHands( name, handsModel, handsSkin, handsBody )
+	end
+end
+
+-------------------------------------------------------------------------------
+-- Purpose: GMod 的 LookupPlayerClass（同样在 GMod 里是 file-local）
+--
+--   GMod 返回的是「玩家职业实例」——存在 ply.m_CurrentPlayerClass 上，元表 __index
+--   指向职业表，并带 Player / ClassID / Func 三个字段。
+--   HL2SB 的职业系统不同：职业表直接放在 PlayerClasses 里，PlayerClass( ply ) 返回
+--   那张表（OnPlayerSpawn 会把 tab.Player 指向该玩家）。这里就做成它的别名，
+--   于是 class:Init() / class.Loadout / class.Player 这些 GMod 写法都能用。
+-------------------------------------------------------------------------------
+function LookupPlayerClass( ply )
+	return PlayerClass( ply )
+end

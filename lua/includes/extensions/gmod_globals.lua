@@ -324,11 +324,18 @@ RealFrameTime = RealFrameTime or FrameTime
 --     RunConsoleCommand( "cl_playermodel", entry.name )
 --
 -- Two paths cover what GMod scripts actually do:
---   1. a Lua concommand (concommand.Create / concommand.Add) -> Dispatch it, so
---      its callback runs with GMod's ( ply, cmd, args ) signature;
+--   1. a Lua concommand (concommand.Create / concommand.Add) -> run it, so its
+--      callback gets GMod's ( ply, cmd, args, argStr ) signature;
 --   2. anything else (an engine ConVar, which is what cl_playermodel is) ->
 --      set the ConVar, which is what typing it in the console does for a plain
 --      cvar anyway.
+--
+-- HL2SB: path 1 goes through concommand.Run with a real arguments TABLE, the way
+-- the engine does it now (public/lua/tier1/lconvar.cpp pushes arguments[1..n] +
+-- the raw tail).  It used to call Dispatch with just the raw string, so a GMod
+-- command reached through RunConsoleCommand saw a string in the arguments slot
+-- and arguments[1] was nil -- the same defect the engine path had.  Dispatch is
+-- kept as the fallback for a lua/includes/ tree that predates Run.
 --
 -- TODO(engine): bind the real thing once an engine command executor is
 -- exposed; this cannot run commands that are neither a cvar nor a Lua
@@ -348,8 +355,20 @@ if ( RunConsoleCommand == nil ) then
 			strArgs = ( strArgs == "" ) and tostring( arg ) or ( strArgs .. " " .. tostring( arg ) )
 		end
 
-		if ( concommand ~= nil and concommand.Dispatch ~= nil and concommand.Dispatch( nil, name, strArgs ) ) then
-			return
+		if ( concommand ~= nil ) then
+			local tArguments = {}
+
+			if ( concommand.Run ~= nil ) then
+				for strArg in string.gmatch( strArgs, "%S+" ) do
+					tArguments[ #tArguments + 1 ] = strArg
+				end
+
+				if ( concommand.Run( nil, name, tArguments, strArgs ) ) then
+					return
+				end
+			elseif ( concommand.Dispatch ~= nil and concommand.Dispatch( nil, name, strArgs ) ) then
+				return
+			end
 		end
 
 		if ( strArgs ~= "" ) then

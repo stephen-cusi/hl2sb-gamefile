@@ -79,3 +79,8 @@ function register( tGamemode, strName, strBaseClass )
   end
   tGamemodes[ strName ] = tGamemode
 end
+
+-- HL2SB: GMod spells the public surface capitalised (gamemode.Get / gamemode.Register,
+-- wiki). We already alias Call above; these complete the trio. Same functions.
+Get = get
+Register = register

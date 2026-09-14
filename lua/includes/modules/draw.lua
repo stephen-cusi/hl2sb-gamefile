@@ -366,5 +366,118 @@ function WordBox( bordersize, x, y, text, font, color, fontcolor, xalign, yalign
   return w + bordersize * 2, h + bordersize * 2
 end
 
+-------------------------------------------------------------------------------
+-- DrawText( text, font, x, y, colour, xalign )
+--
+-- GMod (wiki): "Simple draw text at position, but this will expand newlines and
+-- tabs."  Defaults: font "DermaDefault", x/y 0, colour color_white,
+-- xalign TEXT_ALIGN_LEFT.  Returns nothing.
+--
+-- SimpleText above is the single-line primitive; this one splits on "\n" and
+-- walks y down by one line height per row (GMod does the same, and expands a tab
+-- to four spaces).  Each row is aligned on its own, so TEXT_ALIGN_CENTER centres
+-- every row independently -- exactly like GMod.
+-------------------------------------------------------------------------------
+local TabExpansion = "    "   -- GMod expands "\t" to 4 spaces
+
+function DrawText( text, font, x, y, colour, xalign )
+	text    = tostring( text )
+	font    = font or "DermaDefault"
+	x       = x or 0
+	y       = y or 0
+	xalign  = xalign or TEXT_ALIGN_LEFT
+	colour  = colour or color_white
+
+	local lineHeight = GetFontHeight( font )
+
+	-- Append "\n" so gmatch also yields the last row when there is no trailing
+	-- newline ("a\nb" -> "a", "b"; "a\n" -> "a", "").
+	for line in string.gmatch( text .. "\n", "([^\n]*)\n" ) do
+		SimpleText( ( string.gsub( line, "\t", TabExpansion ) ), font, x, y, colour, xalign, TEXT_ALIGN_TOP )
+		y = y + lineHeight
+	end
+end
+
+-------------------------------------------------------------------------------
+-- NoTexture()
+--
+-- GMod (wiki): "Sets drawing texture to a default white texture (vgui/white) via
+-- surface.SetMaterial. Useful for resetting the drawing texture."
+--
+-- Two HL2SB facts force the shape below:
+--
+--   * the engine's surface.SetMaterial is the raw binding (luaL_checkmaterial),
+--     so it only accepts a real IMaterial -- and Material() is a Lua proxy table
+--     in this fork, which would make that binding throw;
+--   * binding by texture id is the path this tree already proves: RoundedBox
+--     binds gui/cornerN with surface.SetTexture + DrawSetTextureFile and the
+--     rounded corners render (game commit 976e52d).
+--
+-- The observable result is the same one GMod gives: the next DrawTexturedRect
+-- paints solid white.  materials/vgui/white.vmt ships with the mod so the path
+-- resolves for GMod scripts that call Material("vgui/white") themselves.
+-------------------------------------------------------------------------------
+local NoTextureID = nil
+
+function NoTexture()
+	if ( NoTextureID == nil ) then
+		NoTextureID = surface.GetTextureID( "vgui/white" )
+	end
+
+	surface.SetTexture( NoTextureID )
+end
+
+-------------------------------------------------------------------------------
+-- TexturedQuad( texturedata )
+--
+-- GMod (wiki) draws a texture from a TextureData structure:
+--
+--     { texture = <surface.GetTextureID() number>,   -- required
+--       x = 0, y = 0, w = 0, h = 0,                   -- the quad
+--       color = color_white }                          -- optional tint
+--
+-- GMod implements it with a mesh so the four corners can carry independent UVs;
+-- this engine has no mesh binding, and the mesh is only needed for a ROTATED
+-- quad.  Axis-aligned UVs -- every atlas/sub-rect use, which is what
+-- TexturedQuad is for -- are exact through DrawTexturedRectUV, so that is what
+-- this uses.  uv1 (top-left) / uv3 (bottom-right) are honoured when present,
+-- which is the field pair GMod's older TextureData carried.
+-------------------------------------------------------------------------------
+function TexturedQuad( texturedata )
+	if ( texturedata == nil ) then return end
+
+	local tex = texturedata.texture
+	if ( tex ~= nil ) then
+		-- Accept the id number, or anything material-shaped (the Lua Material()
+		-- proxy, an IMaterial) by asking it for its texture id.
+		if ( type( tex ) == "table" and tex.GetTextureID ~= nil ) then
+			surface.SetTexture( tex:GetTextureID() )
+		else
+			surface.SetTexture( tex )
+		end
+	end
+
+	SetDrawColour( texturedata.color, 255, 255, 255, 255 )
+
+	local x = texturedata.x or 0
+	local y = texturedata.y or 0
+	local w = texturedata.w or 0
+	local h = texturedata.h or 0
+
+	local uv1 = texturedata.uv1
+	local uv3 = texturedata.uv3
+
+	if ( uv1 ~= nil and uv3 ~= nil ) then
+		local u0 = uv1[ 1 ] or uv1.u or 0
+		local v0 = uv1[ 2 ] or uv1.v or 0
+		local u1 = uv3[ 1 ] or uv3.u or 1
+		local v1 = uv3[ 2 ] or uv3.v or 1
+
+		surface.DrawTexturedRectUV( x, y, w, h, u0, v0, u1, v1 )
+	else
+		surface.DrawTexturedRect( x, y, w, h )
+	end
+end
+
 -- Load marker.
 print( "[HL2SB] draw library loaded" )
