@@ -8,6 +8,7 @@ local pairs = pairs
 local Warning = dbg.Warning
 local tostring = tostring
 local pcall = pcall
+local GlobalTable = _G   -- capture before module() swaps _ENV
 
 module( "cvar" )
 
@@ -34,20 +35,36 @@ end
 -- Output :
 -------------------------------------------------------------------------------
 function CallGlobalChangeCallbacks( var, pOldString, flOldValue )
-  local tCallbacks = tCallbacks[ var:GetName() ]
+  local strName = var:GetName()
+
+  local tCallbacks = tCallbacks[ strName ]
   if ( tCallbacks ~= nil ) then
     for k, v in pairs( tCallbacks ) do
       if ( v == nil ) then
-        Warning( "Callback '" .. tostring( k ) .. "' (" .. tostring( var:GetName() ) .. ") tried to call a nil function!\n" )
+        Warning( "Callback '" .. tostring( k ) .. "' (" .. tostring( strName ) .. ") tried to call a nil function!\n" )
         tCallbacks[ k ] = nil
         break
       else
         bError, strError = pcall( v, var, pOldString, flOldValue )
         if ( bError == false ) then
-          Warning( "Callback '" .. tostring( k ) .. "' (" .. tostring( var:GetName() ) .. ") Failed: " .. tostring( strError ) .. "\n" )
+          Warning( "Callback '" .. tostring( k ) .. "' (" .. tostring( strName ) .. ") Failed: " .. tostring( strError ) .. "\n" )
           tCallbacks[ k ] = nil
         end
       end
+    end
+  end
+
+  -- HL2SB: bridge the engine's global change callback into GMod's `cvars` library.
+  -- The engine only ever calls cvar.CallGlobalChangeCallbacks (licvar.cpp
+  -- CV_GlobalChange_Lua); GMod's cvars.AddChangeCallback table is fed by
+  -- cvars.OnConVarChanged, which nothing used to invoke - so every
+  -- cvars.AddChangeCallback (and every Panel:SetConVar built on it) was dead.
+  -- Per the wiki the callback receives three STRINGS: name, old value, new value.
+  local cvars = GlobalTable.cvars   -- resolved at call time via the captured global table
+  if ( cvars and cvars.OnConVarChanged ) then
+    bError, strError = pcall( cvars.OnConVarChanged, strName, tostring( pOldString ), tostring( var:GetString() ) )
+    if ( bError == false ) then
+      Warning( "cvars.OnConVarChanged (" .. tostring( strName ) .. ") Failed: " .. tostring( strError ) .. "\n" )
     end
   end
 end

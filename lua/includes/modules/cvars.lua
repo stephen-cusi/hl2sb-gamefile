@@ -1,147 +1,129 @@
+--[[--========================================================
+	HL2SB `cvars` library - ConVar change callbacks.
 
-local table				= table
-local type				= type
-local istable 			= istable
-local isstring			= isstring
-local assert			= assert
-local format			= string.format
-local GetConVar			= GetConVar
+	Re-implemented from scratch against the GMod wiki surface
+	(https://wiki.facepunch.com/gmod/cvars); NOT a copy of GMod's lua.
 
---[[---------------------------------------------------------
-	Name: cvar
-	Desc: Callbacks when cvars change
------------------------------------------------------------]]
+	Public API (matches the wiki exactly):
+		cvars.AddChangeCallback( name, callback, identifier=nil )
+		cvars.RemoveChangeCallback( name, identifier )
+		cvars.GetConVarCallbacks( name, createIfNotFound=false )
+		cvars.OnConVarChanged( name, oldVal, newVal )   -- called by the engine bridge
+		cvars.String( name, default=nil )
+		cvars.Number( name, default=nil )
+		cvars.Bool( name, default=nil )
+
+	The callback signature is ( convarName:string, oldValue:string, newValue:string ).
+
+	Re-entry guard: lua/includes/modules/*.lua are executed once by the loader and
+	AGAIN on any require("cvars") (luasrc_dofolder does not populate package.loaded),
+	so without the guard the second run would wipe ConVars and orphan every callback
+	registered before it - the exact class of bug that killed hook/concommand here.
+------------------------------------------------------------]]--
+
+-- Capture the globals we use BEFORE module() swaps _ENV to the (seeall-less)
+-- module table, after which bare `type`/`table`/`GetConVar` are not visible.
+local type      = type
+local table     = table
+local tostring  = tostring
+local error     = error
+local GetConVar = GetConVar
+
+local GlobalTable = _G   -- capture before module() swaps _ENV (see hook.lua)
+
 module( "cvars" )
+
+if ( GlobalTable.cvars and GlobalTable.cvars.AddChangeCallback and GlobalTable.cvars.OnConVarChanged ) then
+	return GlobalTable.cvars
+end
 
 local ConVars = {}
 
---[[---------------------------------------------------------
-	Name: GetConVarCallbacks
-	Desc: Returns a table of the given ConVars callbacks
------------------------------------------------------------]]
+-- Return the callback list for `name`; create (and store) an empty one if asked.
 function GetConVarCallbacks( name, createIfNotFound )
-
 	local tab = ConVars[ name ]
-	if ( createIfNotFound and !tab ) then
+	if ( tab == nil and createIfNotFound ) then
 		tab = {}
 		ConVars[ name ] = tab
 	end
-
 	return tab
-
 end
 
---[[---------------------------------------------------------
-	Name: OnConVarChanged
-	Desc: Called by the engine
------------------------------------------------------------]]
+-- The engine bridge (cvar.lua CallGlobalChangeCallbacks) calls this on every change.
+-- Each stored callback is either a plain function or { func, identifier }.
 function OnConVarChanged( name, old, new )
+	local tab = ConVars[ name ]
+	if ( tab == nil ) then return end
 
-	local tab = GetConVarCallbacks( name )
-	if ( !tab ) then return end
-
+	-- Iterate over slots by index and tolerate nils: a callback may Add/RemoveChangeCallback
+	-- and mutate the list while we walk it.
 	for i = 1, #tab do
-		local callback = tab[ i ]
-		if ( istable( callback ) ) then
-			callback[ 1 ]( name, old, new )
-		else
-			callback( name, old, new )
+		local cb = tab[ i ]
+		if ( cb ~= nil ) then
+			if ( type( cb ) == "table" ) then
+				cb[ 1 ]( name, old, new )
+			else
+				cb( name, old, new )
+			end
 		end
 	end
-
 end
 
---[[---------------------------------------------------------
-	Name: AddChangeCallback
-	Desc: Adds a callback to be called when convar changes
------------------------------------------------------------]]
 function AddChangeCallback( name, func, identifier )
-
-	if ( identifier ) then
-		assert( isstring( identifier ), format( "bad argument #%i (string expected, got %s)", 3, type( identifier ) ) )
+	if ( identifier ~= nil and type( identifier ) ~= "string" ) then
+		error( "cvars.AddChangeCallback: bad argument #3 (string expected, got " .. type( identifier ) .. ")", 2 )
+	end
+	if ( type( func ) ~= "function" ) then
+		error( "cvars.AddChangeCallback: bad argument #2 (function expected, got " .. type( func ) .. ")", 2 )
 	end
 
 	local tab = GetConVarCallbacks( name, true )
 
-	if ( !identifier ) then
+	if ( identifier == nil ) then
 		table.insert( tab, func )
 		return
 	end
 
+	-- Same (name, identifier) pair replaces the existing callback (wiki: identifier is
+	-- paired with the convar name, not globally unique).
 	for i = 1, #tab do
-		local callback = tab[ i ]
-		if ( istable( callback ) and callback[ 2 ] == identifier ) then
-			callback[ 1 ] = func
+		local cb = tab[ i ]
+		if ( type( cb ) == "table" and cb[ 2 ] == identifier ) then
+			cb[ 1 ] = func
 			return
 		end
 	end
 
 	table.insert( tab, { func, identifier } )
-
 end
 
---[[---------------------------------------------------------
-	Name: RemoveChangeCallback
-	Desc: Removes callback with identifier
------------------------------------------------------------]]
 function RemoveChangeCallback( name, identifier )
+	local tab = ConVars[ name ]
+	if ( tab == nil ) then return end
 
-	if ( identifier ) then
-		assert( isstring( identifier ), format( "bad argument #%i (string expected, got %s)", 2, type( identifier ) ) )
-	end
-
-	local tab = GetConVarCallbacks( name, true )
-	for i = 1, #tab do
-		local callback = tab[ i ]
-		if ( istable( callback ) and callback[ 2 ] == identifier ) then
+	for i = #tab, 1, -1 do
+		local cb = tab[ i ]
+		if ( type( cb ) == "table" and cb[ 2 ] == identifier ) then
 			table.remove( tab, i )
-			break
+			return
 		end
 	end
-
 end
 
---[[---------------------------------------------------------
-	Name: String
-	Desc: Retrieves console variable as a string
------------------------------------------------------------]]
 function String( name, default )
-
-	local convar = GetConVar( name )
-	if ( convar ~= nil ) then
-		return convar:GetString()
-	end
-
+	local cv = GetConVar( name )
+	if ( cv ~= nil ) then return cv:GetString() end
 	return default
-
 end
 
---[[---------------------------------------------------------
-	Name: Number
-	Desc: Retrieves console variable as a number
------------------------------------------------------------]]
 function Number( name, default )
-
-	local convar = GetConVar( name )
-	if ( convar ~= nil ) then
-		return convar:GetFloat()
-	end
-
+	local cv = GetConVar( name )
+	if ( cv ~= nil ) then return cv:GetFloat() end
 	return default
-
 end
 
---[[---------------------------------------------------------
-	Name: Bool
-	Desc: Retrieves console variable as a boolean
------------------------------------------------------------]]
 function Bool( name, default )
-
-	local convar = GetConVar( name )
-	if ( convar ~= nil ) then
-		return convar:GetBool()
-	end
-
+	local cv = GetConVar( name )
+	if ( cv ~= nil ) then return cv:GetBool() end
 	return default
-
 end
