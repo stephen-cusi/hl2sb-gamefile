@@ -128,27 +128,28 @@ end
 	table here.  m_bApplyingConVar guards the convar -> panel -> convar loop.
 -----------------------------------------------------------------------------]]
 local function InstallConVar( strClass, fnApply, fnWrap )
-	local cls = vgui.GetControlTable( strClass )
-	if ( not cls ) then return end
+	-- ⚠️ Deferred on purpose -- see the note above.  This file loads before the
+	-- control list, so the class must not be looked up here.
+	derma.InstallConVarLink( strClass, function( cls )
+		Derma_Install_Convar_Functions( cls )
 
-	Derma_Install_Convar_Functions( cls )
-
-	cls.ConVarChanged = function( pnl, name, old, new )
-		pnl.m_bApplyingConVar = true
-		fnApply( pnl, new )
-		pnl.m_bApplyingConVar = false
-	end
-
-	if ( fnWrap and cls[ fnWrap.name ] ) then
-		local orig = cls[ fnWrap.name ]
-		cls[ fnWrap.name ] = function( pnl, ... )
-			local r = orig( pnl, ... )
-			if ( not pnl.m_bApplyingConVar and pnl.m_ConVar ) then
-				pnl.m_ConVar:SetString( tostring( fnWrap.write( pnl ) ) )
-			end
-			return r
+		cls.ConVarChanged = function( pnl, name, old, new )
+			pnl.m_bApplyingConVar = true
+			fnApply( pnl, new )
+			pnl.m_bApplyingConVar = false
 		end
-	end
+
+		if ( fnWrap and cls[ fnWrap.name ] ) then
+			local orig = cls[ fnWrap.name ]
+			cls[ fnWrap.name ] = function( pnl, ... )
+				local r = orig( pnl, ... )
+				if ( not pnl.m_bApplyingConVar and pnl.m_ConVar ) then
+					pnl.m_ConVar:SetString( tostring( fnWrap.write( pnl ) ) )
+				end
+				return r
+			end
+		end
+	end )
 end
 
 InstallConVar( "DCheckBox",

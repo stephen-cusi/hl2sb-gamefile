@@ -173,4 +173,47 @@ hook.Add( "HudViewportPaint", "hl2sb_gmod_compat_probe", function()
 	end
 end )
 
-print( TAG .. "loaded -- 'hl2sb_comprobe one two three' tests the ENGINE path, 'hl2sb_comprobe_draw' tests the draw functions" )
+-- ---- 7. the wiki Panel:SetConVar example, built for real ------------------
+-- https://wiki.facepunch.com/gmod/Panel:SetConVar -- same calls in the same
+-- order as the page's example, so a failure here is the failure a GMod addon
+-- would hit.  cl_drawhud is a real client convar, so ticking the box visibly
+-- hides the HUD (and unticking brings it back).
+concommand.Add( "hl2sb_comprobe_derma", function()
+	local cls = vgui.GetControlTable and vgui.GetControlTable( "DCheckBoxLabel" )
+
+	print( TAG .. "DCheckBoxLabel registered = " .. tostring( cls ~= nil )
+		.. "  class-table SetConVar = " .. tostring( cls ~= nil and type( cls.SetConVar ) == "function" )
+		.. "  (the instance inherits it through the base chain)" )
+
+	local frame = vgui.Create( "DFrame" )
+	if ( not IsValid( frame ) ) then
+		print( TAG .. "RESULT: FAIL - vgui.Create('DFrame') returned nothing" )
+		return
+	end
+
+	frame:SetPos( 100, 100 )
+	frame:SetSize( 300, 200 )
+	frame:SetTitle( "My new Derma frame" )
+	frame:SetDraggable( true )
+	frame:MakePopup()
+
+	local box = vgui.Create( "DCheckBoxLabel", frame )
+	if ( not IsValid( box ) ) then
+		print( TAG .. "RESULT: FAIL - vgui.Create('DCheckBoxLabel') returned nothing" )
+		return
+	end
+
+	box:SetConVar( "cl_drawhud" )
+	box:SetText( "Enable HUD?" )
+	box:SetPos( 5, 25 )
+	box:SizeToContents()
+
+	print( TAG .. "checkbox: SetConVar=" .. tostring( type( box.SetConVar ) == "function" )
+		.. "  bound=" .. tostring( box:GetConVar() ~= nil )
+		.. "  checked=" .. tostring( box:GetChecked() )
+		.. "  cl_drawhud=" .. tostring( GetConVarString( "cl_drawhud" ) )
+		.. "  size=" .. tostring( box:GetWide() ) .. "x" .. tostring( box:GetTall() ) )
+	print( TAG .. "RESULT: PASS if the frame shows a ticked 'Enable HUD?' box - untick it and the HUD comes back" )
+end, nil, "Build the wiki Panel:SetConVar example", {} )
+
+print( TAG .. "loaded -- 'hl2sb_comprobe one two three' tests the ENGINE path, 'hl2sb_comprobe_draw' the draw functions, 'hl2sb_comprobe_derma' the Derma convar link" )
