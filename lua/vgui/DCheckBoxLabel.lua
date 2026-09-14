@@ -13,9 +13,12 @@
 	Panel:SetConVar family (installed onto DCheckBox by derma/init.lua through
 	derma.InstallConVarLink).
 
-	SizeToContents is NOT hand-rolled: Label::SizeToContents (bound) already
+	SizeToContents is NOT hand-rolled: the engine's Label::SizeToContents already
 	computes "the size of the content" -- check image + caption + insets -- from
-	the live fonts, so there is no magic number to keep in sync.
+	the live fonts, so there is no magic number to keep in sync.  The engine
+	publishes it (and GetContentSize / GetTextInset / SetTextInset) on the
+	CheckButton metatable, because Label's own bindings cannot be called with a
+	checkbox panel (luaL_checklabel rejects it by metatable name).
 
 	⚠️ Documented deviation: the wiki says SetChecked does not notify while
 	SetValue does.  Here they are equivalent -- lCheckButton.cpp's SetSelected
@@ -26,12 +29,11 @@
 
 local PANEL = {}
 
-local LabelMeta = FindMetaTable( "Label" )
+local CheckButtonMeta = FindMetaTable( "CheckButton" )
 
-local EngineSizeToContents = LabelMeta and LabelMeta.SizeToContents
-local EngineSetFont = LabelMeta and LabelMeta.SetFont
-local EngineGetTextInset = LabelMeta and LabelMeta.GetTextInset
-local EngineSetTextInset = LabelMeta and LabelMeta.SetTextInset
+local EngineSizeToContents = CheckButtonMeta and CheckButtonMeta.SizeToContents
+local EngineGetTextInset = CheckButtonMeta and CheckButtonMeta.GetTextInset
+local EngineSetTextInset = CheckButtonMeta and CheckButtonMeta.SetTextInset
 
 function PANEL:Init()
 	self.m_iIndent = 0
@@ -70,14 +72,13 @@ function PANEL:Toggle()
 	self:SetValue( not self:GetChecked() )
 end
 
---- GMod: SetFont( name ) -- a font NAME.  The engine's Label:SetFont wants an
---- HFont, so it goes through the framework's font resolver like everything else.
+--- GMod: SetFont( name ) -- a font NAME.  The engine's caption font comes from
+--- the scheme (CheckButton::ApplySchemeSettings picks it and paints the check
+--- glyph with it too), so overriding it per panel needs a Label:SetFont(HFont)
+--- forwarder on the CheckButton metatable that this fork does not publish yet.
+--- Recorded so GetFont/skins can see it; say so rather than pretend.
 function PANEL:SetFont( strFont )
 	self.m_strDermaFont = strFont
-
-	local hfont = ( derma.GetFontHandle and derma.GetFontHandle( strFont ) ) or nil
-	if ( hfont and EngineSetFont ) then EngineSetFont( self, hfont ) end
-
 	self:InvalidateLayout( true )
 end
 

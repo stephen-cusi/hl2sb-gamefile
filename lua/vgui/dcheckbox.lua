@@ -14,27 +14,28 @@
 	caption looked smeared into the check mark (tick and "Enable HUD?" printed
 	over each other).  That DLabel is gone; there is one caption, the engine's.
 
-	Where the caption bindings come from: lCheckButton.cpp binds only
-	SetChecked / GetChecked / SetSelected / SetCheckButtonCheckable / ..., so
-	FindMetaTable( "CheckButton" ).SetText is nil -- reading it there and bailing
-	out was how GetText() ended up returning "" (which made DCheckBoxLabel's
-	SizeToContents measure an empty string and clip the caption away).  The
-	caption methods live on the *Label* metatable instead, and lua_tolabel() is a
-	dynamic_cast< vgui::Label * >: a CheckButton IS-A Label, so Label's bindings
-	apply to this panel unchanged.
+	Where the caption bindings come from: they are Label methods -- vgui::CheckButton
+	derives from vgui::Label and paints its own caption -- but Label's *bindings*
+	cannot be used from a checkbox panel: luaL_checklabel() validates the
+	metatable NAME ("Label") with luaL_checkudata, so it rejects a CheckButton
+	before lua_tolabel()'s dynamic_cast ever runs:
+
+	    bad argument #1 to 'EngineSetText' (Label expected, got INVALID_PANEL)
+
+	The engine therefore publishes SetText / GetText / SizeToContents /
+	GetContentSize / GetTextInset / SetTextInset on the CheckButton metatable
+	itself (game/client/lua/scripted_controls/lCheckButton.cpp, plain Label
+	forwarders), and this control uses those.
 --]]
 
 local PANEL = {}
 
 local CheckButtonMeta = FindMetaTable( "CheckButton" )
-local LabelMeta = FindMetaTable( "Label" )
 
 local EngineSetChecked = CheckButtonMeta and CheckButtonMeta.SetChecked
 local EngineGetChecked = CheckButtonMeta and CheckButtonMeta.GetChecked
-
--- Label's bindings (see the header): usable on a CheckButton panel.
-local EngineSetText = LabelMeta and LabelMeta.SetText
-local EngineGetText = LabelMeta and LabelMeta.GetText
+local EngineSetText = CheckButtonMeta and CheckButtonMeta.SetText
+local EngineGetText = CheckButtonMeta and CheckButtonMeta.GetText
 
 function PANEL:Init()
 	self:SetMouseInputEnabled( true )
