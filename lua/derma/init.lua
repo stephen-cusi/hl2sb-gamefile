@@ -57,6 +57,11 @@ derma.DefaultFont = "DermaDefault"
 
 include( "skins/hl2sb_default.lua" )
 
+-- Derma helper globals (menus, modal dialogs, Derma_Hook, Derma_Anim) built on
+-- our controls - the small API surface GMod's lua/derma exposes that our
+-- framework was missing.
+include( "derma/hl2sb_derma_menus.lua" )
+
 --[[---------------------------------------------------------------------------
 	Derma_Install_Convar_Functions ( global )
 
