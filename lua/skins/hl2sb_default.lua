@@ -376,18 +376,24 @@ end
 
 --[[ Notification ----------------------------------------------------------------]]
 
+-- GMod's notice: a FLAT translucent near-black box -- GMod sets it with
+-- SetBackgroundColor( Color( 20, 20, 20, 255 * 0.6 ) ) on the panel itself, and
+-- puts the type's meaning in the icon (vgui/notices/*) rather than in a colour
+-- bar.  An earlier version of this function filled the panel with the skin's
+-- "Panel" colour plus an outlined border, and the panel added a hard left
+-- colour stripe: a gray slab with a blue line, which is not the GMod look.
+--
+-- ⚠️ Do NOT read pnl:GetBackgroundColor() here.  Measured 2026-09-15: it comes
+-- back FULLY TRANSPARENT (the panel's SetBgColor does not survive), and because
+-- the notice icon is a textured draw it inherits the current draw colour -- so
+-- the transparent body also made the icon vanish.  Only the caption survived,
+-- because derma.DrawText sets its own colour.  The panel passes its body colour
+-- through m_colBody instead (and still calls SetBgColor for GMod parity).
 function SKIN:PaintNotify( pnl, w, h )
-	local style = pnl.m_strStyle or "normal"
-	local c = col( self, "Panel" )
-	if ( style == "error" ) then c = col( self, "Error" )
-	elseif ( style == "warning" ) then c = col( self, "Warning" ) end
+	local c = pnl.m_colBody or Color( 20, 20, 20, 153 )
 
-	surface.DrawSetColor( c.r, c.g, c.b, 245 )
+	surface.DrawSetColor( c.r, c.g, c.b, c.a or 153 )
 	surface.DrawFilledRect( 0, 0, w, h )
-
-	local bd = col( self, "PanelBorder" )
-	surface.DrawSetColor( bd.r, bd.g, bd.b, bd.a )
-	surface.DrawOutlinedRect( 0, 0, w, h )
 end
 
 derma.DefineSkin( "HL2SBDefault", "HL2SB's built-in vector Derma skin", SKIN )
