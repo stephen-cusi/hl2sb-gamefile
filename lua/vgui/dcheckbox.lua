@@ -1,195 +1,83 @@
+--[[ DCheckBox -- a check box with label (original implementation).
+
+	Uses the engine's scripted CheckButton: the tick box and click toggling are
+	native vgui2 (ToggleButton), and the Lua side adds GMod's API surface --
+	SetChecked / GetChecked / IsChecked and OnChange -- plus a DLabel caption.
+	Checked state lives in the engine control (no Lua mirror to go stale); the
+	stage-1 lCheckButton.cpp SetSelected override dispatches OnCheckButtonChecked
+	for both user clicks and programmatic SetChecked. --]]
 
 local PANEL = {}
 
-AccessorFunc( PANEL, "m_bChecked", "Checked", FORCE_BOOL )
-
-Derma_Hook( PANEL, "Paint", "Paint", "CheckBox" )
-Derma_Hook( PANEL, "ApplySchemeSettings", "Scheme", "CheckBox" )
-Derma_Hook( PANEL, "PerformLayout", "Layout", "CheckBox" )
-
-Derma_Install_Convar_Functions( PANEL )
-
-function PANEL:Init()
-
-	self:SetSize( 15, 15 )
-	self:SetText( "" )
-
-end
-
-function PANEL:IsEditing()
-	return self.Depressed
-end
-
-function PANEL:SetValue( val )
-
-	if ( tonumber( val ) == 0 ) then val = 0 end -- Tobool bugs out with "0.00"
-	val = tobool( val )
-
-	self:SetChecked( val )
-	self.m_bValue = val
-
-	self:OnChange( val )
-
-	if ( val ) then val = "1" else val = "0" end
-	self:ConVarChanged( val )
-	self:SetCookie( "checked", val )
-
-end
-
-function PANEL:DoClick()
-
-	self:Toggle()
-
-end
-
-function PANEL:Toggle()
-
-	self:SetValue( !self:GetChecked() )
-
-end
-
-function PANEL:OnChange( bVal )
-
-	-- For override
-
-end
-
-function PANEL:Think()
-
-	self:ConVarStringThink()
-
-end
-
-function PANEL:LoadCookies()
-
-	self:SetValue( self:GetCookie( "checked" ) )
-
-end
-
--- No example for this control
-function PANEL:GenerateExample( class, tabs, w, h )
-end
-
-derma.DefineControl( "DCheckBox", "Simple Checkbox", PANEL, "DButton" )
-
---[[---------------------------------------------------------
-	DCheckBoxLabel
------------------------------------------------------------]]
-
-local PANEL = {}
-
-AccessorFunc( PANEL, "m_iIndent", "Indent" )
+-- Engine CheckButton bindings, captured before the class methods below shadow
+-- them on the ref table.
+local CheckButtonMeta = FindMetaTable( "CheckButton" )
+local EngineSetChecked = CheckButtonMeta and CheckButtonMeta.SetChecked
+local EngineGetChecked = CheckButtonMeta and CheckButtonMeta.GetChecked
+local EngineSetText = CheckButtonMeta and CheckButtonMeta.SetText
 
 function PANEL:Init()
-	self:SetTall( 16 )
+	self:SetMouseInputEnabled( true )
+	self:SetKeyBoardInputEnabled( false )
 
-	self.Button = vgui.Create( "DCheckBox", self )
-	self.Button.OnChange = function( _, val ) self:OnChange( val ) end
-
-	self.Label = vgui.Create( "DLabel", self )
-	self.Label:SetMouseInputEnabled( true )
-	self.Label.DoClick = function() self:Toggle() end
+	self.m_Label = vgui.Create( "DLabel", self, "Label" )
+	self.m_Label:SetText( "" )
+	self:LayoutLabel()
 end
 
-function PANEL:SetDark( b )
-	self.Label:SetDark( b )
+function PANEL:LayoutLabel()
+	local h = self:GetTall()
+	self.m_Label:SetPos( 22, math.floor( ( h - 14 ) / 2 ) )
+	self.m_Label:SizeToContents()
 end
 
-function PANEL:SetBright( b )
-	self.Label:SetBright( b )
-end
-
-function PANEL:SetConVar( cvar )
-	self.Button:SetConVar( cvar )
-end
-
-function PANEL:SetValue( val )
-	self.Button:SetValue( val )
-end
-
-function PANEL:SetChecked( val )
-	self.Button:SetChecked( val )
-end
-
-function PANEL:GetChecked()
-	return self.Button:GetChecked()
-end
-
-function PANEL:Toggle()
-	self.Button:Toggle()
-end
-
-function PANEL:PerformLayout()
-
-	local x = self.m_iIndent || 0
-
-	self.Button:SetSize( 15, 15 )
-	self.Button:SetPos( x, math.floor( ( self:GetTall() - self.Button:GetTall() ) / 2 ) )
-
-	self.Label:SizeToContents()
-	self.Label:SetPos( x + self.Button:GetWide() + 9, math.floor( ( self:GetTall() - self.Label:GetTall() ) / 2 ) )
-
-end
-
-function PANEL:SetTextColor( color )
-
-	self.Label:SetTextColor( color )
-
-end
-
-function PANEL:SizeToContents()
-
-	self:InvalidateLayout( true ) -- Update the size of the DLabel and the X offset
-	self:SetWide( self.Label.x + self.Label:GetWide() )
-	self:SetTall( math.max( self.Button:GetTall(), self.Label:GetTall() ) )
-	self:InvalidateLayout() -- Update the positions of all children
-
-end
-
-function PANEL:SetText( text )
-
-	self.Label:SetText( text )
-	self:SizeToContents()
-
-end
-
-function PANEL:SetFont( font )
-
-	self.Label:SetFont( font )
-	self:SizeToContents()
-
+function PANEL:SetText( strText )
+	if ( EngineSetText ) then EngineSetText( self, strText ) end
+	self.m_Label:SetText( strText )
+	self:LayoutLabel()
 end
 
 function PANEL:GetText()
-
-	return self.Label:GetText()
-
+	-- ⚠️ 2026-09-15: the caption is the DLabel mirror, NOT the native CheckButton.
+	--
+	-- The engine's "CheckButton" metatable (game/client/lua/scripted_controls/
+	-- lCheckButton.cpp:337-358) binds SetChecked/GetChecked/SetSelected/... and
+	-- has NO SetText at all, so `EngineSetText` above is nil.  The old body was
+	--
+	--     if ( EngineSetText == nil ) then return "" end
+	--     return self.m_Label:GetText()
+	--
+	-- i.e. it returned the EMPTY STRING on this engine -- which made
+	-- DCheckBoxLabel:SizeToContents() measure "" and size the panel to 24px, so
+	-- the caption (drawn at x=22 inside a 24px parent) was clipped away and
+	-- looked like "the label does not render".  The tick kept painting, which is
+	-- why it looked like a text bug.
+	--
+	-- The mirror is always kept in sync by SetText below, so it is the truth.
+	if ( self.m_Label ) then return self.m_Label:GetText() end
+	return ""
 end
 
--- Just pass this to the checkbox itself.
-function PANEL:SetCookieName( str )
-
-	self.Button:SetCookieName( str )
-
+function PANEL:SetChecked( b )
+	if ( EngineSetChecked ) then EngineSetChecked( self, b and true or false ) end
 end
 
-function PANEL:Paint()
+function PANEL:GetChecked()
+	if ( EngineGetChecked ) then return EngineGetChecked( self ) end
+	return false
 end
 
-function PANEL:OnChange( bVal )
-
-	-- For override
-
+function PANEL:IsChecked()
+	return self:GetChecked() and true or false
 end
 
-function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
-
-	local ctrl = vgui.Create( ClassName )
-	ctrl:SetText( "CheckBox" )
-	ctrl:SetWide( 200 )
-
-	PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )
-
+--- Stage-1 dispatch (lCheckButton.cpp).  Reads the engine state so the value is
+--- always the truth, never a copy that a stray click desynced.
+function PANEL:OnCheckButtonChecked()
+	if ( self.OnChange ) then
+		local ok, err = pcall( self.OnChange, self, self:GetChecked() )
+		if ( not ok ) then Warning( "DCheckBox:OnChange failed: " .. tostring( err ) .. "\n" ) end
+	end
 end
 
-derma.DefineControl( "DCheckBoxLabel", "Simple Checkbox", PANEL, "DPanel" )
+derma.DefineControl( "DCheckBox", "HL2SB check box", PANEL, "CheckButton" )
