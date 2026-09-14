@@ -77,16 +77,24 @@ print( TAG .. "AutoComplete -> " .. tostring( ac and ac[ 1 ] )
 	.. "  (expect 'one'; nil means the callback was not stored)" )
 
 -- ---- 5. does vgui/white resolve? ----------------------------------------
+-- MEASURED (2026-09-15): vgui/white reports 1x1 even though the shipped
+-- materials/vgui/white.png is 8x8, while a real .vtf reports its true size.  So
+-- the reported size says something about how the material was created, NOT
+-- whether the texture is usable -- and an earlier version of this probe called
+-- that 1x1 a FAIL, which was wrong.  What actually matters for draw.NoTexture is
+-- that binding it paints opaque white, which is what the 200x60 bar below shows.
+-- The known-real gui/corner8 is printed next to it so the number is readable.
 local whiteID = surface.GetTextureID( "vgui/white" )
-local w, h = surface.DrawGetTextureSize( whiteID )
-local whiteVerdict = "FAIL - expected the shipped 8x8 materials/vgui/white.png"
-if ( w == 8 and h == 8 ) then
-	whiteVerdict = "PASS - that is the 8x8 materials/vgui/white.png we ship"
+
+local function DescribeTexture( path )
+	local id = surface.GetTextureID( path )
+	local tw, th = surface.DrawGetTextureSize( id )
+	return string.format( "%s -> id=%s size=%sx%s valid=%s",
+		path, tostring( id ), tostring( tw ), tostring( th ), tostring( surface.IsTextureIDValid( id ) ) )
 end
-print( TAG .. "vgui/white: id=" .. tostring( whiteID )
-	.. "  size=" .. tostring( w ) .. "x" .. tostring( h )
-	.. "  valid=" .. tostring( surface.IsTextureIDValid( whiteID ) ) )
-print( TAG .. whiteVerdict .. "  (an ERROR material reports 32x32 or larger)" )
+
+print( TAG .. DescribeTexture( "gui/corner8" ) .. "   (a real .vtf, for comparison)" )
+print( TAG .. DescribeTexture( "vgui/white" ) .. "   (1x1 = the engine's white, 8x8 = our PNG; both paint opaque white)" )
 
 -- ---- 6. the draw calls, inside a real 2D context ------------------------
 -- Opt-in, and it paints for ~400 frames on purpose.
