@@ -85,11 +85,19 @@ print( TAG .. "vgui/white: id=" .. tostring( whiteID )
 	.. "  (expect 8x8 -- materials/vgui/white.png; an ERROR material is 32x32 or larger)" )
 
 -- ---- 6. the draw calls, inside a real 2D context ------------------------
-local drawn = false
+-- Opt-in: the probe paints in the top-left corner, so it does NOT do that on
+-- every map load.  Type "hl2sb_comprobe_draw" in the console to arm it for the
+-- next frame.
+local bDrawRequested = false
+
+concommand.Add( "hl2sb_comprobe_draw", function()
+	bDrawRequested = true
+	print( TAG .. "draw probe armed -- it paints on the next frame" )
+end, nil, "Arm the HL2SB draw probe for one frame", {} )
 
 hook.Add( "HudViewportPaint", "hl2sb_gmod_compat_probe", function()
-	if ( drawn ) then return end
-	drawn = true
+	if ( not bDrawRequested ) then return end
+	bDrawRequested = false
 
 	local ok, err = pcall( function()
 		draw.NoTexture()
@@ -112,4 +120,4 @@ hook.Add( "HudViewportPaint", "hl2sb_gmod_compat_probe", function()
 	end
 end )
 
-print( TAG .. "loaded -- type 'hl2sb_comprobe one two three' in the console to test the ENGINE path" )
+print( TAG .. "loaded -- 'hl2sb_comprobe one two three' tests the ENGINE path, 'hl2sb_comprobe_draw' tests the draw functions" )
