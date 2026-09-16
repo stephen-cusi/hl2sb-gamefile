@@ -31,4 +31,11 @@ include( "vgui/DTooltip.lua" )
 include( "vgui/DCollapsibleCategory.lua" )
 include( "vgui/DCategoryList.lua" )
 include( "vgui/DPropertySheet.lua" )
+-- HL2SB: the containers the GMod-style spawnmenu is built on (wiki contracts:
+-- DImage, DIconLayout, DListLayout, DSizeToContents).  They must come after the
+-- controls they inherit from: DPanel.
+include( "vgui/DImage.lua" )
+include( "vgui/DIconLayout.lua" )
+include( "vgui/DListLayout.lua" )
+include( "vgui/DSizeToContents.lua" )
 include( "vgui/DNotify.lua" )

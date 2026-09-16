@@ -541,49 +541,13 @@ if ( CLIENT and surface and vgui ) then
 
 	include( "vgui_base.lua" )
 
-	-- HL2SB: the OTHER 39 controls GMod ships in lua/vgui/.
-	--
-	-- vgui_base.lua is GMod's own file and names only 54 of the 93 control
-	-- files; GMod's engine walks lua/vgui/ for the rest and this fork never did.
-	-- DHorizontalDivider -- the first panel the sandbox spawnmenu creates,
-	-- spawnmenu/spawnmenu.lua:21 -- was in the missing 39, so vgui.Create
-	-- returned nil and the menu died on its own Init:
-	--
-	--     Hook 'CreateSpawnMenu' (OnGamemodeLoaded) Failed:
-	--         spawnmenu/spawnmenu.lua:22: attempt to index a nil value
-	--                                    (field 'HorizontalDivider')
-	--
-	-- See the header of vgui_extra.lua for why it is a GENERATED explicit list
-	-- rather than a directory scan, and why it is not folded into GMod's file.
-	include( "vgui_extra.lua" )
+	-- HL2SB: derma rewrite.  The copied GMod skin (skins/default.lua) and the
+	-- generated 39-control list (vgui_extra.lua) are gone to _legacy_gmod/;
+	-- the new framework's default skin loads from lua/derma/init.lua, and
+	-- lua/includes/vgui_base.lua now lists this fork's own controls.
 
-	-- HL2SB: GMod's default Derma skin.  Nothing loaded it, so derma.DefaultSkin
-	-- stayed the empty table derma.lua starts with -- and SkinHook() silently
-	-- returns when the skin has no hook for the type:
-	--
-	--     local func = Skin[ strType .. strName ]
-	--     if ( !func ) then return end
-	--
-	-- With no SKIN:PaintPanel every Derma panel (including the undo notice)
-	-- painted NOTHING at all -- no background, no animation -- while the rest of
-	-- the chain reported success.  skins/default.lua ends with
-	-- derma.DefineSkin( "Default", ... ), and it needs derma_gwen.lua's GWEN
-	-- table, which derma/init.lua already includes.
-	include( "skins/default.lua" )
-
-	-- HL2SB: GMod's notification system (AddLegacy / NoticePanel).  GMod keeps
-	-- this file in lua/includes/modules/notification.lua and pulls it in from
-	-- its own init.lua; here it lives one directory up and is included by hand,
-	-- because it MUST run after the two lines above:
-	--
-	--   * its last statement is vgui.Register( "NoticePanel", PANEL, "DPanel" ),
-	--     and DPanel only exists once vgui_base.lua has run lua/vgui/dpanel.lua;
-	--   * it calls derma.SkinHook indirectly through DPanel's Paint, which
-	--     derma/derma.lua provides.
-	--
-	-- The engine's folder pass loads lua/includes/modules/ BEFORE this file, so
-	-- leaving it in modules/ made that Register fail with
-	-- "vgui.Register: base class 'DPanel' does not exist" on every level.
+	-- HL2SB: notification system (see the rewritten includes/notification.lua:
+	-- it must run after the controls, because NoticePanel bases on DPanel).
 	include( "notification.lua" )
 
 end

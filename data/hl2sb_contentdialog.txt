@@ -1,0 +1,31 @@
+HL2SB content dialog -- Games page
+self=PropertyPage: "(no name)" type(self)=panel parent=PropertyDialog: "ContentDialog"
+detector=function: 00000220536C6EA0 games=3
+  game[1] folder=garrysmod name=garrysmod appId=0
+  game[2] folder=hl2 name=Half-Life 2 appId=220
+  game[3] folder=hl2mp name=HL2 Deathmatch appId=320
+detector: gameDir=d:\srceng\hl2sb selfName=hl2sb baseDirs=12 found=3
+  probe VPKEdit-Windows-Standalone-Compatibility-msvc-Release gameinfo=0
+  probe garrysmod_old_20260914_001820 gameinfo=0
+  probe bin gameinfo=0
+  probe _weapon_backup gameinfo=0
+  probe mmod weaponpack gameinfo=0
+  probe hl2mp vpkdir gameinfo=0
+  probe hl2mp gameinfo=1
+  probe garrysmod gameinfo=1
+  probe Users gameinfo=0
+  probe platform gameinfo=0
+  probe hl2 gameinfo=1
+  base dirs: _weapon_backup,bin,garrysmod,garrysmod_old_20260914_001820,hl2,hl2mp,hl2mp vpkdir,hl2sb,mmod weaponpack,platform,Users,VPKEdit-Windows-Standalone-Compatibility-msvc-Release
+  probe cb[1] parent=Panel: "(no name)" parentSize=(64,24)
+  probe cb[2] parent=Panel: "(no name)" parentSize=(64,24)
+  probe cb[3] parent=Panel: "(no name)" parentSize=(64,24)
+sheet=Panel: "ContentDialog" pos=(0,0) size=(460,380) visible=false
+page=PropertyPage: "(no name)" pos=(0,0) size=(64,24) visible=true
+hint=Label: "Label" pos=(20,118) size=(400,32) visible=true
+probeTop=Label: "Label" pos=(20,2) size=(200,16) visible=true
+probeBot=Label: "Label" pos=(20,154) size=(200,16) visible=true
+  cb[1] CheckButton: "game_1" pos=(20,30) size=(400,24) visible=true text=garrysmod selected=false
+  cb[2] CheckButton: "game_2" pos=(20,56) size=(400,24) visible=true text=Half-Life 2 selected=false
+  cb[3] CheckButton: "game_3" pos=(20,82) size=(400,24) visible=true text=HL2 Deathmatch selected=false
+page failed layout=true -> PropertyPage: "(no name)" pos=(0,0) size=(440,170) visible=true

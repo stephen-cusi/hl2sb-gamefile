@@ -1,0 +1,10 @@
+// HL2SB spawnlist -- the WEAPONS page, the Lua content that ships in lua/weapons/.
+// See hl2sb_weapons_hl2.txt for the format.
+"spawnlist"
+{
+	"name"		"HL2SB Lua"
+	"icon"		"icon16/plugin.png"
+	"id"		"11"
+	"parentid"	"0"
+	"contents"	"weapon_fists weapon_medkit weapon_flechettegun gmod_camera weapon_toolgun"
+}

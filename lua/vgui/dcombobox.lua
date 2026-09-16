@@ -1,295 +1,154 @@
+--[[ DComboBox -- dropdown selector (original implementation).
+
+	The engine binds no Menu control, so the popup list is a DPanel drawn as a
+	popup window (surface popup / MakePopup chain). --]]
 
 local PANEL = {}
 
-Derma_Hook( PANEL, "Paint", "Paint", "ComboBox" )
-
-Derma_Install_Convar_Functions( PANEL )
-
-AccessorFunc( PANEL, "m_bDoSort", "SortItems", FORCE_BOOL )
-
 function PANEL:Init()
+	self:SetMouseInputEnabled( true )
+	self:SetKeyBoardInputEnabled( false )
+	self:SetDrawBackground( false )
 
-	-- Create button
-	self.DropButton = vgui.Create( "DPanel", self )
-	self.DropButton.Paint = function( panel, w, h ) derma.SkinHook( "Paint", "ComboDownArrow", panel, w, h ) end
-	self.DropButton:SetMouseInputEnabled( false )
-	self.DropButton.ComboBox = self
+	self.m_tOptions = {}
+	self.m_iSelected = 0
+	self.m_strLabel = ""
+	self.m_pDown = false
 
-	-- Setup internals
-	self:SetTall( 22 )
-	self:Clear()
+	self.m_Label = vgui.Create( "DLabel", self, "Label" )
+	self.m_Label:SetMouseInputEnabled( false )
 
-	self:SetContentAlignment( 4 )
-	self:SetTextInset( 8, 0 )
-	self:SetIsMenu( true )
-	self:SetSortItems( true )
+	self.m_pOptions = vgui.Create( "DPanel", nil, "Menu" )
+	self.m_pOptions:SetVisible( false )
+	self.m_pOptions.Paint = function( pnl, w, h )
+		derma.SkinHook( "Paint", "Menu", pnl, w, h )
+	end
+end
 
+function PANEL:AddItem( strLabel, bSelect )
+	local i = #self.m_tOptions + 1
+	self.m_tOptions[ i ] = { label = tostring( strLabel or "" ), value = i }
+	if ( bSelect ) then self:SelectIndex( i ) end
+	self:BuildOptions()
+	return i
+end
+
+function PANEL:RemoveItem( i )
+	table.remove( self.m_tOptions, i )
+	if ( self.m_iSelected > i ) then self.m_iSelected = self.m_iSelected - 1 end
+	self:BuildOptions()
 end
 
 function PANEL:Clear()
-
-	self:SetText( "" )
-	self.Choices = {}
-	self.Data = {}
-	self.ChoiceIcons = {}
-	self.Spacers = {}
-	self.selected = nil
-
-	self:CloseMenu()
-
+	self.m_tOptions = {}
+	self.m_iSelected = 0
+	self:BuildOptions()
 end
 
-function PANEL:GetOptionText( index )
-
-	return self.Choices[ index ]
-
+function PANEL:Count()
+	return #self.m_tOptions
 end
 
-function PANEL:GetOptionData( index )
-
-	return self.Data[ index ]
-
+function PANEL:GetOption( i )
+	local o = self.m_tOptions[ i ]
+	return o and o.label or ""
 end
 
-function PANEL:GetOptionTextByData( data )
+function PANEL:GetValue()
+	local opt = self.m_tOptions[ self.m_iSelected ]
+	return opt and opt.label or ""
+end
 
-	for id, dat in pairs( self.Data ) do
-		if ( dat == data ) then
-			return self:GetOptionText( id )
+function PANEL:SetText( str )
+	self.m_strLabel = str
+	self.m_Label:SetText( str )
+end
+
+function PANEL:GetText()
+	return self.m_strLabel
+end
+
+function PANEL:SelectIndex( i )
+	self.m_iSelected = i
+	local opt = self.m_tOptions[ i ]
+	if ( opt ) then self:SetText( opt.label ) end
+end
+
+function PANEL:ChooseOption( strLabel, iOptionID )
+	if ( iOptionID ) then
+		self:SelectIndex( iOptionID )
+	else
+		for i, o in ipairs( self.m_tOptions ) do
+			if ( o.label == strLabel ) then self:SelectIndex( i ) break end
 		end
 	end
 
-	-- Try interpreting it as a number
-	for id, dat in pairs( self.Data ) do
-		if ( dat == tonumber( data ) ) then
-			return self:GetOptionText( id )
-		end
+	self:SetDropdownVisible( false )
+
+	if ( self.OnSelect ) then
+		local ok, err = pcall( self.OnSelect, self, self.m_iSelected, strLabel )
+		if ( not ok ) then Warning( "DComboBox:OnSelect failed: " .. tostring( err ) .. "\n" ) end
+	end
+end
+
+function PANEL:BuildOptions()
+	-- the engine Panel has no RemoveAll; tear the old rows down by hand
+	for _, old in ipairs( self.m_tOptionPanels or {} ) do
+		old:Remove()
+	end
+	self.m_tOptionPanels = {}
+
+	local y = 2
+	for i, o in ipairs( self.m_tOptions ) do
+		local opt = vgui.Create( "DButton", self.m_pOptions, "Opt" .. i )
+		opt:SetText( o.label )
+		opt.DoClick = function() self:ChooseOption( o.label, i ) end
+		opt:SetPos( 0, y )
+		opt:SetSize( 140, 18 )
+		self.m_tOptionPanels[ i ] = opt
+		y = y + 18
 	end
 
-	-- In case we fail
-	return data
+	self.m_pOptions:SetSize( 140, math.max( 18, y + 2 ) )
+end
 
+function PANEL:SetDropdownVisible( b )
+	self.m_pDown = b
+	self.m_pOptions:SetVisible( b )
+
+	if ( b ) then
+		local x, y = self:LocalToScreen( 0, self:GetTall() )
+		self.m_pOptions:SetPos( x, y )
+		self.m_pOptions:MakePopup()
+	end
+end
+
+function PANEL:OnMousePressed( code )
+	if ( code == MOUSE_LEFT ) then
+		self:SetDropdownVisible( not self.m_pDown )
+	end
+end
+
+--- The popup is a root child (no parent), so it must die with the combo.
+function PANEL:OnRemove()
+	if ( IsValid( self.m_pOptions ) ) then
+		self.m_pOptions:Remove()
+	end
 end
 
 function PANEL:PerformLayout( w, h )
+	w = w or self:GetWide()
+	h = h or self:GetTall()
 
-	self.DropButton:SetSize( 15, 15 )
-	self.DropButton:AlignRight( 4 )
-	self.DropButton:CenterVertical()
-
-	-- Make sure the text color is updated
-	DButton.PerformLayout( self, w, h )
-
+	self.m_Label:SetPos( 6, math.floor( ( h - 14 ) / 2 ) )
+	self.m_Label:SetSize( w - 22, 14 )
 end
 
-function PANEL:ChooseOption( value, index )
+function PANEL:Paint( w, h )
+	w = w or self:GetWide()
+	h = h or self:GetTall()
 
-	self:CloseMenu()
-	self:SetText( value )
-
-	-- This should really be the here, but it is too late now and convar
-	-- changes are handled differently by different child elements
-	-- self:ConVarChanged( self.Data[ index ] )
-
-	self.selected = index
-	self:OnSelect( index, value, self.Data[ index ] )
-
+	derma.SkinHook( "Paint", "ComboBox", self, w, h )
 end
 
-function PANEL:ChooseOptionID( index )
-
-	local value = self:GetOptionText( index )
-	self:ChooseOption( value, index )
-
-end
-
-function PANEL:GetSelectedID()
-
-	return self.selected
-
-end
-
-function PANEL:GetSelected()
-
-	if ( !self.selected ) then return end
-
-	return self:GetOptionText( self.selected ), self:GetOptionData( self.selected )
-
-end
-
-function PANEL:OnSelect( index, value, data )
-
-	-- For override
-
-end
-
-function PANEL:OnMenuOpened( menu )
-
-	-- For override
-
-end
-
-function PANEL:AddSpacer()
-
-	self.Spacers[ #self.Choices ] = true
-
-end
-
-function PANEL:AddChoice( value, data, select, icon )
-
-	local index = table.insert( self.Choices, value )
-
-	if ( data ) then
-		self.Data[ index ] = data
-	end
-
-	if ( icon ) then
-		self.ChoiceIcons[ index ] = icon
-	end
-
-	if ( select ) then
-
-		self:ChooseOption( value, index )
-
-	end
-
-	return index
-
-end
-
-function PANEL:RemoveChoice( index )
-
-	if ( !isnumber( index ) ) then return end
-
-	local text = table.remove( self.Choices, index )
-	local data = table.remove( self.Data, index )
-	return text, data
-
-end
-
-function PANEL:IsMenuOpen()
-
-	return IsValid( self.Menu ) && self.Menu:IsVisible()
-
-end
-
-function PANEL:OpenMenu( pControlOpener )
-
-	if ( pControlOpener && pControlOpener == self.TextEntry ) then
-		return
-	end
-
-	-- Don't do anything if there aren't any options..
-	if ( #self.Choices == 0 ) then return end
-
-	-- If the menu still exists and hasn't been deleted
-	-- then just close it and don't open a new one.
-	self:CloseMenu()
-
-	-- If we have a modal parent at some level, we gotta parent to
-	-- that or our menu items are not gonna be selectable
-	local parent = self
-	while ( IsValid( parent ) && !parent:IsModal() ) do
-		parent = parent:GetParent()
-	end
-	if ( !IsValid( parent ) ) then parent = self end
-
-	self.Menu = DermaMenu( false, parent )
-
-	if ( self:GetSortItems() ) then
-		local sorted = {}
-		for k, v in pairs( self.Choices ) do
-			local val = tostring( v ) --tonumber( v ) || v -- This would make nicer number sorting, but SortedPairsByMemberValue doesn't seem to like number-string mixing
-			if ( string.len( val ) > 1 && !tonumber( val ) && val:StartsWith( "#" ) ) then val = language.GetPhrase( val ) end
-			table.insert( sorted, { id = k, data = v, label = val } )
-		end
-		for k, v in SortedPairsByMemberValue( sorted, "label" ) do
-			local option = self.Menu:AddOption( v.data, function() self:ChooseOption( v.data, v.id ) end )
-			if ( self.ChoiceIcons[ v.id ] ) then
-				option:SetIcon( self.ChoiceIcons[ v.id ] )
-			end
-			if ( self.Spacers[ v.id ] ) then
-				self.Menu:AddSpacer()
-			end
-		end
-	else
-		for k, v in pairs( self.Choices ) do
-			local option = self.Menu:AddOption( v, function() self:ChooseOption( v, k ) end )
-			if ( self.ChoiceIcons[ k ] ) then
-				option:SetIcon( self.ChoiceIcons[ k ] )
-			end
-			if ( self.Spacers[ k ] ) then
-				self.Menu:AddSpacer()
-			end
-		end
-	end
-
-	local x, y = self:LocalToScreen( 0, self:GetTall() )
-
-	self.Menu:SetMinimumWidth( self:GetWide() )
-	self.Menu:Open( x, y, false, self )
-
-	self:OnMenuOpened( self.Menu )
-
-end
-
-function PANEL:CloseMenu()
-
-	if ( IsValid( self.Menu ) ) then
-		self.Menu:Remove()
-	end
-
-	self.Menu = nil
-
-end
-
--- This really should use a convar change hook
-function PANEL:CheckConVarChanges()
-
-	if ( !self.m_strConVar ) then return end
-
-	local strValue = GetConVarString( self.m_strConVar )
-	if ( self.m_strConVarValue == strValue ) then return end
-
-	self.m_strConVarValue = strValue
-
-	self:SetValue( self:GetOptionTextByData( self.m_strConVarValue ) )
-
-end
-
-function PANEL:Think()
-
-	self:CheckConVarChanges()
-
-end
-
-function PANEL:SetValue( strValue )
-
-	self:SetText( strValue )
-
-end
-
-function PANEL:DoClick()
-
-	if ( self:IsMenuOpen() ) then
-		return self:CloseMenu()
-	end
-
-	self:OpenMenu()
-
-end
-
-function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
-
-	local ctrl = vgui.Create( ClassName )
-	ctrl:AddChoice( "Some Choice" )
-	ctrl:AddChoice( "Another Choice", "myData" )
-	ctrl:AddChoice( "Default Choice", "myData2", true )
-	ctrl:AddChoice( "Icon Choice", "myData3", false, "icon16/star.png" )
-	ctrl:SetWide( 150 )
-
-	PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )
-
-end
-
-derma.DefineControl( "DComboBox", "", PANEL, "DButton" )
+derma.DefineControl( "DComboBox", "HL2SB dropdown", PANEL, "DPanel" )

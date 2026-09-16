@@ -1,0 +1,22 @@
+"VertexLitGeneric"
+{
+	"$basetexture" "models/combine_soldier/combinesoldiersheet_prisonguard"
+	"$bumpmap" "models/combine_soldier/combinesoldiersheet_prisonguard_normal"
+
+	"$phong" "1"
+	"$phongboost" "1.5"
+	"$phongexponent" "10"
+	"$phongexponenttexture" "models/combine_soldier/combinesoldiersheet_prisonguard_grey"
+	"$phongalbedotint" "1"										
+	"$phongfresnelranges" "[.1 .5 1.0]"
+
+	"$rimlight" "1"
+	"$rimlightexponent" "8"
+	"$rimlightboost" "1.5"
+
+	"$model" "1"
+	"$selfillum" "1"
+	"$selfillumtint" "[4 .25 .1]"
+	"$halflambert" "1"
+	"$surfaceprop" "flesh"
+}

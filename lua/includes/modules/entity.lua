@@ -20,12 +20,22 @@ _BASE_ENTITY_CLASS = "prop_scripted"
 --
 -- Aliasing to prop_scripted is the honest mapping: in GMod these names resolve to
 -- the engine's scripted-entity base, and prop_scripted IS this fork's equivalent.
+-- ⚠️ base_nextbot 不在这张别名表里，是有意的：本 fork 自带一份真正的
+-- lua/entities/base_nextbot（sv_nextbot.lua：BehaveStart/BehaveUpdate/BodyUpdate/
+-- MoveToPos/HandleStuck/FindSpot + 全套 ENT:On* 默认实现），GMod 的 nextbot
+-- 插件必须继承**那一份**。
+--
+-- 曾经它和 base_anim/base_ai 一起被别名到 prop_scripted，后果完全静默：
+-- 插件表继承了 prop_scripted，于是 ENT:RunBehaviour 在（插件自己写的），
+-- 但驱动它的 BehaveStart/BehaveUpdate 不在，引擎的
+-- BeginLuaCall("BehaveStart") 找不到函数、返回 false、什么都不打——
+-- 协程从未创建，bot 就永远站着（SCP-096 实测：无动画、无音效、对一切
+-- 无反应、日志干净）。见 luanextbot.cpp 的 hl2sb_nextbot_status。
 local GMOD_BASE_ALIASES = {
 	base_anim       = _BASE_ENTITY_CLASS,
 	base_entity     = _BASE_ENTITY_CLASS,
 	base_gmodentity = _BASE_ENTITY_CLASS,
 	base_ai         = _BASE_ENTITY_CLASS,
-	base_nextbot    = _BASE_ENTITY_CLASS,
 }
 
 local table = table
@@ -61,6 +71,15 @@ function get( strClassname )
     -- scripted entity base, so the entity inherits a real Lua table instead of
     -- coming back bare with a warning.
     sBase = GMOD_BASE_ALIASES[ sBase ]
+  end
+
+  -- base_nextbot 的正常来源是 lua/entities/base_nextbot（见上面的注释）。万一
+  -- 那份 base 没被加载（只装了插件、没放 base），回落到 prop_scripted —— 至少
+  -- 不是一张裸表；否则连 Initialize 之类都要靠引擎补字段。
+  if ( sBase == "base_nextbot" and not tEntities[ "base_nextbot" ] ) then
+    Warning( "WARNING: base_nextbot is not registered, \"" .. strClassname ..
+             "\" falls back to " .. _BASE_ENTITY_CLASS .. "\n" )
+    sBase = _BASE_ENTITY_CLASS
   end
 
   if ( sBase ~= strClassname ) then

@@ -1,83 +1,38 @@
+--[[ DPanel -- HL2SB derma base container (original implementation). --]]
 
 local PANEL = {}
 
-AccessorFunc( PANEL, "m_bBackground",		"PaintBackground",	FORCE_BOOL )
-AccessorFunc( PANEL, "m_bBackground",		"DrawBackground",	FORCE_BOOL ) -- deprecated
-AccessorFunc( PANEL, "m_bIsMenuComponent",	"IsMenu",			FORCE_BOOL )
-AccessorFunc( PANEL, "m_bDisableTabbing",	"TabbingDisabled",	FORCE_BOOL )
-
-AccessorFunc( PANEL, "m_bDisabled",	"Disabled" )
-AccessorFunc( PANEL, "m_bgColor",	"BackgroundColor" )
-
-Derma_Hook( PANEL, "Paint", "Paint", "Panel" )
-Derma_Hook( PANEL, "ApplySchemeSettings", "Scheme", "Panel" )
-Derma_Hook( PANEL, "PerformLayout", "Layout", "Panel" )
-
 function PANEL:Init()
-
-	self:SetPaintBackground( true )
-
-	-- This turns off the engine drawing
-	self:SetPaintBackgroundEnabled( false )
-	self:SetPaintBorderEnabled( false )
-
+	self:SetMouseInputEnabled( false )
+	self:SetKeyBoardInputEnabled( false )
+	self.m_bDrawBackground = true
 end
 
-function PANEL:SetDisabled( bDisabled )
-
-	self.m_bDisabled = bDisabled
-
-	if ( bDisabled ) then
-		self:SetAlpha( 75 )
-		self:SetMouseInputEnabled( false )
-	else
-		self:SetAlpha( 255 )
-		self:SetMouseInputEnabled( true )
-	end
-
+function PANEL:SetDrawBackground( b )
+	self.m_bDrawBackground = b
 end
 
-function PANEL:SetEnabled( bEnabled )
-
-	self:SetDisabled( !bEnabled )
-
+function PANEL:GetDrawBackground()
+	return self.m_bDrawBackground
 end
 
-function PANEL:IsEnabled()
-
-	return !self:GetDisabled()
-
+--- GMod's SetBackgroundColor / GetBackgroundColor map onto the engine's
+--- background colour field (SetBgColor is engine-bound).
+function PANEL:SetBackgroundColor( clr )
+	if ( self.SetBgColor ) then self:SetBgColor( clr ) end
 end
 
-function PANEL:OnMousePressed( mousecode )
-
-	if ( self:IsSelectionCanvas() && !dragndrop.IsDragging() ) then
-		self:StartBoxSelection()
-		return
-	end
-
-	if ( self:IsDraggable() ) then
-
-		self:MouseCapture( true )
-		self:DragMousePress( mousecode )
-
-	end
-
+function PANEL:GetBackgroundColor()
+	if ( self.GetBgColor ) then return self:GetBgColor() end
 end
 
-function PANEL:OnMouseReleased( mousecode )
+function PANEL:Paint( w, h )
+	if ( not self.m_bDrawBackground ) then return end
 
-	if ( self:EndBoxSelection() ) then return end
+	w = w or self:GetWide()
+	h = h or self:GetTall()
 
-	self:MouseCapture( false )
-
-	if ( self:DragMouseRelease( mousecode ) ) then
-		return
-	end
-
+	derma.SkinHook( "Paint", "Panel", self, w, h )
 end
 
-function PANEL:UpdateColours()
-end
-
-derma.DefineControl( "DPanel", "", PANEL, "Panel" )
+derma.DefineControl( "DPanel", "HL2SB base container panel", PANEL, "Panel" )

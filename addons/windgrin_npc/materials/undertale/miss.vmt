@@ -1,0 +1,6 @@
+"UnlitGeneric"
+{
+	"$basetexture" "undertale/miss"
+	"$translucent" 1
+	"$vertexalpha" 1
+}

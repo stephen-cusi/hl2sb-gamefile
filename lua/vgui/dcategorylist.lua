@@ -1,71 +1,69 @@
+--[[ DCategoryList -- a list of collapsible categories (original implementation).
+
+	The spawn menu's tool/content lists are built on this: AddCategory( name,
+	icon, help, opencat ) -> category, each category holds a DCollapsibleCategory
+	head plus a wrap panel where controls are added. --]]
 
 local PANEL = {}
 
 function PANEL:Init()
+	self:SetDrawBackground( false )
+	self.m_tCategories = {}
+	self.m_strFilter = ""
 
-	self.pnlCanvas:DockPadding( 2, 2, 2, 2 )
-
-end
-
-function PANEL:AddItem( item )
-
-	item:Dock( TOP )
-	DScrollPanel.AddItem( self, item )
-	self:InvalidateLayout()
+	self.m_pList = vgui.Create( "DScroller", self, "List" )
+	self.m_pList:SetDrawBackground( false )
 
 end
 
-function PANEL:Add( name )
+function PANEL:AddCategory( strName, strIcon, bOpen, iSortNum )
+	local pnl = vgui.Create( "DPanel", self.m_pList:GetCanvas(), "Category" )
+	pnl:SetDrawBackground( false )
 
-	local Category = vgui.Create( "DCollapsibleCategory", self )
-	Category:SetLabel( name )
-	Category:SetList( self )
+	local cat = vgui.Create( "DCollapsibleCategory", pnl, "Collapse" )
+	cat:SetLabel( strName )
 
-	self:AddItem( Category )
+	local contents = vgui.Create( "DPanel", pnl, "Contents" )
+	contents:SetDrawBackground( false )
+	cat:SetContents( contents )
+	cat.m_bCollapsed = not ( bOpen ~= false )
+	cat.m_pBody:SetVisible( bOpen ~= false )
 
-	return Category
-
+	local entry = { name = strName, pnl = pnl, cat = cat, contents = contents, iSort = iSortNum or 0 }
+	table.insert( self.m_tCategories, entry )
+	self:Sort()
+	return entry
 end
 
-function PANEL:Paint( w, h )
-
-	derma.SkinHook( "Paint", "CategoryList", self, w, h )
-	return false
-
+function PANEL:GetCategory( strName )
+	for _, e in ipairs( self.m_tCategories ) do
+		if ( e.name == strName ) then return e end
+	end
 end
 
-function PANEL:UnselectAll()
+function PANEL:Sort()
+	table.sort( self.m_tCategories, function( a, b ) return a.iSort < b.iSort end )
 
-	for k, v in ipairs( self:GetChildren() ) do
-
-		if ( v.UnselectAll ) then
-			v:UnselectAll()
-		end
-
+	local y = 0
+	for _, e in ipairs( self.m_tCategories ) do
+		e.pnl:SetPos( 0, y )
+		e.pnl:SetSize( self:GetWide(), 0 )
+		local _, h = e.pnl:GetChildrenSize()
+		h = math.max( 24, h or 24 )
+		e.pnl:SetTall( h )
+		y = y + h + 4
 	end
 
+	self.m_pList:RecomputeHeight()
 end
 
-function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
+function PANEL:PerformLayout( w, h )
+	w = w or self:GetWide()
+	h = h or self:GetTall()
 
-	local ctrl = vgui.Create( ClassName )
-	ctrl:SetSize( 300, 300 )
-
-	local Cat = ctrl:Add( "Test category with text contents" )
-	Cat:Add( "Item 1" )
-	Cat:Add( "Item 2" )
-
-	-- The contents can be any panel, even a DPanelList
-	local Cat2 = ctrl:Add( "Test category with panel contents" )
-	Cat2:SetTall( 100 )
-	local Contents = vgui.Create( "DButton" )
-	Contents:SetText( "This is the content of the category" )
-	Cat2:SetContents( Contents )
-
-	ctrl:InvalidateLayout( true )
-
-	PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )
-
+	self.m_pList:SetPos( 0, 0 )
+	self.m_pList:SetSize( w, h )
+	self:Sort()
 end
 
-derma.DefineControl( "DCategoryList", "", PANEL, "DScrollPanel" )
+derma.DefineControl( "DCategoryList", "HL2SB category list", PANEL, "DPanel" )

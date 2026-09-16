@@ -1,0 +1,18 @@
+// HL2SB spawnlist -- the WEAPONS page, the game's own set.
+//
+// Same shape GMod's settings/spawnlist_default files use, read by the module this
+// fork already ships (lua/includes/modules/spawnmenu.lua:240 -> gmod_compatibility/
+// sh_init.lua:1780, which loads every settings/spawnlist/*.txt as KeyValues and hands
+// name / contents / icon / id / parentid to the spawn menu).
+//
+// contents is a space-separated list of entity CLASS NAMES (this fork spawns with
+// `ent_create <class>`); a name that is not a registered class is simply never
+// matched, so a wrong or missing entry cannot break the page.
+"spawnlist"
+{
+	"name"		"Half-Life 2"
+	"icon"		"icon16/gun.png"
+	"id"		"10"
+	"parentid"	"0"
+	"contents"	"weapon_crowbar weapon_pistol weapon_357 weapon_smg1 weapon_ar2 weapon_shotgun weapon_crossbow weapon_rpg weapon_frag weapon_slam weapon_physcannon weapon_physgun weapon_bugbait weapon_stunstick weapon_alyxgun weapon_annabelle weapon_striderbuster weapon_citizenpackage weapon_citizensuitcase"
+}

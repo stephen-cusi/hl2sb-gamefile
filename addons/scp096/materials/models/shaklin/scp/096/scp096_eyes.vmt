@@ -1,0 +1,6 @@
+"vertexlitGeneric"
+{
+	"$basetexture" "models/shaklin/scp/096/scp096_eyes"
+	"$alphatest" 1
+	"$halflambert" 1
+}

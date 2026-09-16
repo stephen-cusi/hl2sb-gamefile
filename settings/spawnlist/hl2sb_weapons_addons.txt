@@ -1,0 +1,10 @@
+// HL2SB spawnlist -- the WEAPONS page, weapons shipped by addons.
+// See hl2sb_weapons_hl2.txt for the format.
+"spawnlist"
+{
+	"name"		"Addons"
+	"icon"		"icon16/plugin.png"
+	"id"		"12"
+	"parentid"	"0"
+	"contents"	"weapon_nyangun pist_weagon"
+}

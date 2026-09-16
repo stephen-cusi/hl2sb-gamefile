@@ -185,46 +185,46 @@ concommand.Add( "hl2sb_comprobe_derma", function()
 		.. "  class-table SetConVar = " .. tostring( cls ~= nil and type( cls.SetConVar ) == "function" )
 		.. "  (the instance inherits it through the base chain)" )
 
-	local frame = vgui.Create( "DFrame" )
-	if ( not IsValid( frame ) ) then
-		print( TAG .. "RESULT: FAIL - vgui.Create('DFrame') returned nothing" )
-		return
-	end
+	-- The example below is copied UNCHANGED from
+	-- https://wiki.facepunch.com/gmod/Panel:SetConVar (11 lines, verbatim --
+	-- verified line by line against the live page), including its local names.
+	-- Everything that is this probe's own (IsValid guards, prints) sits before or
+	-- after it, never inside, so "paste GMod's example and it works" is a claim
+	-- about the code itself rather than about a rewritten copy of it.
+	print( TAG .. "running the wiki Panel:SetConVar example verbatim:" )
 
-	frame:SetPos( 100, 100 )
-	frame:SetSize( 300, 200 )
-	frame:SetTitle( "My new Derma frame" )
-	frame:SetDraggable( true )
-	frame:MakePopup()
+	-- vvvvvvvvvvvvvvvvvvvvvvvv wiki example, unchanged vvvvvvvvvvvvvvvvvvvvvvvv
+	local DermaPanel = vgui.Create( "DFrame" )
+	DermaPanel:SetPos( 100, 100 )
+	DermaPanel:SetSize( 300, 200 )
+	DermaPanel:SetTitle( "My new Derma frame" )
+	DermaPanel:SetDraggable( true )
+	DermaPanel:MakePopup()
 
-	local box = vgui.Create( "DCheckBoxLabel", frame )
-	if ( not IsValid( box ) ) then
-		print( TAG .. "RESULT: FAIL - vgui.Create('DCheckBoxLabel') returned nothing" )
-		return
-	end
+	local Checkbox = vgui.Create( "DCheckBoxLabel", DermaPanel )
+	Checkbox:SetConVar( "cl_drawhud" )
+	Checkbox:SetText( "Enable HUD?" )
+	Checkbox:SetPos( 5, 25 )
+	Checkbox:SizeToContents()
+	-- ^^^^^^^^^^^^^^^^^^^^^^^^ end of the wiki example ^^^^^^^^^^^^^^^^^^^^^^^^
 
-	box:SetConVar( "cl_drawhud" )
-	box:SetText( "Enable HUD?" )
-	box:SetPos( 5, 25 )
-	box:SizeToContents()
+	local frame, box = DermaPanel, Checkbox
 
-	-- The caption is painted by the engine's own Label pass (the check image and
-	-- the caption are ONE label, laid out by vgui), so there is no child panel to
-	-- inspect: the text comes from the engine binding and the size from
-	-- Label::SizeToContents.  childLabel must stay false -- a child DLabel here
-	-- would paint the caption a second time, right on top of the tick.
-	local strCaption = box:GetText()
-	print( TAG .. "caption: GetText=[" .. tostring( strCaption ) .. "]"
+	-- What the example produced.  The caption is painted by the skin's
+	-- SKIN:PaintCheck (box + tick + caption in one panel), so there must be no
+	-- child label: one would paint the caption a second time.
+	local captionX = ( box.GetCaptionX and box:GetCaptionX() ) or -1
+	print( TAG .. "built: frame=" .. tostring( IsValid( frame ) ) .. "  box=" .. tostring( IsValid( box ) )
+		.. "  caption=[" .. tostring( box:GetText() ) .. "]"
 		.. "  childLabel=" .. tostring( box.m_Label ~= nil )
 		.. "  panel=" .. tostring( box:GetWide() ) .. "x" .. tostring( box:GetTall() )
-		.. "  indent=" .. tostring( box:GetIndent() ) )
+		.. "  captionX=" .. tostring( captionX ) )
 
 	print( TAG .. "checkbox: SetConVar=" .. tostring( type( box.SetConVar ) == "function" )
 		.. "  bound=" .. tostring( box:GetConVar() ~= nil )
 		.. "  checked=" .. tostring( box:GetChecked() )
-		.. "  cl_drawhud=" .. tostring( GetConVarString( "cl_drawhud" ) )
-		.. "  size=" .. tostring( box:GetWide() ) .. "x" .. tostring( box:GetTall() ) )
-	print( TAG .. "RESULT: PASS if the frame shows a ticked 'Enable HUD?' box - untick it and the HUD comes back" )
-end, nil, "Build the wiki Panel:SetConVar example", {} )
+		.. "  cl_drawhud=" .. tostring( GetConVarString( "cl_drawhud" ) ) )
+	print( TAG .. "RESULT: PASS if the frame shows a small ticked 'Enable HUD?' box - untick it and the HUD comes back" )
+end, nil, "Run the wiki Panel:SetConVar example verbatim", {} )
 
 print( TAG .. "loaded -- 'hl2sb_comprobe one two three' tests the ENGINE path, 'hl2sb_comprobe_draw' the draw functions, 'hl2sb_comprobe_derma' the Derma convar link" )

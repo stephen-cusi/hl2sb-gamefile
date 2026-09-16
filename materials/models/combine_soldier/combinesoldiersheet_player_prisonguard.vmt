@@ -1,0 +1,43 @@
+"VertexLitGeneric"
+{
+	"$basetexture" "models/combine_soldier/combinesoldiersheet_prisonguard"
+	"$bumpmap" "models/combine_soldier/combinesoldiersheet_prisonguard_normal"
+
+	"$phong" "1"
+	"$phongboost" "1.5"
+	"$phongexponent" "10"
+	"$phongexponenttexture" "models/combine_soldier/combinesoldiersheet_prisonguard_grey"
+	"$phongalbedotint" "1"										
+	"$phongfresnelranges" "[.1 .5 1.0]"
+
+	"$rimlight" "1"
+	"$rimlightexponent" "8"
+	"$rimlightboost" "1.5"
+
+	"$model" "1"
+	"$selfillum" "1"
+	//"$selfillumtint" "[4 4 .1]"
+	"$halflambert" "1"
+	"$surfaceprop" "flesh"
+
+	Proxies
+	{
+		PlayerColor
+		{
+			"resultVar" "$selfillumtint"
+		}
+		Multiply // doing this to make brighter & more saturated
+		{
+			"srcVar1" "$selfillumtint"
+			"srcVar2" "$rimlightboost"
+			"resultVar" "$selfillumtint"
+		}
+		Clamp
+		{
+			"min" "0.10"
+			"max" "3.00"
+			"srcVar1" "$selfillumtint"
+			"resultVar" "$selfillumtint"
+		}
+	}
+}

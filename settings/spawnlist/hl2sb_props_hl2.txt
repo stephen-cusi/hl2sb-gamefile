@@ -1,0 +1,10 @@
+// HL2SB spawnlist -- the PROPS page, the game's own set.
+// See hl2sb_weapons_hl2.txt for the format.
+"spawnlist"
+{
+	"name"		"Half-Life 2"
+	"icon"		"icon16/box.png"
+	"id"		"40"
+	"parentid"	"0"
+	"contents"	"prop_physics prop_physics_multiplayer prop_physics_override prop_dynamic prop_dynamic_ornament prop_ragdoll prop_static prop_effect prop_physbox func_physbox func_physbox_multiplayer combine_mine grenade_helicopter grenade_helicopter_core water_lod_control prop_vehicle_jeep prop_vehicle_airboat"
+}

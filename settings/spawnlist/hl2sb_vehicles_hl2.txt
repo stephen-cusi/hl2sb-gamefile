@@ -1,0 +1,10 @@
+// HL2SB spawnlist -- the VEHICLES page, the game's own set.
+// See hl2sb_weapons_hl2.txt for the format.
+"spawnlist"
+{
+	"name"		"Half-Life 2"
+	"icon"		"icon16/car.png"
+	"id"		"50"
+	"parentid"	"0"
+	"contents"	"prop_vehicle_jeep prop_vehicle_airboat prop_vehicle_prisoner_pod prop_vehicle_apc prop_vehicle_crane prop_vehicle_choreo_generic prop_vehicle_dropship"
+}

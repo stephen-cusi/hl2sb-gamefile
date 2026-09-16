@@ -1,109 +1,45 @@
+--[[ DMenuBar -- a row of drop-down menus (minimal implementation).
+
+	Only as much as the existing menubar.lua and the spawnmenu need: AddMenu
+	returns a DMenu, which populates itself with AddOption. --]]
 
 local PANEL = {}
 
-AccessorFunc( PANEL, "m_bBackground",		"PaintBackground",	FORCE_BOOL )
-AccessorFunc( PANEL, "m_bBackground",		"DrawBackground",	FORCE_BOOL ) -- deprecated
-AccessorFunc( PANEL, "m_bIsMenuComponent",	"IsMenu",			FORCE_BOOL )
-
-Derma_Hook( PANEL, "Paint", "Paint", "MenuBar" )
-
 function PANEL:Init()
-
-	self:Dock( TOP )
-	self:SetTall( 24 )
-
-	self.Menus = {}
-
+	self:SetDrawBackground( false )
+	self.m_tButtons = {}
+	self.m_iNextX = 4
 end
 
-function PANEL:GetOpenMenu()
+function PANEL:AddMenu( strLabel, iWide )
+	local menu = vgui.Create( "DMenu", nil, "Menu_" .. strLabel )
+	menu:SetVisible( false )
 
-	for k, v in pairs( self.Menus ) do
-		if ( v:IsVisible() ) then return v end
+	local btn = vgui.Create( "DButton", self, "Btn_" .. strLabel )
+	btn:SetText( strLabel )
+	btn.m_pMenu = menu
+
+	btn.DoClick = function()
+		local x, y = btn:LocalToScreen( 0, btn:GetTall() )
+		menu:Open( x, y )
 	end
 
-	return nil
-
+	self.m_tButtons[ #self.m_tButtons + 1 ] = { btn = btn, menu = menu }
+	self:InvalidateLayout( true )
+	return menu
 end
 
-function PANEL:AddOrGetMenu( label )
+function PANEL:PerformLayout( w, h )
+	w = w or self:GetWide()
+	h = h or self:GetTall()
 
-	if ( self.Menus[ label ] ) then return self.Menus[ label ] end
-	return self:AddMenu( label )
-
-end
-
-function PANEL:AddMenu( label )
-
-	local m = DermaMenu()
-	m:SetDeleteSelf( false )
-	m:SetDrawColumn( true )
-	m:Hide()
-	self.Menus[ label ] = m
-
-	local b = self:Add( "DButton" )
-	b:SetText( label )
-	b:Dock( LEFT )
-	b:DockMargin( 0, 0, 1, 0 )
-	b:SetIsMenu( true )
-	b:SetPaintBackground( false )
-	b:SizeToContentsX( 20 )
-	b.DoClick = function()
-
-		if ( m:IsVisible() ) then
-			m:Hide()
-			return
-		end
-
-		local x, y = b:LocalToScreen( 0, 0 )
-		m:Open( x, y + b:GetTall(), false, b )
-
+	local x = 4
+	for _, entry in ipairs( self.m_tButtons ) do
+		local tw = 8 + ( entry.btn:GetText() or "" ):len() * 8
+		entry.btn:SetPos( x, 0 )
+		entry.btn:SetSize( tw, h )
+		x = x + tw + 4
 	end
-
-	b.OnCursorEntered = function()
-		local opened = self:GetOpenMenu()
-		if ( !IsValid( opened ) || opened == m ) then return end
-		opened:Hide()
-		b:DoClick()
-	end
-
-	return m
-
 end
 
-function PANEL:OnRemove()
-
-	for id, pnl in pairs( self.Menus ) do
-		pnl:Remove()
-	end
-
-end
-
-function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
-
-	local pnl = vgui.Create( "Panel" )
-	pnl:Dock( FILL )
-	pnl:DockMargin( 2, 22, 2, 2 )
-
-	local ctrl = pnl:Add( ClassName )
-	local m = ctrl:AddMenu( "File" )
-	m:AddOption( "New", function() MsgN( "Chose New" ) end )
-	m:AddOption( "File", function() MsgN( "Chose File" ) end )
-	m:AddOption( "Exit", function() MsgN( "Chose Exit" ) end )
-
-	local m2 = ctrl:AddMenu( "Edit" )
-	m2:AddOption( "Copy", function() MsgN( "Chose Copy" ) end )
-	m2:AddOption( "Paste", function() MsgN( "Chose Paste" ) end )
-	m2:AddOption( "Blah", function() MsgN( "Chose Blah" ) end )
-
-	local sub = m:AddSubMenu( "Sub Menu" )
-	sub:SetDeleteSelf( false )
-	for i = 0, 5 do
-		sub:AddOption( "Option " .. i, function() MsgN( "Chose sub menu option " .. i ) end )
-	end
-
-	PropertySheet:AddSheet( ClassName, pnl, nil, true, true )
-
-end
-
-derma.DefineControl( "DMenuBar", "", PANEL, "DPanel" )
+derma.DefineControl( "DMenuBar", "HL2SB menu bar", PANEL, "DPanel" )

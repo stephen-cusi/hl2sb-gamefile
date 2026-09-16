@@ -1,188 +1,75 @@
+--[[ DListView_Line -- one selectable row inside a DListView (original). --]]
 
 local PANEL = {}
 
 function PANEL:Init()
-
-	self:SetTextInset( 5, 0 )
-
-end
-
-function PANEL:UpdateColours( skin )
-
-	if ( self:GetParent():IsLineSelected() ) then return self:SetTextStyleColor( skin.Colours.Label.Bright ) end
-
-	return self:SetTextStyleColor( skin.Colours.Label.Dark )
-
-end
-
-function PANEL:GenerateExample()
-
-	-- Do nothing!
-
-end
-
-derma.DefineControl( "DListViewLabel", "", PANEL, "DLabel" )
-
---[[---------------------------------------------------------
-	DListView_Line
------------------------------------------------------------]]
-
-local PANEL = {}
-
-Derma_Hook( PANEL, "Paint", "Paint", "ListViewLine" )
-Derma_Hook( PANEL, "ApplySchemeSettings", "Scheme", "ListViewLine" )
-Derma_Hook( PANEL, "PerformLayout", "Layout", "ListViewLine" )
-
-AccessorFunc( PANEL, "m_iID", "ID" )
-AccessorFunc( PANEL, "m_pListView", "ListView" )
-AccessorFunc( PANEL, "m_bAlt", "AltLine" )
-
-function PANEL:Init()
-
-	self:SetSelectable( true )
 	self:SetMouseInputEnabled( true )
-
-	self.Columns = {}
-	self.Data = {}
-
+	self:SetDrawBackground( false )
+	self.m_tColumns = {}
+	self.m_iRow = 0
+	self.m_bSelected = false
+	self.m_pList = nil
 end
 
-function PANEL:OnSelect()
-
-	-- For override
-
+function PANEL:SetList( pnlList )
+	self.m_pList = pnlList
 end
 
-function PANEL:OnRightClick()
-
-	-- For override
-
+function PANEL:SetColumnWidths( tWidths )
+	self.m_tWidths = tWidths
 end
 
-function PANEL:OnMousePressed( mcode )
-
-	if ( mcode == MOUSE_RIGHT ) then
-
-		-- This is probably the expected behaviour..
-		if ( !self:IsLineSelected() ) then
-
-			self:GetListView():OnClickLine( self, true )
-			self:OnSelect()
-
-		end
-
-		self:GetListView():OnRowRightClick( self:GetID(), self )
-		self:OnRightClick()
-
-		return
-
-	end
-
-	self:GetListView():OnClickLine( self, true )
-	self:OnSelect()
-
+function PANEL:SetColumnCount( i )
+	self.m_iColumnCount = i
 end
 
-function PANEL:OnCursorMoved()
+function PANEL:SetColumnText( iCol, strText )
+	self.m_tColumns[ iCol ] = tostring( strText or "" )
+end
 
-	if ( input.IsMouseDown( MOUSE_LEFT ) ) then
-		self:GetListView():OnClickLine( self )
-	end
-
+function PANEL:GetColumnText( iCol )
+	return self.m_tColumns[ iCol ] or ""
 end
 
 function PANEL:SetSelected( b )
-
 	self.m_bSelected = b
-
-	-- Update colors of the lines
-	for id, column in pairs( self.Columns ) do
-		column:ApplySchemeSettings()
-	end
-
 end
 
-function PANEL:IsLineSelected()
-
+function PANEL:IsSelected()
 	return self.m_bSelected
-
 end
 
-function PANEL:SetColumnText( i, strText )
-
-	if ( type( strText ) == "Panel" ) then
-
-		if ( IsValid( self.Columns[ i ] ) ) then self.Columns[ i ]:Remove() end
-
-		strText:SetParent( self )
-		self.Columns[ i ] = strText
-		self.Columns[ i ].Value = strText
-		return
-
+function PANEL:DoClick()
+	if ( self.m_pList ) then
+		self.m_pList:OnClickLine( self )
 	end
+end
 
-	if ( !IsValid( self.Columns[ i ] ) ) then
-
-		self.Columns[ i ] = vgui.Create( "DListViewLabel", self )
-		self.Columns[ i ]:SetMouseInputEnabled( false )
-
-		-- Disable autostretch behavior since we are not using it anyway, it gets expensive fast
-		self.Columns[ i ].Think = nil
-
+function PANEL:DoRightClick()
+	if ( self.m_pList ) then
+		self.m_pList:OnClickLine( self, true )
 	end
-
-	self.Columns[ i ]:SetText( tostring( strText ) )
-	self.Columns[ i ].Value = strText
-	return self.Columns[ i ]
-
-end
-PANEL.SetValue = PANEL.SetColumnText
-
-function PANEL:GetColumnText( i )
-
-	if ( !self.Columns[ i ] ) then return "" end
-
-	return self.Columns[ i ].Value
-
 end
 
-PANEL.GetValue = PANEL.GetColumnText
-
---[[---------------------------------------------------------
-	Allows you to store data per column
-
-	Used in the SortByColumn function for incase you want to
-	sort with something else than the text
------------------------------------------------------------]]
-function PANEL:SetSortValue( i, data )
-
-	self.Data[ i ] = data
-
+function PANEL:PerformLayout( w, h )
+	w = w or self:GetWide()
 end
 
-function PANEL:GetSortValue( i )
+function PANEL:Paint( w, h )
+	w = w or self:GetWide()
+	h = h or self:GetTall()
 
-	return self.Data[ i ]
+	derma.SkinHook( "Paint", "ListViewLine", self, w, h )
 
-end
-
-function PANEL:DataLayout( ListView )
-
-	self:ApplySchemeSettings()
-
-	local height = self:GetTall()
-
-	local x = 0
-	for k, Column in pairs( self.Columns ) do
-
-		local w = ListView:ColumnWidth( k )
-		Column:SetPos( x, 0 )
-		Column:SetSize( w, height )
-		x = x + w
-
+	local x = 4
+	for iCol, strText in ipairs( self.m_tColumns ) do
+		local colW = ( self.m_tWidths and self.m_tWidths[ iCol ] ) or 80
+		if ( strText ~= "" ) then
+			derma.DrawText( "DermaDefault", x, math.floor( ( h - 13 ) / 2 ), strText,
+				self.m_bSelected and Color( 255, 255, 255, 255 ) or Color( 210, 210, 210, 255 ) )
+		end
+		x = x + colW
 	end
-
 end
 
-derma.DefineControl( "DListViewLine", "A line from the List View", PANEL, "Panel" ) -- Legacy
-derma.DefineControl( "DListView_Line", "A line from the List View", PANEL, "Panel" )
+derma.DefineControl( "DListView_Line", "HL2SB list row", PANEL, "DPanel" )

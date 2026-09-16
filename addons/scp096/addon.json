@@ -1,0 +1,6 @@
+{
+	"title"			: "SCP-096 NextBot",
+	"type"			: "model",
+	"tags"			: [ "fun", "model", "npc" ],
+	"ignore"		: [ "*.psd", "*.vcproj", "*.svn*" ]
+}

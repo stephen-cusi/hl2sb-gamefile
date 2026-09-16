@@ -1,0 +1,7 @@
+ENT.Base                     = "base_nextbot"
+ENT.PrintName                = "SCP 096"
+ENT.Category		         = "Nextbots SCP"
+ENT.Author                   = "Shaklin"
+ENT.Contact                  = ""
+ENT.Purpose                  = ""
+ENT.Instructions             = ""

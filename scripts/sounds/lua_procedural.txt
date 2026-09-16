@@ -1,0 +1,4 @@
+// HL2SB: GMod's runtime sound-script sink.
+sound.Add() / Sounds.Add() register their entries here at runtime (CSoundEmitterSystemBase::AddSound writes to this file name), and scripts/game_sounds_manifest.txt lists it.
+// Keep the file present and empty: the engine refuses to load a manifest entry whose file does not exist.
+

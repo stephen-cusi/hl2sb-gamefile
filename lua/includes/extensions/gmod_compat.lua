@@ -244,8 +244,67 @@ function game.GetHostName()
 	return GetConVarString( "hostname" ) or ""
 end
 
+-- GMod: Entity:CallOnRemove( identifier, callback )
+--
+-- 引擎在每个脚本实体移除时派发 ENT:OnRemove，但 GMod 还允许对**任意**实体注册回调
+-- （callback( ent, identifier )）。这里用 EntityRemoved 钩子代跑；弱键表，实体被回收
+-- 后条目自动消失。
+if ( FindMetaTable ) then
+	local hl2sb_EntityMeta = FindMetaTable( "Entity" )
+
+	if ( hl2sb_EntityMeta and not hl2sb_EntityMeta.CallOnRemove ) then
+		local hl2sb_OnRemoveCallbacks = setmetatable( {}, { __mode = "k" } )
+
+		hook.Add( "EntityRemoved", "hl2sb_callonremove", function( ent )
+			local list = hl2sb_OnRemoveCallbacks[ ent ]
+			if ( !list ) then return end
+
+			hl2sb_OnRemoveCallbacks[ ent ] = nil
+
+			for id, fn in pairs( list ) do
+				local ok, err = pcall( fn, ent, id )
+				if ( !ok ) then
+					ErrorNoHalt( "[HL2SB] CallOnRemove '" .. tostring( id ) .. "' failed: " .. tostring( err ) .. "\n" )
+				end
+			end
+		end )
+
+		function hl2sb_EntityMeta:CallOnRemove( identifier, callback )
+			if ( type( callback ) ~= "function" ) then return end
+
+			local list = hl2sb_OnRemoveCallbacks[ self ]
+			if ( !list ) then
+				list = {}
+				hl2sb_OnRemoveCallbacks[ self ] = list
+			end
+
+			if ( identifier == nil ) then
+				identifier = tostring( self ) .. "#" .. tostring( #list + 1 )
+			end
+
+			list[ identifier ] = callback
+		end
+	end
+end
+
 function game.GetTimeScale()
 	return 1
+end
+
+-- GMod: game.CleanUpMap( dontSendToClients, extraFilters, callback )
+--
+-- 引擎侧实体是 HL2SB_GameCleanUpMap（game/server/lua/lutil.cpp），它调用
+-- CHL2MPRules::CleanUpMap()：重建地图自身实体、删掉其余（玩家/手持武器除外）并
+-- 触发 CleanUpMap 钩子 —— 与 GMod 文档描述一致。GMod 的三个可选参数这里接受但
+-- 忽略（callback 仍在结束后被调用）。
+function game.CleanUpMap( dontSendToClients, extraFilters, callback )
+	if ( HL2SB_GameCleanUpMap ) then
+		HL2SB_GameCleanUpMap()
+	end
+
+	if ( callback ) then
+		callback()
+	end
 end
 
 function game.GetMaxPlayers()
