@@ -36,11 +36,17 @@ Scheme
 	// controls use these to determine their settings
 	BaseSettings
 	{
-		"FgColor"			"255 220 0 100"
+		// GMod: 255 235 20 255（HL2 原版是 255 220 0 100，39% 透明，
+		// 所以 HUD 数字/标签会发虚）。HUD 元素另有半透明版本 FgColorHud/BgColorHud。
+		"FgColor"			"255 235 20 255"
 		"BgColor"			"0 0 0 76"
 
-		"Panel.FgColor"			"255 220 0 100"
-		"Panel.BgColor"			"0 0 0 76"
+		"Panel.FgColor"			"255 220 0 255"
+		"Panel.BgColor"			"Blank"
+
+		// GMod: HL2 HUD 专用颜色（scripts/hudanimations.txt 的 Animate 直接用这两个名字）
+		"FgColorHud"		"255 220 0 220"
+		"BgColorHud"		"0 0 0 90"
 
 		// GMod white theme for the main menu (BasePanel reads MainMenu.*).
 		// hl2sb's scheme had none of these, so the menu fell back to a yellow
@@ -55,12 +61,12 @@ Scheme
 		"DamagedFg"			"180 0 0 230"
 		"BrightDamagedFg"		"255 0 0 255"
 
-		// weapon selection colors
+		// weapon selection colors（按 GMod 的值：GMod 的 HUD 更透明）
 		"SelectionNumberFg"		"255 220 0 255"
-		"SelectionTextFg"		"255 220 0 255"
-		"SelectionEmptyBoxBg" 	"0 0 0 120"
-		"SelectionBoxBg" 		"0 0 0 120"
-		"SelectionSelectedBoxBg" "0 0 0 200"
+		"SelectionTextFg"		"FgColorHud"
+		"SelectionEmptyBoxBg" 	"0 0 0 70"
+		"SelectionBoxBg" 		"BgColorHud"
+		"SelectionSelectedBoxBg" "0 0 0 150"
 		
 		"ZoomReticleColor"	"255 220 0 255"
 
@@ -556,6 +562,60 @@ Scheme
 				"custom"	"1"
 			}
 		}
+		// GMod: HUD 用的默认字体（GMod 的 HUD/脚本会 GetFont("HudDefault")）
+		HudDefault
+		{
+			"1"
+			{
+				"name"		"Verdana"
+				"tall"		"9"
+				"weight"	"700"
+				"antialias" "1"
+				"yres"	"1 599"
+			}
+			"2"
+			{
+				"name"		"Verdana"
+				"tall"		"13"
+				"weight"	"700"
+				"antialias" "1"
+				"yres"	"600 767"
+			}
+			"3"
+			{
+				"name"		"Verdana"
+				"tall"		"14"
+				"weight"	"900"
+				"antialias" "1"
+				"yres"	"768 1023"
+			}
+			"4"
+			{
+				"name"		"Verdana"
+				"tall"		"20"
+				"weight"	"900"
+				"antialias" "1"
+				"yres"	"1024 1200"
+			}
+			"5"
+			{
+				"name"		"Verdana"
+				"tall"		"28"
+				"weight"	"900"
+				"antialias" "1"
+				"yres"	"1201 1600"
+				"additive"	"1"
+			}
+			"6"
+			{
+				"name"		"Verdana"
+				"tall"		"40"
+				"weight"	"900"
+				"antialias" "1"
+				"yres"	"1601 10000"
+				"additive"	"1"
+			}
+		}
 		HudNumbersSmall
 		{
 			"1"
@@ -862,7 +922,10 @@ Scheme
 		   "1"
 		   {
 				"name"  "HL2MP" // csd.ttf
-				"tall"  "32"
+				// GMod: 64（HL2 原版是 32）。材质类的击杀图标——killicon.Add 注册的
+				// 图片图标，Lua 武器/插件都走这条——高度 = 这个值 * 0.75：
+				// GMod 64 -> 48px。原来是 32 -> 24px，所以在 GMod 里看着大、在我们这看着小
+				"tall"  "64"
 				"weight" "0"
 				"additive" "1"
 				"antialias" "1"

@@ -175,10 +175,7 @@ jit = {
 
 local registry = debug.getregistry()
 function FindMetaTable(name)
-	if (name == "Vehicle") then
-		-- We don't have vehicles in Experiment, so lets not waste time on it
-		return {}
-	elseif (name == "IMaterial") then
+	if (name == "IMaterial") then
 		name = "Material"
 	elseif (name == "ITexture") then
 		name = "Texture"

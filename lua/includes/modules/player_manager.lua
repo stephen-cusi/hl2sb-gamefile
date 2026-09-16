@@ -31,6 +31,32 @@ local ModelNameDict = {}
 local HandNames    = {}
 local PlayerClasses = {}
 
+-- ===========================================================================
+-- HL2SB: mirror every registration into the ENGINE's model table.
+--
+-- A Garry's Mod playermodel addon (custom/miku, custom/hutao_old, ...) ships no
+-- cfg/playermodel/<name>.cfg; it only calls player_manager.AddValidModel /
+-- AddValidHands from a lua/autorun file.  The engine table is what the
+-- playermodel menu lists (hl2sb.GetPlayerModels), what hl2sb.SetPlayerModel()
+-- accepts, what the server precaches and what c_baseviewmodel's c_hands lookup
+-- uses -- so without this call the addon's model exists in this Lua table and
+-- nowhere else: it cannot be selected, and it is never precached.
+--
+-- hl2sb.AddPlayerModel( name, model, hands ) updates an entry in place, which is
+-- why AddValidModel (model) and the AddValidHands right after it (hands) can be
+-- two separate calls.  The hands argument uses the cfg encoding
+-- "path|skin|bodygroups" (hl2sb_model_config.cpp parses it).
+-- ===========================================================================
+local function EngineAddModel( name, model, hands )
+	if ( _G.hl2sb == nil or hl2sb.AddPlayerModel == nil ) then return end
+
+	local ok, err = pcall( hl2sb.AddPlayerModel, name, model, hands )
+	if ( not ok ) then
+		Msg( "[HL2SB] hl2sb.AddPlayerModel( " .. tostring( name ) .. " ) failed: "
+		     .. tostring( err ) .. "\n" )
+	end
+end
+
 -------------------------------------------------------------------------------
 -- Purpose: Registers a selectable player model
 -------------------------------------------------------------------------------
@@ -45,6 +71,10 @@ function AddValidModel( name, model, title, category )
 	}
 
 	ModelNameDict[ string.lower( model ) ] = name
+
+	-- HL2SB: engine side (menu / precache / SetPlayerModel) - hands are a
+	-- separate AddValidHands call, so pass "keep" (nil) for them.
+	EngineAddModel( name, model, nil )
 end
 
 function RemoveValidModel( name )
@@ -74,6 +104,15 @@ function AddValidHands( name, model, skin, body, matchBodySkin )
 		body          = body or "0000000",
 		matchBodySkin = matchBodySkin or false,
 	}
+
+	-- HL2SB: engine side.  c_baseviewmodel reads the hands model through
+	-- HL2SB_GetHandsModelForPlayer( <player model path> ) and applies the
+	-- skin/body encoded after a '|' (the same encoding cfg/playermodel uses:
+	-- "models/weapons/c_arms_citizen.mdl|2|0000000").  nil = keep the model, so
+	-- this only ever adds hands to an entry AddValidModel already created.
+	if ( type( model ) == "string" and model ~= "" ) then
+		EngineAddModel( name, nil, model .. "|" .. tostring( skin or 0 ) .. "|" .. tostring( body or "0000000" ) )
+	end
 end
 
 function TranslatePlayerHands( model )

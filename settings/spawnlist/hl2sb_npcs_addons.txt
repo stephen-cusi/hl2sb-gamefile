@@ -1,0 +1,10 @@
+// HL2SB spawnlist -- the NPCs page, nextbots and NPCs shipped by addons.
+// See hl2sb_weapons_hl2.txt for the format.
+"spawnlist"
+{
+	"name"		"Addons"
+	"icon"		"icon16/monkey.png"
+	"id"		"21"
+	"parentid"	"0"
+	"contents"	"npc_verity npc_windgrinbot npc_shaklin_scp096 npc_scp096 ent_windgrin_fake"
+}

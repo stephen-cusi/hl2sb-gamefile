@@ -1,0 +1,19 @@
+"vertexlitGeneric"
+{
+"$basetexture" "models/shaklin/scp/096/scp096"
+"$alphatest" 1
+$halflambert 0
+$phong 1
+$allowdiffusemodulation 0
+$diffuseexp 1
+$lightwarptexture "models/shaklin/scp/096/scp096_wrp"
+
+$phongfresnelrange_0 ".01"
+$phongfresnelrange_1 ".15"
+$phongfresnelrange_2 1
+$phongfresnelranges "[.01 .15 1]"
+$phongtint "[0.8 0.8 1]"
+$phongboost 30
+$phongexponent 20
+$ambientocclusion 1
+}

@@ -1,0 +1,5 @@
+"UnlitGeneric"
+{
+	"$basetexture" "npc_verity/verity"
+	"$alphatest" 1
+}

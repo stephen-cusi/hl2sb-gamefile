@@ -90,7 +90,7 @@
 		"fieldName"		"HudSuit"
 		"xpos"	"140"
 		"ypos"	"432"
-		"wide"	"108"
+		"wide"	"102" // GMOD: Was 108
 		"tall"  "36"
 		"visible" "1"
 		"enabled" "1"
@@ -118,18 +118,18 @@
 
 		"text_xpos" "8"
 		"text_ypos" "20"
-		"digit_xpos" "44"
+		"digit_xpos" "40" // GMOD: Was 44
 		"digit_ypos" "2"
-		"digit2_xpos" "98"
+		"digit2_xpos" "102" // GMOD: Was 98
 		"digit2_ypos" "16"
 	}
 
 	HudAmmoSecondary	[$WIN32]
 	{
 		"fieldName" "HudAmmoSecondary"
-		"xpos"	"r76"
+		"xpos"	"r82" // GMOD: Was 76
 		"ypos"	"432"
-		"wide"	"60"
+		"wide"	"72" // GMOD: Was 60
 		"tall"  "36"
 		"visible" "1"
 		"enabled" "1"
@@ -138,8 +138,10 @@
 
 		"text_xpos" "8"
 		"text_ypos" "22"
-		"digit_xpos" "36"
+		"digit_xpos" "26" // GMOD: Was 36
 		"digit_ypos" "2"
+		"digit2_xpos" "88" // GMOD
+		"digit2_ypos" "16"
 	}
 	HudAmmoSecondary	[$X360]
 	{
@@ -250,7 +252,8 @@
 		"SmallBoxSize" "32"
 		"LargeBoxWide" "112"
 		"LargeBoxTall" "80"
-		"BoxGap" "8"
+		"LargeBoxUnselectedTall" "19" // GMOD
+		"BoxGap" "6" // GMOD: Was 8
 		"SelectionNumberXPos" "4"
 		"SelectionNumberYPos" "4"
 		"SelectionGrowTime"	"0.4"
@@ -360,6 +363,7 @@
 		"ItemHiddenTime"	"0.2"  // Nearly same as grow time so that the item doesn't start to show until growth is finished
 		"ItemFadeInTime"	"0.15"	// Once ItemHiddenTime is finished, takes this much longer to fade in
 		"ItemFadeOutTime"	"0.3"
+		"topoffset"		"0" // GMOD
 
 	}
 

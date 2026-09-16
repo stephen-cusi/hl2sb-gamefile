@@ -1,0 +1,10 @@
+// HL2SB spawnlist -- the NPCs page, the game's own set.
+// See hl2sb_weapons_hl2.txt for the format.
+"spawnlist"
+{
+	"name"		"Half-Life 2"
+	"icon"		"icon16/monkey.png"
+	"id"		"20"
+	"parentid"	"0"
+	"contents"	"npc_zombie npc_zombie_torso npc_zombine npc_fast_zombie npc_poison_zombie npc_headcrab npc_headcrab_fast npc_headcrab_poison npc_antlion npc_antlionguard npc_combine_s npc_combine_elite npc_metropolice npc_citizen npc_manhack npc_rollermine npc_turret_floor npc_turret_ceiling npc_strider npc_hunter npc_gunship npc_helicopter npc_apache npc_barnacle npc_crow npc_pigeon npc_seagull npc_vortigaunt npc_alyx npc_barney npc_breen npc_kleiner npc_eli npc_mossman npc_dog npc_gman npc_monk npc_fisherman npc_odessa"
+}

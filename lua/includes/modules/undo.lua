@@ -199,6 +199,14 @@ if ( _CLIENT ) then
 			end
 		end
 
+		-- HL2SB: the block above only localises "#name (secondary)".  A plain class
+		-- ("npc_zombie", "xxx_096") fell straight through and was shown AS the class,
+		-- and a reskinned NPC showed the class it inherits from.  Resolve it from the
+		-- content - the same resolver the kill feed uses, so both print the same name.
+		if ( _G.HL2SB_GetDisplayName ~= nil ) then
+			name = HL2SB_GetDisplayName( name )
+		end
+
 		table.insert( ClientUndos, 1, { Key = key, Name = name } )
 
 		MakeUIDirty()
@@ -213,6 +221,11 @@ if ( _CLIENT ) then
 		local customtext
 		if ( hasCustomText ) then
 			customtext = net.ReadString()
+		end
+
+		-- same name as the undo list shows (see Undo_AddUndo above)
+		if ( _G.HL2SB_GetDisplayName ~= nil ) then
+			name = HL2SB_GetDisplayName( name )
 		end
 
 		hook.Run( "OnUndo", name, customtext )

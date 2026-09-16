@@ -14,6 +14,12 @@ BaseClasses[ "anim" ] = "base_anim"
 BaseClasses[ "point" ] = "base_point"
 BaseClasses[ "brush" ] = "base_brush"
 BaseClasses[ "filter" ] = "base_filter"
+-- HL2SB: GMod's nextbot base.  An addon normally says ENT.Base = "base_nextbot"
+-- itself (SCP-096 does), but that only covers the Base field - this mapping is
+-- what Register() uses when a script declares Type = "nextbot" and nothing else,
+-- and without it every nextbot script logged
+--     WARNING: Scripted entity <name> has an invalid base entity!
+BaseClasses[ "nextbot" ] = "base_nextbot"
 
 --[[---------------------------------------------------------
 	Name: TableInherit( t, base )

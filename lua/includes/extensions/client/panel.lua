@@ -2,7 +2,9 @@
 include ( "panel/animation.lua" )
 include ( "panel/dragdrop.lua" )
 include ( "panel/selections.lua" )
-include ( "panel/scriptedpanels.lua" )
+-- HL2SB: panel/scriptedpanels.lua (GMod's copy) moved to _legacy_gmod/; the
+-- class registry now lives in lua/derma/hl2sb_derma.lua, which owns vgui.Create,
+-- vgui.Register and the vgui.CreateX capture.
 
 local meta = FindMetaTable( "Panel" )
 

@@ -98,6 +98,15 @@ game_sounds_manifest
 	"precache_file"		"scripts/npc_sounds_poisonzombie.txt"
 	"precache_file"		"scripts/npc_sounds_metropolice.txt"
    	"precache_file"		"scripts/npc_sounds_combinecamera.txt"
+	// HL2SB: GMod's sound.Add() registers its scripts in this file
+	// (CSoundEmitterSystemBase::AddSound( name, "scripts/sounds/lua_procedural.txt", ... )).
+	// Without this line the engine refuses them --
+	//     CSoundEmitterSystemBase::AddSound( 'windgrinpanic', 'scripts/sounds/lua_procedural.txt', ... ),
+	//     script file not list in manifest 'scripts/game_sounds_manifest.txt'
+	// -- and every EmitSound() of a script-registered name is dropped, so addons
+	// that use sound.Add() (the windgrin_npc nextbot does, for all of its lines)
+	// are silent.
+	"precache_file"		"scripts/sounds/lua_procedural.txt"
 	"precache_file"		"scripts/npc_sounds_manhack.txt"
 	"precache_file"		"scripts/npc_sounds_ichthyosaur.txt"
 	"precache_file"		"scripts/npc_sounds_blackheadcrab.txt"

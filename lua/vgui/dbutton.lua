@@ -1,193 +1,119 @@
+--[[ DButton -- a push button (original implementation).
+
+	The engine's C Button (vgui.Button) fires DoClick in C++ and never consults
+	a Lua DoClick field, so GMod's `button.DoClick = function() end` idiom does
+	not work on it.  This control lives on the scripted Panel instead, whose
+	OnMousePressed / OnMouseReleased are dispatched to Lua by
+	scripted_controls/lPanel.cpp, and DoClick is raised right there -- exactly
+	what GMod code expects. --]]
 
 local PANEL = {}
 
-AccessorFunc( PANEL, "m_bBorder", "DrawBorder", FORCE_BOOL )
+-- The engine's own enable/disable, kept before the class override below hides
+-- the name; the scripted Panel metatable is where it lives.
+local PanelMeta = FindMetaTable( "Panel" )
+local EngineSetEnabled = PanelMeta and PanelMeta.SetEnabled
 
 function PANEL:Init()
-
-	self:SetContentAlignment( 5 )
-
-	--
-	-- These are Lua side commands
-	-- Defined above using AccessorFunc
-	--
-	self:SetDrawBorder( true )
-	self:SetPaintBackground( true )
-
-	self:SetTall( 22 )
+	self:SetText( "" )
 	self:SetMouseInputEnabled( true )
-	self:SetKeyboardInputEnabled( true )
-
-	self:SetCursor( "hand" )
-	self:SetFont( "DermaDefault" )
-
+	self:SetKeyBoardInputEnabled( false )
+	self:SetDrawBackground( false )
+	self.m_strFont = "DermaDefault"
+	self.m_bDepressed = false
+	self.m_bHover = false
+	self.m_bEnabled = true
 end
 
-function PANEL:IsDown()
-
-	return self.Depressed
-
+function PANEL:SetText( strText )
+	self.m_strText = tostring( strText or "" )
 end
 
-function PANEL:SetImage( img )
+function PANEL:GetText()
+	return self.m_strText or ""
+end
 
-	if ( !img ) then
+function PANEL:SetFont( strFont )
+	self.m_strFont = strFont
+end
 
-		if ( IsValid( self.m_Image ) ) then
-			self.m_Image:Remove()
-		end
+function PANEL:GetFont()
+	return self.m_strFont
+end
 
+function PANEL:SetEnabled( b )
+	self.m_bEnabled = b
+	if ( EngineSetEnabled ) then EngineSetEnabled( self, b ) end
+end
+
+function PANEL:IsEnabled()
+	return self.m_bEnabled
+end
+
+function PANEL:OnMousePressed( code )
+	if ( code == MOUSE_RIGHT ) then
+		self:DoRightClick()
 		return
 	end
 
-	if ( !IsValid( self.m_Image ) ) then
-		self.m_Image = vgui.Create( "DImage", self )
-	end
+	if ( not self.m_bEnabled ) then return end
 
-	self.m_Image:SetImage( img )
-	self.m_Image:SizeToContents()
-	self:InvalidateLayout()
+	self.m_bDepressed = true
+	self.m_bHover = true
 
+	-- Without the capture, releasing the button outside the panel never reaches
+	-- us and m_bDepressed sticks; with it, OnMouseReleased decides below
+	-- whether the cursor is still over the button (GMod's cancel behaviour).
+	self:MouseCapture( true )
 end
-PANEL.SetIcon = PANEL.SetImage
 
-function PANEL:SetMaterial( mat )
+function PANEL:OnCursorEntered()
+	if ( self.m_bEnabled ) then self.m_bHover = true end
+end
 
-	if ( !mat ) then
+function PANEL:OnCursorExited()
+	self.m_bHover = false
+end
 
-		if ( IsValid( self.m_Image ) ) then
-			self.m_Image:Remove()
-		end
+function PANEL:OnMouseReleased( code )
+	local wasDepressed = self.m_bDepressed
+	self.m_bDepressed = false
+	self:MouseCapture( false )
 
-		return
-	end
+	if ( not self.m_bEnabled ) then return end
+	if ( not wasDepressed ) then return end
+	if ( self.m_bHover == false ) then return end
 
-	if ( !IsValid( self.m_Image ) ) then
-		self.m_Image = vgui.Create( "DImage", self )
-	end
+	self:DoClick()
+end
 
-	self.m_Image:SetMaterial( mat )
-	self.m_Image:SizeToContents()
-	self:InvalidateLayout()
+function PANEL:OnMouseCaptureLost()
+	self.m_bDepressed = false
+end
 
+--- GMod's default click does nothing; scripts overwrite this field.
+function PANEL:DoClick()
+end
+
+--- GMod's right-click hook.
+function PANEL:DoRightClick()
+end
+
+function PANEL:OnMouseReleasedRight( code )
 end
 
 function PANEL:Paint( w, h )
+	w = w or self:GetWide()
+	h = h or self:GetTall()
 
 	derma.SkinHook( "Paint", "Button", self, w, h )
 
-	--
-	-- Draw the button text
-	--
-	return false
+	local text = self.m_strText or ""
+	if ( text == "" ) then return end
 
+	local tw, th = derma.GetTextSize( self.m_strFont, text )
+	local clr = self.m_bEnabled and Color( 228, 228, 228, 255 ) or Color( 120, 120, 120, 255 )
+	derma.DrawText( self.m_strFont, math.floor( ( w - tw ) / 2 ), math.floor( ( h - th ) / 2 ), text, clr )
 end
 
-function PANEL:UpdateColours( skin )
-
-	if ( !self:IsEnabled() )					then return self:SetTextStyleColor( skin.Colours.Button.Disabled ) end
-	if ( self:IsDown() || self.m_bSelected )	then return self:SetTextStyleColor( skin.Colours.Button.Down ) end
-	if ( self.Hovered )							then return self:SetTextStyleColor( skin.Colours.Button.Hover ) end
-
-	return self:SetTextStyleColor( skin.Colours.Button.Normal )
-
-end
-
-function PANEL:PerformLayoutImage()
-	--
-	-- If we have an image we have to place the image on the left
-	-- and make the text align to the left, then set the inset
-	-- so the text will be to the right of the icon.
-	--
-	if ( IsValid( self.m_Image ) ) then
-
-		local targetSize = math.min( self:GetWide() - 4, self:GetTall() - 4 )
-
-		local imgW, imgH = self.m_Image.ActualWidth, self.m_Image.ActualHeight
-		local zoom = math.min( targetSize / imgW, targetSize / imgH, 1 )
-		local newSizeX = math.ceil( imgW * zoom )
-		local newSizeY = math.ceil( imgH * zoom )
-
-		self.m_Image:SetWide( newSizeX )
-		self.m_Image:SetTall( newSizeY )
-
-		if ( self:GetWide() < self:GetTall() ) then
-			self.m_Image:SetPos( 4, ( self:GetTall() - self.m_Image:GetTall() ) * 0.5 )
-		else
-			self.m_Image:SetPos( 2 + ( targetSize - self.m_Image:GetWide() ) * 0.5, ( self:GetTall() - self.m_Image:GetTall() ) * 0.5 )
-		end
-
-		-- For center alignments, reduce the inset of the image, so the text appears more centered visually
-		local alignment = self:GetContentAlignment()
-		if ( alignment == 8 || alignment == 5 || alignment == 2 ) then
-			self:SetTextInset( self.m_Image:GetWide() + 4, 0 )
-		else
-			self:SetTextInset( self.m_Image:GetWide() + 8, 0 )
-		end
-
-	end
-end
-
-function PANEL:PerformLayout( w, h )
-
-	self:PerformLayoutImage()
-
-	DLabel.PerformLayout( self, w, h )
-
-end
-
-function PANEL:SetConsoleCommand( strName, strArg, ... )
-
-	if ( select( "#", ... ) > 0 ) then
-		local extraArgs = { ... }
-		self.DoClick = function( slf, val )
-			RunConsoleCommand( strName, strArg, unpack( extraArgs ) )
-		end
-		return
-	end
-
-	self.DoClick = function( slf, val )
-		RunConsoleCommand( strName, strArg )
-	end
-
-end
-
-function PANEL:SizeToContents()
-	self:PerformLayoutImage() -- Set the text inset first.
-	local w, h = self:GetContentSize()
-
-	self:SetSize( w + 8, h + 4 )
-end
-
-function PANEL:SizeToContentsX( addVal )
-	self:PerformLayoutImage() -- Set the text inset first.
-	local w, h = self:GetContentSize()
-
-	self:SetWide( w + 8 + ( addVal or 0 ) )
-end
-
-function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
-
-	local ctrl = vgui.Create( ClassName )
-	ctrl:SetText( "Example Button" )
-	ctrl:SetWide( 200 )
-
-	PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )
-
-end
-
-local PANEL = derma.DefineControl( "DButton", "A standard Button", PANEL, "DLabel" )
-
-PANEL = table.Copy( PANEL )
-
-function PANEL:SetActionFunction( func )
-
-	self.DoClick = function( slf, val ) func( slf, "Command", 0, 0 ) end
-
-end
-
--- No example for this control. Should we remove this completely?
-function PANEL:GenerateExample( class, tabs, w, h )
-end
-
-derma.DefineControl( "Button", "Backwards Compatibility", PANEL, "DLabel" )
+derma.DefineControl( "DButton", "HL2SB push button", PANEL, "DPanel" )

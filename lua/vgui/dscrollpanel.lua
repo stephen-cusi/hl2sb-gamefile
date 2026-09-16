@@ -1,145 +1,160 @@
+--[[ DScrollPanel -- a container that scrolls (original, pure Lua).
+
+	Owns a PnlContainer child that all Add()ed content lives in; content is
+	shifted by Paint offset against a vertical DScrollBar.  GMod's contract:
+	Add / GetCanvas / SetVScrollRange / SetValue / GetVScrollPos, child Dock
+	inside the canvas. --]]
 
 local PANEL = {}
 
-AccessorFunc( PANEL, "Padding", "Padding" )
-AccessorFunc( PANEL, "pnlCanvas", "Canvas" )
+local BAR_W = 14
 
 function PANEL:Init()
+	self:SetDrawBackground( false )
+	self.m_bHorizontalScroll = false
 
-	self.pnlCanvas = vgui.Create( "Panel", self )
-	self.pnlCanvas.OnMousePressed = function( slf, code ) slf:GetParent():OnMousePressed( code ) end
-	self.pnlCanvas:SetMouseInputEnabled( true )
-	self.pnlCanvas.PerformLayout = function( pnl )
+	self.m_pVBar = vgui.Create( "DScrollBar", self, "VBar" )
+	self.m_pVBar:SetVertical( true )
+	self.m_pVBar:SetEnabled( false )
+	self.m_pVBar:SetParentPanel( self )
 
-		self:PerformLayoutInternal()
-		self:InvalidateParent()
+	self.m_pCanvas = vgui.Create( "DPanel", self, "ContentContainer" )
+	self.m_pCanvas:SetDrawBackground( false )
+	self.m_pCanvas:SetMouseInputEnabled( false )
 
-	end
-
-	-- Create the scroll bar
-	self.VBar = vgui.Create( "DVScrollBar", self )
-	self.VBar:Dock( RIGHT )
-
-	self:SetPadding( 0 )
-	self:SetMouseInputEnabled( true )
-
-	-- This turns off the engine drawing
-	self:SetPaintBackgroundEnabled( false )
-	self:SetPaintBorderEnabled( false )
-	self:SetPaintBackground( false )
-
-end
-
-function PANEL:AddItem( pnl )
-
-	pnl:SetParent( self:GetCanvas() )
-
-end
-
-function PANEL:OnChildAdded( child )
-
-	self:AddItem( child )
-
-end
-
-function PANEL:SizeToContents()
-
-	self:SetSize( self.pnlCanvas:GetSize() )
-
-end
-
-function PANEL:GetVBar()
-
-	return self.VBar
-
+	self.m_iScrollDelta = 0
+	self.m_iRange = 0
+	self.m_iPos = 0
 end
 
 function PANEL:GetCanvas()
-
-	return self.pnlCanvas
-
+	return self.m_pCanvas
 end
 
-function PANEL:InnerWidth()
-
-	return self:GetCanvas():GetWide()
-
+function PANEL:Add( pnl )
+	pnl:SetParent( self:GetCanvas() )
+	return pnl
 end
 
-function PANEL:Rebuild()
-
-	self:GetCanvas():SizeToChildren( false, true )
-
-	-- Although this behaviour isn't exactly implied, center vertically too
-	if ( self.m_bNoSizing && self:GetCanvas():GetTall() < self:GetTall() ) then
-
-		self:GetCanvas():SetPos( 0, ( self:GetTall() - self:GetCanvas():GetTall() ) * 0.5 )
-
-	end
-
-end
-
-function PANEL:OnMouseWheeled( dlta )
-
-	return self.VBar:OnMouseWheeled( dlta )
-
-end
-
-function PANEL:OnVScroll( iOffset )
-
-	self.pnlCanvas:SetPos( 0, iOffset )
-
-end
-
-function PANEL:ScrollToChild( panel )
-
+function PANEL:SetContentHeight( iH )
+	self.m_iRange = math.max( 0, iH - self:GetCanvas():GetTall() )
+	self.m_pVBar:SetEnabled( self.m_iRange > 0 )
 	self:InvalidateLayout( true )
-
-	local x, y = self.pnlCanvas:GetChildPosition( panel )
-	local w, h = panel:GetSize()
-
-	y = y + h * 0.5
-	y = y - self:GetTall() * 0.5
-
-	self.VBar:AnimateTo( y, 0.5, 0, 0.5 )
-
 end
 
--- Avoid an infinite loop
-function PANEL:PerformLayoutInternal()
+function PANEL:ContentSizeChanged( w, h )
+	self:SetContentHeight( h )
+end
 
-	local Tall = self.pnlCanvas:GetTall()
-	local Wide = self:GetWide()
-	local YPos = 0
+function PANEL:InvalidateContentSize( b )
+	local canvas = self:GetCanvas()
+	local _, h = canvas:GetChildrenSize()
+	self:SetContentHeight( h or 0 )
+end
 
-	self:Rebuild()
+function PANEL:SetVScrollRange( iMin, iMax )
+	self:SetContentHeight( iMax )
+end
 
-	self.VBar:SetUp( self:GetTall(), self.pnlCanvas:GetTall() )
-	YPos = self.VBar:GetOffset()
+function PANEL:SetValue( iVal )
+	self.m_iPos = math.Clamp( iVal or 0, 0, math.max( 0, self.m_iRange ) )
+	self.m_pVBar:SetValue( self.m_iRange > 0 and ( self.m_iPos / self.m_iRange ) or 0 )
+end
 
-	if ( self.VBar.Enabled ) then Wide = Wide - self.VBar:GetWide() end
+function PANEL:GetValue()
+	return self.m_iPos
+end
 
-	self.pnlCanvas:SetPos( 0, YPos )
-	self.pnlCanvas:SetWide( Wide )
+function PANEL:GetVScrollPos()
+	return self.m_iPos
+end
 
-	self:Rebuild()
+function PANEL:OnMouseWheeled( delta )
+	self:SetValue( self.m_iPos - delta * 48 )
+end
 
-	if ( Tall != self.pnlCanvas:GetTall() ) then
-		self.VBar:SetScroll( self.VBar:GetScroll() ) -- Make sure we are not too far down!
+-- ⚠️ OnThink, NOT Think.  A panel's per-frame hook has exactly one name in this
+-- engine, and it is the one scripted_controls/lPanel.cpp:181-187 dispatches:
+--
+--     void LPanel::OnThink() { BEGIN_LUA_CALL_PANEL_METHOD( "OnThink" ); ... }
+--
+-- so a `PANEL:Think` is never called.  THIS function is what mirrors the scrollbar's
+-- drag value back into the canvas offset, which is why the grid could be dragged by
+-- its bar with nothing moving: only the wheel worked, because OnMouseWheeled IS
+-- dispatched and reaches the same value from the other direction.
+function PANEL:OnThink()
+	-- the bar's value tracks the drag; mirror it back into pixel positions
+	if ( self.m_pVBar:Enabled() and self.m_iRange > 0 ) then
+		local wanted = self.m_pVBar:GetValue() * self.m_iRange
+		if ( math.abs( wanted - self.m_iPos ) > 0.5 ) then
+			self.m_iPos = wanted
+		end
 	end
-
 end
 
-function PANEL:PerformLayout()
+function PANEL:PerformLayout( w, h )
+	w = w or self:GetWide()
+	h = h or self:GetTall()
 
-	self:PerformLayoutInternal()
+	local pad = self.m_iPadding or 0
+	local barVisible = self.m_pVBar:Enabled()
+	local canvasW = w - ( barVisible and BAR_W or 0 ) - 2 * pad
 
+	self.m_pCanvas:SetPos( pad, pad )
+	self.m_pCanvas:SetSize( math.max( 1, canvasW ), math.max( 1, h - 2 * pad ) )
+
+	self.m_pVBar:SetPos( w - BAR_W, 0 )
+	self.m_pVBar:SetSize( BAR_W, h )
 end
 
-function PANEL:Clear()
-
-	return self.pnlCanvas:Clear()
-
+function PANEL:Paint( w, h )
+	-- shift the canvas by the scroll position; clipping comes from the engine's
+	-- panel clip (the canvas is a child of a visible panel with PaintEnabled
+	-- children -- content outside the bar-less rect stays hidden because vgui2
+	-- clips child painting to the parent bounds).
+	self.m_pCanvas:SetPos( 0, -math.floor( self.m_iPos ) )
 end
 
-derma.DefineControl( "DScrollPanel", "", PANEL, "DPanel" )
+--[[---------------------------------------------------------------------------
+	GMod's own names for the same things, per
+	https://wiki.facepunch.com/gmod/DScrollPanel
+
+		AddItem( pnl )      -> Add
+		GetCanvas()         -> already above
+		GetVBar()           -> the vertical DScrollBar
+		InnerWidth()        -> the width left for content once the bar is counted
+		SetPadding( n )     -> an inset around the content
+		Rebuild()           -> re-measure the content
+
+	The wiki documents AddItem, not Add, so GMod code (and anything ported from it)
+	calls AddItem; both work here.
+-----------------------------------------------------------------------------]]
+
+function PANEL:AddItem( pnl )
+	return self:Add( pnl )
+end
+
+function PANEL:GetVBar()
+	return self.m_pVBar
+end
+
+--- The width content actually gets, i.e. minus the bar when it is showing.
+function PANEL:InnerWidth()
+	return self:GetWide() - ( self.m_pVBar:Enabled() and BAR_W or 0 )
+end
+
+function PANEL:SetPadding( n )
+	self.m_iPadding = math.max( 0, math.floor( n or 0 ) )
+	self:InvalidateLayout( true )
+end
+
+function PANEL:GetPadding()
+	return self.m_iPadding or 0
+end
+
+--- GMod's Rebuild: measure the children again instead of trusting the last range.
+function PANEL:Rebuild()
+	self:InvalidateContentSize( true )
+end
+
+derma.DefineControl( "DScrollPanel", "HL2SB scrolling container", PANEL, "DPanel" )

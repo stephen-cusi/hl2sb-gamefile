@@ -35,12 +35,15 @@
          registered hooks and then the gamemode method, so a hook plus an
          installed method adds every notice twice (two rows, different colours).
 
-      3. Fonts.  GMod draws the names with "ChatFont" and the icons with a font
-         it created itself.  Here draw.SimpleText wants a font FAMILY (HL2SB
-         knows "Default"), and the icon glyphs come from a font created with
-         surface.CreateFont + SetFontGlyphSet -- the scheme font name
-         "HL2MPTypeDeath" renders empty glyph boxes through surface.SetFont.
-         See DEATH_FONT and ICON_FONT.
+      3. Fonts / sizes.  GMod draws the names with "ChatFont" and the icons with a
+         font it created itself ("HL2MPTypeDeath", tall 64).  The icon glyphs come
+         from a font created with surface.CreateFont + SetFontGlyphSet -- the
+         scheme font name "HL2MPTypeDeath" renders empty glyph boxes through
+         surface.SetFont -- and the names are drawn with an HFont resolved from
+         the scheme ChatFont, because draw.SimpleText builds its font from a
+         FAMILY name at a fixed 16px (draw.lua's GetFont), which is what made the
+         feed small and cramped.  See DEATH_HFONT and ICON_FONT, and the
+         hud_killfeed_* convars right above them.
 
       4. Kill icon names.  GMod keys killicons by weapon / entity class
          (weapon_smg1, prop_physics).  The engine hands the Lua side HL2MP's
@@ -72,10 +75,60 @@ local draw     = draw
 local team     = team
 local killicon = killicon
 
--- HL2SB: GMod's "ChatFont" is only a scheme font here, and draw.SimpleText wants
--- a font family for surface.SetFontGlyphSet.  "Default" is the family the other
--- HL2SB HUDs use (hl2sb_undo_notify.lua, hl2sb_cl_hudpickup.lua).
-local DEATH_FONT = "Default"
+-- ===========================================================================
+-- HL2SB: 击杀播报的尺寸（又小又挤的根因 + 三个可调 convar）。
+--
+-- GMod 的图标字体 "HL2MPTypeDeath" 是 tall **64**
+-- （D:\games\garrysmod\garrysmod\resource\ClientScheme.res:639-650），于是：
+--   * 材质类图标（killicon.Add，Lua 武器/插件注册的图片，例如 nyan 枪）
+--     高 = 方案字体 64 * 0.75 = **48px**（宽按素材比例，见 killicon.lua:205-212）
+--   * 字体类图标（引擎 mod_textures.txt 的武器字形，走 AddFont）
+--     字形框 = **64px**（killicon.lua:202-204，不走 heightScale）
+--   * 名字用方案字体 "ChatFont"，行距 = 图标框 * 0.75 = 48px
+-- 我们这个移植为了绕开"方案字体画符号字形变空框"（见下面 ICON_FONT 的注释）
+-- 把图标改成 Lua 自建字体，当初只给了 20px -> 图标框 20px（字形实际 ~11px）、
+-- 行距 15px，比 16px 的名字还矮，所以又小又挤。
+-- 名字那边还叠了一个坑：draw.SimpleText 是按"字族名 + 固定 16px"建字体的
+-- （draw.lua 的 GetFont），传方案字体名会被当成字族去查，于是字既不随分辨率变、
+-- 也不是方案里那一档。这里改成自己把方案字体的 HFont 解析出来再放大。
+--
+-- 三个 convar（改完重进地图生效；FCVAR_ARCHIVE，值会存进 config）：
+--   hud_killfeed_icontall   图标字体字号（= GMod 的图标框 64；移植时写死 20）
+--   hud_killfeed_textscale  名字字号 = 方案 ChatFont 的字高 * 这个倍数
+--   hud_killfeed_rowpitch   行距 = max( 图标框, 名字字高 ) * 这个倍数
+-- ⚠️ 材质类图标（Lua 武器的图片图标）的高度**不吃** hud_killfeed_icontall，
+--    它由 resource/clientscheme.res 的 "HL2MPTypeDeath" 决定（GMod = 64 -> 48px）。
+-- ===========================================================================
+local cv_icontall  = CreateConVar( "hud_killfeed_icontall", "64", FCVAR_ARCHIVE,
+	"HL2SB: kill feed icon font height in px (GMod 64, the old port used 20)" )
+local cv_textscale = CreateConVar( "hud_killfeed_textscale", "1.5", FCVAR_ARCHIVE,
+	"HL2SB: kill feed name scale (multiplies the scheme ChatFont height)" )
+local cv_rowpitch  = CreateConVar( "hud_killfeed_rowpitch", "1.1", FCVAR_ARCHIVE,
+	"HL2SB: kill feed row pitch = max( icon, text ) height * this" )
+
+local function CvNumber( cv, fallback )
+	local v = cv and cv:GetFloat() or fallback
+	if ( !v or v <= 0 ) then return fallback end
+	return v
+end
+
+local ICON_TALL  = math.Round( CvNumber( cv_icontall,  64 ) )
+local TEXT_SCALE = CvNumber( cv_textscale, 1.5 )
+local ROW_PITCH  = CvNumber( cv_rowpitch,  1.1 )
+local NAME_GAP   = math.Round( 16 * TEXT_SCALE )   -- GMod 是固定 16
+
+-- 名字的字体：surface.SetFont( 方案名 ) 会把方案字体解析成 HFont 并返回（Lua 自建
+-- 字体优先、其次方案），拿到那一档的字高后，再按同样的字族建一个放大版的。
+local DEATH_SCHEME_FONT = "ChatFont"   -- GMod 的 kill feed 用的就是它
+local DEATH_FAMILY      = "Verdana"    -- 方案里 ChatFont 的 "name"
+local hSchemeFont = surface.SetFont( DEATH_SCHEME_FONT )
+local DEATH_BASE_TALL = 0
+if ( hSchemeFont ) then DEATH_BASE_TALL = surface.GetFontTall( hSchemeFont ) end
+if ( !DEATH_BASE_TALL or DEATH_BASE_TALL <= 0 ) then DEATH_BASE_TALL = 14 end
+local DEATH_TEXT_TALL = math.Round( DEATH_BASE_TALL * TEXT_SCALE )
+local DEATH_HFONT = draw.GetFont( DEATH_FAMILY, DEATH_TEXT_TALL, 700 )
+local DEATH_TEXT_H = DEATH_TEXT_TALL
+if ( DEATH_HFONT ) then DEATH_TEXT_H = surface.GetFontTall( DEATH_HFONT ) end
 
 -- HL2SB: the kill icon glyphs.
 --
@@ -97,13 +150,12 @@ local DEATH_FONT = "Default"
 -- FONTFLAG_ANTIALIAS | FONTFLAG_ADDITIVE = 0x110: the death fonts are additive
 -- by design (resource/clientscheme.res marks them "additive" "1").
 local ICON_FONT_NAME = "HL2MP"     -- resource/hl2mp.ttf, the weapon pictograms
-local ICON_FONT_TALL = 20          -- ~text height; the scheme's 32px glyphs are
-                                   -- far too big next to 16px names
 local FONTFLAG_ANTIALIAS = 0x010
 local FONTFLAG_ADDITIVE  = 0x100
 
+-- 字高来自 hud_killfeed_icontall（默认 64 = GMod 的图标框；原来的移植写死 20）。
 local ICON_FONT = surface.CreateFont()
-surface.SetFontGlyphSet( ICON_FONT, ICON_FONT_NAME, ICON_FONT_TALL, 0, 0, 0,
+surface.SetFontGlyphSet( ICON_FONT, ICON_FONT_NAME, ICON_TALL, 0, 0, 0,
                          FONTFLAG_ANTIALIAS + FONTFLAG_ADDITIVE )
 
 local hud_deathnotice_time = CreateConVar( "hud_deathnotice_time", "6", FCVAR_NONE, "Amount of time to show death notice (kill feed) for" )
@@ -298,6 +350,23 @@ local function AddDeathNotice( self, attacker, team1, inflictor, victim, team2, 
 
 end
 
+-- HL2SB: 名字自己画。draw.SimpleText 是按"字族名 + 固定 16px"建字体的
+-- （draw.lua 的 GetFont），传方案字体名会被当成字族查 —— 字号既不随分辨率变、
+-- 也不是方案里那一档，这正是以前名字偏小的原因。这里直接用解析好的 HFont。
+local function DrawName( text, x, y, colour, rightAlign )
+
+	if ( !DEATH_HFONT ) then return end
+
+	local w = surface.GetTextSize( DEATH_HFONT, text )
+
+	surface.DrawSetTextFont( DEATH_HFONT )
+	surface.SetTextPos( rightAlign and math.floor( x - w ) or math.floor( x ),
+	                    math.floor( y - DEATH_TEXT_H * 0.5 ) )
+	surface.SetTextColor( colour.r, colour.g, colour.b, colour.a )
+	surface.DrawText( text )
+
+end
+
 local function DrawDeath( x, y, death, time )
 
 	local w, h = killicon.GetSize( death.icon )
@@ -314,13 +383,16 @@ local function DrawDeath( x, y, death, time )
 
 	-- Draw KILLER
 	if ( death.left ) then
-		draw.SimpleText( death.left, DEATH_FONT, x - ( w / 2 ) - 16, y + h / 2, death.color1, draw.TEXT_ALIGN_RIGHT, draw.TEXT_ALIGN_CENTER )
+		DrawName( death.left, x - ( w / 2 ) - NAME_GAP, y + h / 2, death.color1, true )
 	end
 
 	-- Draw VICTIM
-	draw.SimpleText( death.right, DEATH_FONT, x + ( w / 2 ) + 16, y + h / 2, death.color2, draw.TEXT_ALIGN_LEFT, draw.TEXT_ALIGN_CENTER )
+	DrawName( death.right, x + ( w / 2 ) + NAME_GAP, y + h / 2, death.color2, false )
 
-	return math.ceil( y + h * 0.75 )
+	-- 行距：GMod 的公式是 图标高 * 0.75，但我们的名字字号也不小，直接套会让两行
+	-- 叠在一起，所以先保证"至少放得下一行名字"，再乘 hud_killfeed_rowpitch 拉开。
+	local rowH = math.max( h * 0.75, DEATH_TEXT_H )
+	return math.ceil( y + rowH * ROW_PITCH )
 
 	-- Font killicons are too high when height corrected, and changing that is not backwards compatible
 	--return math.ceil( y + math.max( h, 28 ) )
@@ -416,17 +488,107 @@ local bDrawError = false
 -- "d_skull").  When weaponClass has a killicon of its own it wins.
 -- ===========================================================================
 
+-- ===========================================================================
+-- HL2SB: names.
+--
+-- The engine hands the kill feed CLASS NAMES (hud_killfeed.cpp).  For the game's own
+-- NPCs Source resolved them through localization ("#npc_zombie" -> "Zombie"), but a
+-- Lua NPC has no token, so the feed printed the raw class ("xxx_096"); and a
+-- RESKINNED NPC showed the class it inherits from ("combine_s") rather than the name
+-- its own script registered ("hutao").
+--
+-- GMod takes its names from the CONTENT - which is why an addon NPC reads the way its
+-- author wrote it - so that is where this looks, in order:
+--
+--     1. list.Get("NPC")   - what the spawn menu itself shows for that class
+--     2. scripted_ents     - the scripted entity's own PrintName
+--     3. weapons.Get       - a Lua SWEP's PrintName (killers are often weapons)
+--     4. language          - the "#class" token, when it really resolves
+--     5. the class itself  - the last resort
+-- ===========================================================================
+local function LookupDisplayName( class )
+	if ( list ~= nil and list.Get ~= nil ) then
+		local npcs = list.Get( "NPC" )
+
+		if ( npcs ~= nil ) then
+			for _, t in pairs( npcs ) do
+				if ( t ~= nil and t.Class == class and t.Name ~= nil and t.Name ~= "" ) then
+					return t.Name
+				end
+			end
+		end
+	end
+
+	if ( scripted_ents ~= nil and scripted_ents.GetStored ~= nil ) then
+		local stored = scripted_ents.GetStored( class )
+
+		if ( stored ~= nil ) then
+			local name = ( stored.t ~= nil and stored.t.PrintName ) or stored.PrintName
+
+			if ( name ~= nil and name ~= "" ) then return name end
+		end
+	end
+
+	if ( weapons ~= nil and weapons.Get ~= nil ) then
+		local w = weapons.Get( class )
+
+		if ( w ~= nil and w.PrintName ~= nil and w.PrintName ~= "" ) then return w.PrintName end
+	end
+
+	if ( language ~= nil and language.GetPhrase ~= nil ) then
+		local phrase = language.GetPhrase( "#" .. class )
+
+		-- an unresolved token comes back as "#class"; that is not a name
+		if ( phrase ~= nil and phrase ~= "" and string.sub( phrase, 1, 1 ) ~= "#" ) then
+			return phrase
+		end
+	end
+
+	return nil
+end
+
+--- Only CLASS-SHAPED tokens are translated: a player's name ("Player", "Steve") must
+--- be drawn exactly as it arrived, and so must anything already human.
+local function PrettyName( s )
+	-- the shared resolver (lua/autorun/client/hl2sb_displayname.lua) is what the undo
+	-- notices use too, so the same class reads the same way in both places.  The local
+	-- lookup below stays as the fallback for a build where the module did not load.
+	if ( _G.HL2SB_GetDisplayName ~= nil ) then return HL2SB_GetDisplayName( s ) end
+
+	if ( s == nil or s == "" ) then return s end
+
+	local class = s
+	if ( string.sub( class, 1, 1 ) == "#" ) then class = string.sub( class, 2 ) end
+
+	if ( string.match( class, "^[%w_]+$" ) == nil ) then return s end
+
+	return LookupDisplayName( class ) or s
+end
+
 hook.add( "AddDeathNotice", "gmod_deathnotice", function( attacker, attackerTeam, inflictor,
                                                           victim, victimTeam,
                                                           suicide, victimIsNPC, killerIsPlayer,
                                                           weaponClass )
-	-- Prefer the weapon's own killicon (Lua SWEPs) over the engine short name.
-	-- HL2SB debug: one line per notice so we can see what the engine sent.
-	print( "[KillFeed] inflictor=" .. tostring( inflictor ) ..
-	       " weaponClass=" .. tostring( weaponClass ) ..
-	       " exists=" .. tostring( weaponClass and killicon.Exists( weaponClass ) ) .. "\n" )
+	attacker = PrettyName( attacker )
+	victim   = PrettyName( victim )
+	-- Prefer the weapon's own killicon.  The 3rd argument is HL2MP's
+	-- mod_textures.txt short name ("death_smg1", "d_skull"); the 9th is the full
+	-- weapon class the server put in the event ("weapon_nyangun"), and a Lua SWEP
+	-- registers its killicon by class name (killicon.Add) - so when that class
+	-- has an icon it wins.  GMod does the same thing: it hands
+	-- `inflictor:GetClass()` to AddDeathNotice (player.lua:172 / npc.lua:121).
 	if ( not suicide and weaponClass and weaponClass ~= "" and killicon.Exists( weaponClass ) ) then
 		inflictor = weaponClass
+	end
+
+	-- HL2SB debug (hl2sb_hud_debug 1): what the engine sent and what we will draw,
+	-- so "which icon is that" is answerable from the log.  This used to print on
+	-- every death and spammed ds_debug.log.
+	if ( GetConVarNumber( "hl2sb_hud_debug" ) != 0 ) then
+		local w, h = killicon.GetSize( inflictor )
+		print( "[KillFeed] engine=" .. tostring( weaponClass ) ..
+		       " icon=" .. tostring( inflictor ) ..
+		       " size=" .. tostring( w ) .. "x" .. tostring( h ) .. "\n" )
 	end
 	-- GMod's team codes: -1 = hostile NPC, -2 = friendly NPC, anything else is a
 	-- team id that team.GetColor() knows.

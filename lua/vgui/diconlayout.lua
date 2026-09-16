@@ -1,204 +1,147 @@
+--[[ DIconLayout -- automatic icon grid (original implementation).
+
+	GMod's container for icon lists: children are placed left to right, wrapped into
+	rows, with SetSpaceX/SetSpaceY between them and SetBorder around the edge.  This is
+	what the spawnmenu's grid is built on, and using it means the menu never has to
+	compute a cell's position itself.
+
+	Wiki contract: https://wiki.facepunch.com/gmod/DIconLayout
+		SetSpaceX / GetSpaceX / SetSpaceY / GetSpaceY
+		SetBorder / GetBorder
+		SetLayoutDir / GetLayoutDir        (TOP lays rows down, LEFT fills columns)
+		SetStretchWidth / GetStretchWidth  (children stretched to the layout's width)
+		SetStretchHeight / GetStretchHeight
+		Layout()                           (force a re-layout)
+
+	Layout runs through PerformLayout, which the scripted panel dispatches
+	(scripted_controls/lPanel.cpp: the engine's hook names are Paint, PerformLayout,
+	OnThink, OnMouse*, ...).  Children are read through Panel:GetChildren(), which
+	returns a 1-based table (public/lua/vgui_controls/lPanel.cpp, Panel_GetChildren).
+--]]
 
 local PANEL = {}
 
-AccessorFunc( PANEL, "m_iSpaceX",		"SpaceX" )
-AccessorFunc( PANEL, "m_iSpaceY",		"SpaceY" )
-AccessorFunc( PANEL, "m_iBorder",		"Border" )
-AccessorFunc( PANEL, "m_iLayoutDir",	"LayoutDir" )
-
-AccessorFunc( PANEL, "m_bStretchW",		"StretchWidth", FORCE_BOOL )
-AccessorFunc( PANEL, "m_bStretchH",		"StretchHeight", FORCE_BOOL )
+-- GMod's LAYOUT_TOP / LAYOUT_LEFT
+LAYOUT_TOP = LAYOUT_TOP or 1
+LAYOUT_LEFT = LAYOUT_LEFT or 2
 
 function PANEL:Init()
+	self:SetDrawBackground( false )
 
-	self:SetDropPos( "46" )
+	self.m_iSpaceX = 0
+	self.m_iSpaceY = 0
+	self.m_iBorder = 0
+	self.m_iLayoutDir = LAYOUT_TOP
+	self.m_bStretchWidth = false
+	self.m_bStretchHeight = false
+end
 
-	self:SetSpaceX( 0 )
-	self:SetSpaceY( 0 )
-	self:SetBorder( 0 )
-	self:SetLayoutDir( TOP )
+function PANEL:SetSpaceX( n ) self.m_iSpaceX = math.max( 0, math.floor( n or 0 ) ) end
+function PANEL:GetSpaceX() return self.m_iSpaceX end
 
-	self:SetStretchWidth( false )
-	self:SetStretchHeight( true )
+function PANEL:SetSpaceY( n ) self.m_iSpaceY = math.max( 0, math.floor( n or 0 ) ) end
+function PANEL:GetSpaceY() return self.m_iSpaceY end
 
-	self.LastW = 0
-	self.LastH = 0
+function PANEL:SetBorder( n ) self.m_iBorder = math.max( 0, math.floor( n or 0 ) ) end
+function PANEL:GetBorder() return self.m_iBorder end
 
+function PANEL:SetLayoutDir( n )
+	self.m_iLayoutDir = ( n == LAYOUT_LEFT ) and LAYOUT_LEFT or LAYOUT_TOP
+end
+
+function PANEL:GetLayoutDir() return self.m_iLayoutDir end
+
+function PANEL:SetStretchWidth( b ) self.m_bStretchWidth = ( b == true ) end
+function PANEL:GetStretchWidth() return self.m_bStretchWidth end
+
+function PANEL:SetStretchHeight( b ) self.m_bStretchHeight = ( b == true ) end
+function PANEL:GetStretchHeight() return self.m_bStretchHeight end
+
+--- GMod's Add: child + re-layout.
+function PANEL:Add( pnl )
+	pnl:SetParent( self )
+	self:InvalidateLayout( true )
+	return pnl
 end
 
 function PANEL:Layout()
-
-	self.LastW = 0
-	self.LastH = 0
-	self:InvalidateLayout()
-
+	self:InvalidateLayout( true )
 end
 
-function PANEL:LayoutIcons_TOP()
-
-	local x = self.m_iBorder
-	local y = self.m_iBorder
-	local RowHeight = 0
-	local MaxWidth = self:GetWide() - self.m_iBorder
-
-	for k, v in ipairs( self:GetChildren() ) do
-
-		if ( !v:IsVisible() ) then continue end
-
-		local w, h = v:GetSize()
-		if ( x + w > MaxWidth || ( v.OwnLine && x > self.m_iBorder ) ) then
-
-			x = self.m_iBorder
-			y = y + RowHeight + self.m_iSpaceY
-			RowHeight = 0
-
-		end
-
-		v:SetPos( x, y )
-
-		x = x + v:GetWide() + self.m_iSpaceX
-		RowHeight = math.max( RowHeight, v:GetTall() )
-
-		-- Start a new line if this panel is meant to be on its own line
-		if ( v.OwnLine ) then
-			x = MaxWidth + 1
-		end
-
-	end
-
-end
-
-function PANEL:LayoutIcons_LEFT()
-
-	local x = self.m_iBorder
-	local y = self.m_iBorder
-	local RowWidth = 0
-	local MaxHeight = self:GetTall() - self.m_iBorder
-
-	for k, v in ipairs( self:GetChildren() ) do
-
-		if ( !v:IsVisible() ) then continue end
-
-		local w, h = v:GetSize()
-		if ( y + h > MaxHeight || ( v.OwnLine && y > self.m_iBorder ) ) then
-
-			y = self.m_iBorder
-			x = x + RowWidth + self.m_iSpaceX
-			RowWidth = 0
-
-		end
-
-		v:SetPos( x, y )
-
-		y = y + v:GetTall() + self.m_iSpaceY
-		RowWidth = math.max( RowWidth, v:GetWide() )
-
-		-- Start a new line if this panel is meant to be on its own line
-		if ( v.OwnLine ) then
-			y = MaxHeight + 1
-		end
-
-	end
-
-end
-
-function PANEL:PerformLayout()
-
-	local ShouldLayout = false
-
-	if ( self.LastW != self:GetWide() ) then ShouldLayout = true end
-	if ( self.LastH != self:GetTall() ) then ShouldLayout = true end
-
-	self.LastW = self:GetWide()
-	self.LastH = self:GetTall()
-
-	if ( ShouldLayout ) then
-
-		if ( self.m_iLayoutDir == LEFT ) then self:LayoutIcons_LEFT() end
-		if ( self.m_iLayoutDir == TOP ) then self:LayoutIcons_TOP() end
-
-	end
-
-	self:SizeToChildren( self:GetStretchWidth(), self:GetStretchHeight() )
-
-end
-
+--- GMod's OnModified runs after a child was added/changed.
 function PANEL:OnModified()
-
-	-- Override me
-
+	self:InvalidateLayout( true )
 end
 
-function PANEL:OnChildRemoved()
+local function LayoutTop( self, w, h )
+	local border, sx, sy = self.m_iBorder, self.m_iSpaceX, self.m_iSpaceY
 
-	self:Layout()
+	local x, y = border, border
+	local rowTall = 0
+	local availW = math.max( 1, w - border )
 
+	for _, child in ipairs( self:GetChildren() ) do
+		local cw, ch = child:GetSize()
+
+		if ( x > border and x + cw > availW ) then
+			x = border
+			y = y + rowTall + sy
+			rowTall = 0
+		end
+
+		child:SetPos( x, y )
+		x = x + cw + sx
+
+		if ( ch > rowTall ) then rowTall = ch end
+	end
 end
 
-function PANEL:OnChildAdded( child )
+local function LayoutLeft( self, w, h )
+	local border, sx, sy = self.m_iBorder, self.m_iSpaceX, self.m_iSpaceY
 
-	local dn = self:GetDnD()
-	if ( dn ) then
-		child:Droppable( self:GetDnD() )
+	local x, y = border, border
+	local colWide = 0
+	local availH = math.max( 1, h - border )
+
+	for _, child in ipairs( self:GetChildren() ) do
+		local cw, ch = child:GetSize()
+
+		if ( y > border and y + ch > availH ) then
+			y = border
+			x = x + colWide + sx
+			colWide = 0
+		end
+
+		child:SetPos( x, y )
+		y = y + ch + sy
+
+		if ( cw > colWide ) then colWide = cw end
+	end
+end
+
+function PANEL:PerformLayout( w, h )
+	w = w or self:GetWide()
+	h = h or self:GetTall()
+
+	if ( self.m_bStretchWidth ) then
+		for _, child in ipairs( self:GetChildren() ) do
+			local _, ch = child:GetSize()
+			child:SetSize( math.max( 1, w - 2 * self.m_iBorder ), ch )
+		end
 	end
 
-	if ( self:IsSelectionCanvas() ) then
-		child:SetSelectable( true )
+	if ( self.m_bStretchHeight ) then
+		for _, child in ipairs( self:GetChildren() ) do
+			local cw = child:GetWide()
+			child:SetSize( cw, math.max( 1, h - 2 * self.m_iBorder ) )
+		end
 	end
 
-	self:Layout()
-
-end
-
-function PANEL:Copy()
-
-	local copy = vgui.Create( "DIconLayout", self:GetParent() )
-	copy:CopyBase( self )
-	copy:SetSortable( self:GetSortable() )
-	copy:SetDnD( self:GetDnD() )
-	copy:SetSpaceX( self:GetSpaceX() )
-	copy:SetSpaceX( self:GetSpaceX() )
-	copy:SetSpaceY( self:GetSpaceY() )
-	copy:SetBorder( self:GetBorder() )
-	copy:SetSelectionCanvas( self:GetSelectionCanvas() )
-	copy.OnModified = self.OnModified
-
-	copy:CopyContents( self )
-
-	return copy
-
-end
-
-function PANEL:CopyContents( from )
-
-	for k, v in ipairs( from:GetChildren() ) do
-
-		v:Copy():SetParent( self )
-
+	if ( self.m_iLayoutDir == LAYOUT_LEFT ) then
+		LayoutLeft( self, w, h )
+	else
+		LayoutTop( self, w, h )
 	end
-
 end
 
-function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
-
-	local pnl = vgui.Create( ClassName )
-	pnl:MakeDroppable( "ExampleDraggable", false )
-	pnl:SetSize( 200, 200 )
-	pnl:SetUseLiveDrag( true )
-	pnl:SetSelectionCanvas( true )
-	pnl:SetSpaceX( 4 )
-	pnl:SetSpaceY( 4 )
-
-	for i = 1, 32 do
-
-		local btn = pnl:Add( "DButton" )
-		btn:SetSize( 32, 32 )
-		btn:SetText( i )
-
-	end
-
-	PropertySheet:AddSheet( ClassName, pnl, nil, true, true )
-
-end
-
-derma.DefineControl( "DIconLayout", "", PANEL, "DDragBase" )
+derma.DefineControl( "DIconLayout", "HL2SB automatic icon grid", PANEL, "DPanel" )
