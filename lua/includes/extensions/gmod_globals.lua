@@ -407,10 +407,20 @@ end
 -- returns the panel holding keyboard focus, which is the same signal, so test
 -- the focused panel's class.  It only needs to be conservative: returning true
 -- keeps a text entry from being closed under the user's fingers.
+--
+-- HL2SB (2026-09-17): the engine binding for input.IsKeyTrapping now exists too
+-- (public/lua/vgui/LIInput.cpp, added for lua/vgui/DBinder.lua), and it reports the
+-- input.StartKeyTrapping() trap mode.  GMod's function is the UNION of the two, so
+-- both are consulted below - the binding alone would let the "-menu" concommand
+-- close the spawn menu while a text entry is being typed into.
 -- ===========================================================================
-if ( input ~= nil and input.IsKeyTrapping == nil ) then
+if ( input ~= nil ) then
+
+	local EngineIsKeyTrapping = input.IsKeyTrapping
 
 	function input.IsKeyTrapping()
+
+		if ( EngineIsKeyTrapping ~= nil and EngineIsKeyTrapping() ) then return true end
 
 		if ( input.GetFocus == nil ) then return false end
 

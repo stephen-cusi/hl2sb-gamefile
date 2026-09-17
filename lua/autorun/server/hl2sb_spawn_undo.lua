@@ -48,6 +48,32 @@ local function Dbg( ... )
 	print( "[HL2SB spawn] " .. table.concat( out, " " ) .. "\n" )
 end
 
+--- Always-on, one line per command: which command arrived, with which arguments.
+--- A spawn the player cannot see is otherwise indistinguishable from a click that never
+--- reached the server - and telling those two apart is the whole first step.  The client
+--- side prints its own [HL2SB][SpawnMenu] lines, so the pair reads:
+---   [HL2SB][SpawnMenu] spawn: gm_giveswep weapon_shotgun   (client sent it)
+---   [HL2SB spawn] gm_giveswep weapon_shotgun               (server got it)
+--- Low volume on purpose: a player clicks spawn a handful of times, not per frame.
+local function Note( ... )
+	local out = {}
+	for i = 1, select( "#", ... ) do out[ i ] = tostring( ( select( i, ... ) ) ) end
+
+	print( "[HL2SB spawn] " .. table.concat( out, " " ) .. "\n" )
+end
+
+--- A spawn that did nothing says so, unconditionally.  No cvar, because "the menu had
+--- the entry but nothing appeared" is exactly the report this is here to answer.
+local function Fail( ... )
+	local out = {}
+	for i = 1, select( "#", ... ) do out[ i ] = tostring( ( select( i, ... ) ) ) end
+
+	local msg = "[HL2SB spawn] FAILED: " .. table.concat( out, " " ) .. "\n"
+
+	print( msg )
+	if ( Warning ) then Warning( msg ) end
+end
+
 -- GMod's commands.lua body, in one place.
 local function RecordUndo( ply, ent, name )
 	if ( undo == nil or undo.Create == nil ) then
@@ -204,7 +230,10 @@ local function SpawnAndRecord( ply, class, model, setup )
 
 	local ent = ents.Create( class )
 	if ( not IsValid( ent ) ) then
-		Dbg( "ents.Create failed:", tostring( class ) )
+		-- the class exists on the CLIENT but not on the server (client-only entity,
+		-- or an addon whose shared/ file did not load here) - the commonest reason a
+		-- spawn menu entry does nothing at all
+		Fail( "ents.Create", tostring( class ), "- no such class on the server" )
 		return nil
 	end
 
@@ -215,11 +244,20 @@ local function SpawnAndRecord( ply, class, model, setup )
 	if ( setup ~= nil ) then
 		local ok, err = pcall( setup, ent )
 
-		if ( not ok ) then Dbg( "setup failed:", tostring( err ) ) end
+		if ( not ok ) then
+			Fail( "setup", tostring( class ), tostring( err ) )
+		end
 	end
 
 	ent:Spawn()
 	ent:Activate()
+
+	-- Spawn() is allowed to remove the entity (a bad/absent model, a failed
+	-- physics init): report it instead of silently recording an undo for a ghost.
+	if ( not IsValid( ent ) ) then
+		Fail( "Spawn", tostring( class ), tostring( model ), "- the engine removed it" )
+		return nil
+	end
 
 	RecordUndo( ply, ent, NiceName( class ) )
 
@@ -234,10 +272,23 @@ concommand.Add( "gm_giveswep", function( ply, cmd, args )
 
 	-- GMod's Player:Give - HL2SB's GiveNamedItem (lua/includes/extensions/
 	-- gmod_compat.lua:377).  The weapon goes straight into the player's inventory, so
-	-- no world weapon entity is ever created.
-	local ok, err = pcall( function() ply:Give( class ) end )
+	-- no world weapon entity is ever created.  It answers the entity it made, so a
+	-- class the player cannot be given is visible instead of silent.
+	Note( "gm_giveswep", tostring( class ) )
 
-	Dbg( "gm_giveswep", tostring( class ), ok and "ok" or tostring( err ) )
+	local ok, wep = pcall( function() return ply:Give( class ) end )
+
+	if ( not ok ) then
+		Fail( "gm_giveswep", tostring( class ), tostring( wep ) )
+		return
+	end
+
+	if ( wep == nil ) then
+		Fail( "gm_giveswep", tostring( class ), "- Give answered nothing (unknown weapon?)" )
+		return
+	end
+
+	Dbg( "gm_giveswep ok:", tostring( class ) )
 end, nil, "Give yourself a weapon (GMod)" )
 
 concommand.Add( "gm_spawn", function( ply, cmd, args )
@@ -251,7 +302,7 @@ concommand.Add( "gm_spawn", function( ply, cmd, args )
 		model = "models/" .. model
 	end
 
-	Dbg( "gm_spawn", tostring( class ), tostring( model ) )
+	Note( "gm_spawn", tostring( class ), tostring( model ) )
 	SpawnAndRecord( ply, class, model )
 end, nil, "Spawn an entity / prop / SENT (GMod)" )
 
@@ -261,8 +312,37 @@ concommand.Add( "gm_spawnvehicle", function( ply, cmd, args )
 	local class = args ~= nil and args[ 1 ] or nil
 	if ( class == nil or class == "" ) then return end
 
-	Dbg( "gm_spawnvehicle", tostring( class ) )
-	SpawnAndRecord( ply, class, nil )
+	-- ⚠️ The MODEL is not decoration: it is what makes a vehicle a vehicle, and in
+	-- GMod's own list every chair and seat is the SAME class told apart by its model.
+	-- A model-less vehicle is what took the server down inside
+	-- CFourWheelVehiclePhysics::Initialize (VPhysicsInitNormal answers NULL, and the
+	-- next line dereferences it), so a spawn without a model is refused here, out loud,
+	-- instead of being passed to the engine.
+	local model = args ~= nil and args[ 2 ] or nil
+	local script = args ~= nil and args[ 3 ] or nil
+
+	if ( model == nil or model == "" ) then
+		Fail( "gm_spawnvehicle", tostring( class ),
+			"- no model given (a vehicle with no model has no physics body)" )
+		return
+	end
+
+	if ( string.sub( model, 1, 7 ) ~= "models/" ) then model = "models/" .. model end
+
+	Note( "gm_spawnvehicle", tostring( class ), tostring( model ), tostring( script ) )
+
+	SpawnAndRecord( ply, class, model, function( ent )
+		-- GMod's content type hands the entry's KeyValues to the spawn; the vehicle
+		-- script is the one that matters (a pod with the wrong script has no seat in
+		-- it), and `limitview` is what GMod always pins on a pod/seat.
+		if ( script ~= nil and script ~= "" ) then
+			ent:SetKeyValue( "vehiclescript", script )
+		end
+
+		if ( class == "prop_vehicle_prisoner_pod" ) then
+			ent:SetKeyValue( "limitview", "0" )
+		end
+	end )
 end, nil, "Spawn a vehicle (GMod)" )
 
 concommand.Add( "gm_spawnnpc", function( ply, cmd, args )
@@ -284,7 +364,7 @@ concommand.Add( "gm_spawnnpc", function( ply, cmd, args )
 		weapon = GetConVarString( "gmod_npcweapon" ) or ""
 	end
 
-	Dbg( "gm_spawnnpc", tostring( class ), "weapon=" .. tostring( weapon ) )
+	Note( "gm_spawnnpc", tostring( class ), "weapon=" .. tostring( weapon ) )
 
 	SpawnAndRecord( ply, class, nil, function( ent )
 		if ( weapon ~= "" ) then

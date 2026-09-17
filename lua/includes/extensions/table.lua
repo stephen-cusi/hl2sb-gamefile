@@ -438,6 +438,64 @@ function SortedPairs( pTable, Desc )
   end
 end
 
+-- ===========================================================================
+-- GMod 的另外两个 "SortedPairs" 家族成员（gmod: includes/extensions/table.lua
+-- :570-620）。GMod 的 DEntityProperties 用 SortedPairsByMemberValue 排列属性行、
+-- DForm:PropSelect 用 SortedPairsByValue 排列模型表 —— 两个在本分叉里都没有，
+-- 那两处会 attempt to call a nil value。实现逐字照抄 GMod（含它共享的
+-- toKeyValues / keyValuePairs 迭代器）。
+-- ===========================================================================
+local function toKeyValues( pTable )
+  local keyvalues = {}
+  local i = 1
+  for k, v in pairs( pTable ) do
+    keyvalues[ i ] = { key = k, val = v }
+    i = i + 1
+  end
+  return keyvalues
+end
+
+-- ⚠️ GMod's iterator takes the STATE as its only parameter (the generic for calls
+-- f( state, controlVar ) and GMod ignores the control variable).  This fork used to take
+-- ( _, t ) and read `t.KeyValues` -- but `t` is the control variable, which is nil on the
+-- first call, so every `for k, v in SortedPairsByMemberValue( ... )` died with
+--     table.lua:460: attempt to index a nil value (local 't')
+-- (surfaced by the player model selector's category sorting; DEntityProperties and DForm
+-- were broken the same way).  Copied verbatim from GMod's
+-- garrysmod/lua/includes/extensions/table.lua:516.
+local function keyValuePairs( state )
+  state.Index = state.Index + 1
+
+  local keyValue = state.KeyValues[ state.Index ]
+  if ( !keyValue ) then return end
+
+  return keyValue.key, keyValue.val
+end
+
+function SortedPairsByValue( pTable, Desc )
+  local sortedTbl = toKeyValues( pTable )
+
+  if ( Desc ) then
+    table.sort( sortedTbl, function( a, b ) return a.val > b.val end )
+  else
+    table.sort( sortedTbl, function( a, b ) return a.val < b.val end )
+  end
+
+  return keyValuePairs, { Index = 0, KeyValues = sortedTbl }
+end
+
+function SortedPairsByMemberValue( pTable, pValueName, Desc )
+  local sortedTbl = toKeyValues( pTable )
+
+  if ( Desc ) then
+    table.sort( sortedTbl, function( a, b ) return a.val[ pValueName ] > b.val[ pValueName ] end )
+  else
+    table.sort( sortedTbl, function( a, b ) return a.val[ pValueName ] < b.val[ pValueName ] end )
+  end
+
+  return keyValuePairs, { Index = 0, KeyValues = sortedTbl }
+end
+
 print( "[HL2SB] table extension loaded" )
 
 -- ===========================================================================

@@ -185,15 +185,41 @@ end
 -- 3. entries: one spawnable thing each
 -- ---------------------------------------------------------------------------
 local entries = {}
-local byClass = {}
+local byClass = {}			-- [class] = the class-registry entry
+local bySpawn = {}			-- [spawn name] = an entry registered under that name
 
-local function NewEntry( class )
-	local e = byClass[ class ]
+--- Is this model actually on disk?  A vehicle whose model is missing is removed by the
+--- engine when it spawns (no collision model, no physics body), so it cannot be
+--- offered as a spawnable thing - see the filter in BuildEntries.
+--- ⚠️ Declared BEFORE BuildEntries on purpose: a `local function` defined after it
+--- would not be in scope inside it, and the reference would silently turn into a
+--- global lookup (the same trap as a `local` used above its declaration).
+local function ModelOnDisk( model )
+	return file ~= nil and file.Exists ~= nil and file.Exists( model, "GAME" )
+end
+
+--- One spawnable thing.  `identity` is the name the content registered it under -
+--- GMod's spawn name - and it differs from the class exactly when ONE class carries
+--- several spawnable things: every chair and seat in GMod is
+--- `prop_vehicle_prisoner_pod`, and it is the MODEL that makes each one a different
+--- chair, which is why GMod keys that list by spawn name
+--- (list.Set( "Vehicles", "Chair_Wood", { Class = ..., Model = ... } )).
+--- Keying this by class instead merged all ten seats into a single cell - the menu
+--- showed one "Seat" and the other nine were unreachable.
+local function NewEntry( class, identity )
+	identity = identity or class
+
+	local e = bySpawn[ identity ]
 	if ( e ) then return e end
 
-	e = { class = class, spawn = "ent_create " .. class }
+	-- a list entry whose key IS the class name augments the class-registry entry
+	-- instead of making a second cell for the same thing
+	if ( identity == class and byClass[ class ] ) then return byClass[ class ] end
+
+	e = { class = class, spawnName = identity, spawn = "ent_create " .. class }
 	entries[ #entries + 1 ] = e
-	byClass[ class ] = e
+	bySpawn[ identity ] = e
+	if ( byClass[ class ] == nil ) then byClass[ class ] = e end
 	return e
 end
 
@@ -202,7 +228,9 @@ local function ApplyListEntry( e, key, data )
 	if ( class == nil or class == "" ) then return end
 
 	e.class = class
-	byClass[ class ] = e
+	-- NOT `byClass[ class ] = e`: with ten seats sharing one class that would make
+	-- the class registry point at whichever seat was read last.
+	e.spawnName = e.spawnName or key
 
 	local model = ( type( data ) == "table" ) and data.Model or nil
 
@@ -217,6 +245,13 @@ local function ApplyListEntry( e, key, data )
 		if ( data.PrintName ) then e.name = Phrase( data.PrintName ) end
 		if ( data.Category ) then e.category = Phrase( data.Category ) end
 		if ( data.IconOverride ) then e.iconOverride = data.IconOverride end
+
+		-- GMod's content type passes the entry's KeyValues to the spawn; the only key
+		-- that matters here is the vehicle script (a pod with the wrong script has no
+		-- seat in it).
+		if ( type( data.KeyValues ) == "table" and data.KeyValues.vehiclescript ) then
+			e.script = data.KeyValues.vehiclescript
+		end
 	end
 
 	e.fromLua = true
@@ -552,7 +587,7 @@ local function BuildEntries()
 		for key, data in pairs( ListTable( id ) ) do
 			local class = ( type( data ) == "table" and data.Class ) or key
 			if ( class and class ~= "" ) then
-				ApplyListEntry( NewEntry( class ), key, data )
+				ApplyListEntry( NewEntry( class, key ), key, data )
 			end
 		end
 	end
@@ -560,6 +595,7 @@ local function BuildEntries()
 	local nLua = 0
 	local kept = {}
 	local nHidden = 0
+	local nNoModel = 0
 
 	-- ⚠️ Filter the engine's plumbing out of the spawn list, the way the C++ menu
 	-- did.  The class map is "every class this client registered", which is not the
@@ -573,7 +609,26 @@ local function BuildEntries()
 		if ( not e.cat ) then e.cat = Classify( e.class ) end
 		if ( not e.name ) then e.name = DisplayName( e ) end
 
-		if ( not ( e.scripted or e.fromLua ) and IsHiddenClass( e.class ) ) then
+		-- ⚠️ A VEHICLE THE ENGINE CANNOT BUILD IS NOT AN ENTRY.
+		--
+		-- The class registry lists the engine's abstract vehicle bases as classes:
+		-- prop_vehicle, prop_vehicle_driveable, prop_vehicle_crane...  They have no
+		-- model, so `gm_spawnvehicle prop_vehicle` created a model-less vehicle, the
+		-- engine removed it, and it took the SERVER down on the way out:
+		--     AV READ of 0x0 in CFourWheelVehiclePhysics::Initialize+0x27D
+		-- (fourwheelvehiclephysics.cpp:421 - PhysSetGameFlags( NULL, ... )).
+		-- A vehicle with no model, or with a model that is not on disk, can only fail,
+		-- so it is not offered.  Lua content (a SENT that names its own model) is
+		-- never filtered here.
+		if ( e.cat == "vehicle" and not e.scripted and not e.fromLua and
+			( e.model == nil or e.model == "" or not ModelOnDisk( e.model ) ) ) then
+			nNoModel = nNoModel + 1
+
+			if ( nNoModel <= 12 ) then
+				Trace( string.format( "vehicle %s: no usable model (%s) - not listed",
+					tostring( e.class ), tostring( e.model ) ) )
+			end
+		elseif ( not ( e.scripted or e.fromLua ) and IsHiddenClass( e.class ) ) then
 			nHidden = nHidden + 1
 		else
 			if ( not e.bucket ) then BucketOf( e ) end
@@ -587,6 +642,10 @@ local function BuildEntries()
 
 	if ( nHidden > 0 ) then
 		Trace( string.format( "hidden classes filtered out: %d", nHidden ) )
+	end
+
+	if ( nNoModel > 0 ) then
+		Trace( string.format( "model-less vehicle classes filtered out: %d", nNoModel ) )
 	end
 
 	table.sort( entries, function( a, b )
@@ -643,8 +702,30 @@ local GENERIC_ICON = {
 --- list is mostly repeats, and DImageButton:SetImage would create an id per call.
 local texIds = {}
 
+--- Cells waiting for their icon texture to be decoded (see PointCell / PumpIcons).
+local IconQueue = {}
+
+--- How many NEW icon textures may be decoded in one frame.  Every new one is a PNG
+--- decode + a GPU upload INSIDE that frame (the engine prints one
+--- `[HL2SB] image texture "..." (128x128)` per decode), and doing two dozen of them in
+--- one frame is what made the menu stutter while it filled.  Cells get their icons a
+--- few frames later instead; the caption is drawn either way.
+local ICON_BUDGET_PER_FRAME = 3
+
 local function SharedTextureID( path )
 	local id = texIds[ path ]
+
+	-- ⚠️ A cached id is only reusable while the ENGINE still knows it.
+	-- vguimatsurface drops every texture id when the level changes
+	-- (CTextureDictionary::DestroyAllTextures, MatSystemSurface.cpp:435), and a cache
+	-- that trusted itself is exactly why the icons vanished after a map change: the
+	-- ids were stale and nothing ever asked.  surface.IsTextureIDValid is bound
+	-- (LISurface.cpp:998) and answers that question, so ask it.
+	if ( id ~= nil and id ~= false and type( id ) == "number" and
+		surface.IsTextureIDValid and not surface.IsTextureIDValid( id ) ) then
+		id = nil
+		texIds[ path ] = nil
+	end
 
 	if ( id == nil ) then
 		if ( surface.CreateNewTextureID ) then
@@ -690,6 +771,14 @@ end
 -- ---------------------------------------------------------------------------
 -- 5. spawning
 -- ---------------------------------------------------------------------------
+-- ⚠️ Forward declaration, and the only reason is Lua scoping: the table itself is
+-- filled in below (§6, "local MENU = {") but Spawn() is defined HERE and reads
+-- MENU.npcWeapon.  A `local` is not in scope before its declaration, so that read
+-- resolved to the GLOBAL MENU - nil - and every NPC click died with
+--   hl2sb_spawnmenu.lua:712: attempt to index a nil value (global 'MENU')
+-- while weapons/vehicles/props (which never touch MENU) spawned fine.
+local MENU
+
 local function Spawn( e )
 	-- GMod's spawn menu talks to its own commands (sandbox's commands.lua), and so
 	-- does this one now:
@@ -713,7 +802,15 @@ local function Spawn( e )
 
 		line = "gm_spawnnpc " .. e.class .. ( wep ~= "" and ( " " .. wep ) or "" )
 	elseif ( e.cat == "vehicle" ) then
+		-- ⚠️ The MODEL is part of the spawn line, not decoration: a vehicle without one
+		-- is a model-less prop_vehicle, and that is what took the server down
+		-- (CFourWheelVehiclePhysics::Initialize, AV READ of 0x0).  Every seat in the
+		-- menu is the same class as the others and only the model tells them apart, so
+		-- `gm_spawnvehicle prop_vehicle_prisoner_pod` alone could never spawn a chair.
+		-- GMod hands over the same three things: class, model, vehiclescript.
 		line = "gm_spawnvehicle " .. e.class
+			.. ( ( e.model and e.model ~= "" ) and ( " " .. e.model ) or "" )
+			.. ( ( e.script and e.script ~= "" ) and ( " " .. e.script ) or "" )
 	elseif ( e.model ~= nil and e.model ~= "" ) then
 		line = "gm_spawn " .. e.class .. " " .. e.model
 	else
@@ -740,7 +837,8 @@ end
 -- ---------------------------------------------------------------------------
 -- 6. the window: built once, only ever re-pointed
 -- ---------------------------------------------------------------------------
-local MENU = {
+-- ⚠️ No `local` here: MENU is forward-declared above §5 so Spawn() can see it.
+MENU = {
 	cat = 1,
 	node = nil,			-- the selected settings/spawnlist node (GMod's own tree)
 	source = "all",		-- fallback tree: the first level (author / the game it came from)
@@ -877,6 +975,16 @@ local function CellPaint( self, w, h )
 		surface.DrawSetColor( 255, 255, 255, 255 )
 		surface.DrawSetTexture( self.m_iTexture )
 		surface.DrawTexturedRect( x, y, isz, isz )
+	elseif ( self.m_strImage and self.m_strImage ~= "" and not self.m_bIconQueued and
+		( self.m_iIconTries or 0 ) < 3 ) then
+		-- SELF-HEALING: an icon path with no texture is a cell whose decode was
+		-- deferred (or whose texture id the engine dropped - see SharedTextureID).
+		-- Ask again on paint; PumpIcons() binds a few per frame, so this can never
+		-- flood a frame, and the tries cap stops an icon that cannot load from
+		-- re-queueing forever.
+		self.m_iIconTries = ( self.m_iIconTries or 0 ) + 1
+		self.m_bIconQueued = true
+		IconQueue[ #IconQueue + 1 ] = self
 	end
 
 	-- The caption is read off the panel, NOT through GetText: the DImageButton this
@@ -1055,18 +1163,56 @@ local function PointCell( cell, e )
 	end
 
 	cell.m_strCaption = e.name
+	cell.m_bIconQueued = nil
+	cell.m_iIconTries = nil
 
+	-- ⚠️ The texture is NOT created here any more.
+	--
+	-- IconPath() (a file:Exists search, cached per class) is cheap; SharedTextureID()
+	-- is a PNG decode plus a GPU upload done INSIDE the current frame.  A fill touches
+	-- up to MAX_CELLS cells within a few frames, so binding them here decoded two dozen
+	-- PNGs in one frame - that is what made the menu stutter while it filled.  The cell
+	-- takes the id if the texture is already decoded, and otherwise goes on the queue
+	-- PumpIcons() drains a few per frame.  A cell without a texture just draws its
+	-- caption until then.
 	local path = IconPath( e )
 
 	if ( path ) then
 		cell.m_strImage = path
-		cell.m_iTexture = SharedTextureID( path )
+		cell.m_iTexture = texIds[ path ] or nil
+
+		if ( not cell.m_iTexture and not cell.m_bIconQueued ) then
+			cell.m_bIconQueued = true
+			IconQueue[ #IconQueue + 1 ] = cell
+		end
 	else
 		cell.m_strImage = ""
 		cell.m_iTexture = nil
 	end
 
 	cell:SetVisible( true )
+end
+
+--- Decode at most ICON_BUDGET_PER_FRAME pending icon textures.  Called at the end of
+--- every fill step and from the frame's OnThink, so the grid's icons arrive over the
+--- next few frames instead of in one stuttering burst.
+local function PumpIcons()
+	local n = 0
+
+	while ( n < ICON_BUDGET_PER_FRAME and #IconQueue > 0 ) do
+		local cell = table.remove( IconQueue, 1 )
+		n = n + 1
+
+		if ( IsValid( cell ) and cell.SetSize ) then
+			cell.m_bIconQueued = nil
+
+			local path = cell.m_strImage
+
+			if ( path and path ~= "" and not cell.m_iTexture ) then
+				cell.m_iTexture = SharedTextureID( path )
+			end
+		end
+	end
 end
 
 -- ---------------------------------------------------------------------------
@@ -1444,6 +1590,36 @@ FillStep = function( bFirst )
 			Trace( "fill: done" )
 		end
 
+		-- One-shot icon report.  "The icons are gone" is a report that needs a number:
+		-- this counts what the shown cells actually resolved, and names the first few
+		-- classes that resolved nothing at all - which is what separates "the file was
+		-- not found" from "the texture did not load".
+		if ( not MENU.m_bIconReport ) then
+			MENU.m_bIconReport = true
+
+			local nWith, nWithout, missing = 0, 0, {}
+
+			for i = 1, shownN do
+				local cell = MENU.cells[ i ]
+
+				if ( IsValid( cell ) ) then
+					if ( cell.m_strImage and cell.m_strImage ~= "" ) then
+						nWith = nWith + 1
+					else
+						nWithout = nWithout + 1
+
+						if ( #missing < 6 ) then
+							local e = cell.m_tEntry
+							missing[ #missing + 1 ] = e and e.class or "?"
+						end
+					end
+				end
+			end
+
+			Trace( string.format( "icons: %d of %d cells resolved a path, %d asked for a fallback [%s]",
+				nWith, shownN, nWithout, table.concat( missing, " " ) ) )
+		end
+
 		-- the title says what the grid shows, the way GMod's panel names the folder
 		-- you are looking at
 		if ( IsValid( MENU.frame ) ) then
@@ -1456,6 +1632,9 @@ FillStep = function( bFirst )
 				( #MENU.shown > MAX_CELLS ) and ( "/" .. #MENU.shown ) or "" ) )
 		end
 	end
+
+	-- one budget's worth of icon textures, so the fill itself stays cheap
+	PumpIcons()
 end
 
 -- ---------------------------------------------------------------------------
@@ -1650,6 +1829,10 @@ local function BuildWindow()
 				Trace( "fill failed: " .. tostring( err ) )
 			end
 		end
+
+		-- Icons queued by the fill (and by every re-point) are decoded a few per frame
+		-- here, so nothing stalls the frame that points the cells.
+		PumpIcons()
 	end
 
 	MENU.frame = frame

@@ -21,7 +21,7 @@
         2. scripted_ents     - the scripted entity's own PrintName
         3. weapons.Get       - a Lua SWEP's PrintName
         4. language          - the "#class" token, when it really resolves
-        5. the class itself  - last resort
+        5. the cosmetic strip - "npc_zombie" -> "Zombie" (last resort, see CosmeticName)
 
     It is a GLOBAL on purpose: undo.lua is a module that loads before autorun, so a
     local in either file could not be shared.  Callers read it at RUNTIME (inside a
@@ -40,6 +40,30 @@ local function ClassShaped( s )
 	if ( string.match( class, "^[%w_]+$" ) == nil ) then return nil end
 
 	return class
+end
+
+--- The engine's cosmetic spelling of a class name: strip the prefix, capitalise what is
+--- left.  This mirrors KillFeed_DisplayName (game/client/hl2mp/hud_killfeed.cpp:100) --
+--- but that C++ helper used to run BEFORE Lua saw the string, and stripping "npc_" off
+--- "npc_shaklin_scp096" left "Shaklin_scp096", a string no content registry is keyed by:
+--- the kill feed printed it instead of the NPC's own ENT.PrintName ("SCP 096").  The
+--- engine now hands Lua the RAW class (KillFeed_RawClassName), so this runs last and
+--- only for classes the content does not know - the game's own NPCs still read as
+--- "Zombie"/"Headcrab" because they have no PrintName anywhere.
+local COSMETIC_STRIP = { "npc_", "monster_", "weapon_", "item_", "ammo_", "entity_", "func_", "prop_" }
+
+local function CosmeticName( class )
+	for _, prefix in ipairs( COSMETIC_STRIP ) do
+		if ( string.sub( class, 1, #prefix ) == prefix ) then
+			local rest = string.sub( class, #prefix + 1 )
+
+			if ( rest == "" ) then return nil end
+
+			return string.upper( string.sub( rest, 1, 1 ) ) .. string.sub( rest, 2 )
+		end
+	end
+
+	return nil
 end
 
 local function FromRegistries( class )
@@ -80,7 +104,10 @@ local function FromRegistries( class )
 		end
 	end
 
-	return nil
+	-- Nothing in the content knows this class: fall back to the engine's cosmetic
+	-- spelling ("npc_zombie" -> "Zombie"), which is what the kill feed used to show for
+	-- EVERYTHING.  It is the last resort now, not the first word.
+	return CosmeticName( class )
 end
 
 --- The name to SHOW for a string that may be a class name.  Anything that is not

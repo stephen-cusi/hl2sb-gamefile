@@ -22,10 +22,15 @@ function PANEL:Init()
 	self.m_pScroll:SetDrawBackground( false )
 end
 
+--- GMod: DListView:AddColumn( strName ) returns the column, whose `.Header` is the
+--- header panel ("self.FileHeader = self.Files:AddColumn( "Files" ).Header" in
+--- lua/vgui/DFileBrowser.lua:180).  Here the header cell is created once per column
+--- and reused, so that reference stays valid across layouts.
 function PANEL:AddColumn( strName )
 	local col = { name = tostring( strName or "" ), i = #self.m_tColumns + 1 }
 	self.m_tColumns[ col.i ] = col
 	self:RebuildHeader()
+	col.Header = self.m_tHeaderCells and self.m_tHeaderCells[ col.i ]
 	return col
 end
 
@@ -38,6 +43,70 @@ function PANEL:ColumnWidth( i )
 	if ( n == 0 ) then return self:GetWide() end
 	return math.floor( self:GetWide() / n )
 end
+
+--- GMod: DListView:GetColumnWidth( i ) -- the GMod spelling of ColumnWidth.
+function PANEL:GetColumnWidth( i )
+	return self:ColumnWidth( i )
+end
+
+--- GMod: DListView:GetHeaderHeight() -- what DListView_Column:PerformLayout asks for.
+function PANEL:GetHeaderHeight()
+	return HEADER_H
+end
+
+--- GMod: DListView:SetMultiSelect( b ) / GetMultiSelect().  This fork's list keeps a
+--- single selection (the row itself decides), so the flag is recorded and documented
+--- rather than implemented; DFileBrowser sets it to false, which is the behaviour here.
+function PANEL:SetMultiSelect( b )
+	self.m_bMultiSelect = ( b ~= false )
+end
+
+function PANEL:GetMultiSelect()
+	return self.m_bMultiSelect == true
+end
+
+--- GMod: DListView:SetManual( b ) -- "don't lay the columns out automatically".
+--- This fork rebuilds its header whenever the columns change, so the flag is recorded.
+function PANEL:SetManual( b )
+	self.m_bManual = ( b ~= false )
+end
+
+function PANEL:GetManual()
+	return self.m_bManual == true
+end
+
+--- GMod: DListView:SetDirty( b ) -- re-layout the rows on the next paint.  Here rows
+--- are laid out immediately, so this is the same call.
+function PANEL:SetDirty( b )
+	self:RelayoutRows()
+end
+
+--- GMod: DListView:SortByColumn( iColumn, bDescending ).  GMod sorts by the line's
+--- sort value when one was set (DListViewLine:SetSortValue), else by the caption.
+function PANEL:SortByColumn( iColumn, bDescending )
+	table.sort( self.m_tRows, function( a, b )
+		local av = a.GetSortValue and a:GetSortValue( iColumn )
+		local bv = b.GetSortValue and b:GetSortValue( iColumn )
+
+		if ( av == nil ) then av = a:GetColumnText( iColumn ) end
+		if ( bv == nil ) then bv = b:GetColumnText( iColumn ) end
+
+		if ( av == bv ) then return false end
+		if ( bDescending ) then return tostring( av ) > tostring( bv ) end
+
+		return tostring( av ) < tostring( bv )
+	end )
+
+	for j, row in ipairs( self.m_tRows ) do
+		row.m_iIndex = j
+	end
+
+	self:RelayoutRows()
+end
+
+--- GMod: DListView:AddLine( ... ) -- the same row builder as AddRow here
+--- (DFileBrowser calls it with a single file name for its one column).  Aliased after
+--- AddRow is defined, below.
 
 function PANEL:AddRow( ... )
 	local vargs = { ... }
@@ -55,6 +124,9 @@ function PANEL:AddRow( ... )
 	self:RelayoutRows()
 	return row
 end
+
+--- GMod: DListView:AddLine( ... ) -- the same builder under GMod's name.
+PANEL.AddLine = PANEL.AddRow
 
 function PANEL:GetLine( i )
 	return self.m_tRows[ i ]
@@ -126,19 +198,33 @@ function PANEL:RelayoutRows()
 	self.m_pScroll:SetContentHeight( totalH )
 end
 
+--- The header cells are created once per column and re-used (repositioned/resized)
+--- so that a column's `.Header` reference - what GMod addons hold, see AddColumn -
+--- stays valid across layouts.
 function PANEL:RebuildHeader()
-	for _, c in ipairs( self.m_tHeaderCells or {} ) do
-		if ( IsValid( c ) ) then c:Remove() end
+	self.m_tHeaderCells = self.m_tHeaderCells or {}
+
+	for i, col in ipairs( self.m_tColumns ) do
+		if ( !IsValid( self.m_tHeaderCells[ i ] ) ) then
+			local cell = vgui.Create( "DButton", self.m_pHeader, "ColHead" .. i )
+			cell:SetText( col.name )
+			self.m_tHeaderCells[ i ] = cell
+		end
+
+		self.m_tHeaderCells[ i ]:SetText( col.name )
+		col.Header = self.m_tHeaderCells[ i ]
 	end
-	self.m_tHeaderCells = {}
+
+	-- columns that went away (Clear + AddColumn) leave their cells behind
+	for i = #self.m_tColumns + 1, #self.m_tHeaderCells do
+		if ( IsValid( self.m_tHeaderCells[ i ] ) ) then self.m_tHeaderCells[ i ]:Remove() end
+		self.m_tHeaderCells[ i ] = nil
+	end
 
 	local x = 0
-	for i, col in ipairs( self.m_tColumns ) do
-		local cell = vgui.Create( "DButton", self.m_pHeader, "ColHead" .. i )
-		cell:SetText( col.name )
-		cell:SetPos( x, 0 )
-		cell:SetSize( self:ColumnWidth( i ), HEADER_H )
-		table.insert( self.m_tHeaderCells, cell )
+	for i = 1, #self.m_tColumns do
+		self.m_tHeaderCells[ i ]:SetPos( x, 0 )
+		self.m_tHeaderCells[ i ]:SetSize( self:ColumnWidth( i ), HEADER_H )
 		x = x + self:ColumnWidth( i )
 	end
 end

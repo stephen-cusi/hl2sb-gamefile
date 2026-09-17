@@ -20,7 +20,20 @@ function PANEL:Init()
 
 	self.m_pCanvas = vgui.Create( "DPanel", self, "ContentContainer" )
 	self.m_pCanvas:SetDrawBackground( false )
-	self.m_pCanvas:SetMouseInputEnabled( false )
+
+	-- ⚠️ The canvas MUST accept mouse input, or nothing Add()ed to it can ever be
+	-- clicked: vgui2/vgui_controls/Panel.cpp:3347 refuses the whole subtree of a panel
+	-- whose IsMouseInputEnabled() is false.  GMod does exactly this -
+	-- _legacy_gmod/vgui/dscrollpanel.lua:11 `self.pnlCanvas:SetMouseInputEnabled( true )`.
+	self.m_pCanvas:SetMouseInputEnabled( true )
+
+	-- ... and because the canvas now takes the press, hand it back to the scroll panel,
+	-- which is how GMod keeps drag/scroll behaviour on its canvas
+	-- (_legacy_gmod/vgui/dscrollpanel.lua:10).  Without the forward the canvas would
+	-- swallow every press in its empty area.
+	self.m_pCanvas.OnMousePressed = function( slf, code )
+		slf:GetParent():OnMousePressed( code )
+	end
 
 	self.m_iScrollDelta = 0
 	self.m_iRange = 0
@@ -31,7 +44,27 @@ function PANEL:GetCanvas()
 	return self.m_pCanvas
 end
 
+--- GMod: DScrollPanel:SizeToContents() - `self:SetSize( self.pnlCanvas:GetSize() )`
+--- (_legacy_gmod/vgui/dscrollpanel.lua:45, the only implementation of it in GMod's
+--- panel library that copies an inner canvas).  DTree_Node calls it on its child list
+--- before adding that height to its own.
+function PANEL:SizeToContents()
+	local w, h = self.m_pCanvas:GetSize()
+	self:SetSize( w, h )
+end
+
+--- GMod's DScrollPanel does NOT override Panel:Add (it has AddItem for the parented
+--- case), so `scrollpanel:Add( "DLabel" )` and `scrollpanel:Add( someTable )` both
+--- go through Panel:Add - which accepts a class name or an anonymous control table.
+--- This fork narrowed that to a panel; DProperties relies on the wider contract
+--- (`self:GetCanvas():Add( tblCategory )`), so the string/table forms are restored
+--- here and parented to the canvas the same way.
 function PANEL:Add( pnl )
+	if ( isstring( pnl ) or istable( pnl ) ) then
+		pnl = vgui.Create( pnl, self:GetCanvas() )
+		return pnl
+	end
+
 	pnl:SetParent( self:GetCanvas() )
 	return pnl
 end
@@ -67,6 +100,23 @@ end
 
 function PANEL:GetVScrollPos()
 	return self.m_iPos
+end
+
+--- GMod: DScrollPanel:ScrollToChild( panel ) -- "Scrolls the scroll panel to the
+--- given child panel" (gmod/vgui/dscrollpanel.lua:94-106).  GMod centres the child
+--- and animates the bar; this fork's scroll value IS the pixel offset (m_iPos), so
+--- the same maths lands directly on SetValue.  GMod asks the canvas for
+--- GetChildPosition; children live in the canvas here, so their own y is the same
+--- number.
+function PANEL:ScrollToChild( pnl )
+	if ( !IsValid( pnl ) ) then return end
+
+	self:InvalidateLayout( true )
+
+	local _, y = pnl:GetPos()
+	local _, h = pnl:GetSize()
+
+	self:SetValue( math.max( 0, y + h * 0.5 - self:GetTall() * 0.5 ) )
 end
 
 function PANEL:OnMouseWheeled( delta )

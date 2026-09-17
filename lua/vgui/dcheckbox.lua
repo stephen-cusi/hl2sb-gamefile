@@ -76,6 +76,13 @@ function PANEL:IsChecked()
 	return self:GetChecked()
 end
 
+--- GMod: DCheckBox:IsEditing() -- "Returns whether the check box is being held
+--- down" (its own lua/vgui/dcheckbox.lua:19 returns self.Depressed).  The row
+--- painter in DProperties uses it to highlight the field while it is clicked.
+function PANEL:IsEditing()
+	return self.m_bDepressed == true or self.Depressed == true
+end
+
 function PANEL:SetValue( b )
 	self:SetChecked( b )
 end

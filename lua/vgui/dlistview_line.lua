@@ -39,6 +39,23 @@ function PANEL:IsSelected()
 	return self.m_bSelected
 end
 
+--- GMod: DListViewLine:IsLineSelected() (its own spelling, used by the ported
+--- GMod code and by DListViewLabel's UpdateColours).  Same state as IsSelected().
+function PANEL:IsLineSelected()
+	return self.m_bSelected
+end
+
+--- GMod: DListViewLine:SetSortValue( i, data ) / GetSortValue( i ) -- what
+--- DListView:SortByColumn sorts by when the caption is not the right key.
+function PANEL:SetSortValue( iCol, data )
+	self.m_tSortValues = self.m_tSortValues or {}
+	self.m_tSortValues[ iCol ] = data
+end
+
+function PANEL:GetSortValue( iCol )
+	return self.m_tSortValues and self.m_tSortValues[ iCol ]
+end
+
 function PANEL:DoClick()
 	if ( self.m_pList ) then
 		self.m_pList:OnClickLine( self )
@@ -48,6 +65,22 @@ end
 function PANEL:DoRightClick()
 	if ( self.m_pList ) then
 		self.m_pList:OnClickLine( self, true )
+
+		-- GMod: DListViewLine:OnMousePressed calls
+		-- self:GetListView():OnRowRightClick( self:GetID(), self )
+		if ( self.m_pList.OnRowRightClick ) then
+			self.m_pList:OnRowRightClick( self.m_iIndex, self )
+		end
+	end
+end
+
+--- GMod's list view answers DoDoubleClick( id, line ); DFileBrowser overrides it to
+--- open a file.  The engine dispatches OnMouseDoublePressed for a panel (see DLabel),
+--- and GMod's own call is `self:DoDoubleClick( Line:GetID(), Line )` - i.e. with the
+--- method syntax, so the override sees ( self, id, line ).
+function PANEL:OnMouseDoublePressed( mousecode )
+	if ( self.m_pList and self.m_pList.DoDoubleClick ) then
+		self.m_pList:DoDoubleClick( self.m_iIndex, self )
 	end
 end
 
