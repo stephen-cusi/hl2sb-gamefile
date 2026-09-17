@@ -56,6 +56,14 @@ function PANEL:Init()
 	self.m_pBody:SetDrawBackground( false )
 end
 
+-- HL2SB: GMod's DFrame:Add() parents the child to the body (the area below the
+-- title bar), not to the frame itself.  Without this, window:Add("DHorizontalDivider")
+-- puts the divider behind the title bar and the layout collapses.
+function PANEL:Add( class, name )
+	local pnl = vgui.Create( class, self.m_pBody, name )
+	return pnl
+end
+
 function PANEL:SetTitle( strTitle )
 	self.m_strTitle = tostring( strTitle or "" )
 end

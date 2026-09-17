@@ -259,20 +259,53 @@ function PANEL:Rebuild()
 	local pad = self:GetPadding()
 	local spacing = self:GetSpacing()
 	local w = canvas:GetWide()
-	local y = pad
+	local h = canvas:GetTall()
 
-	for _, item in ipairs( self.m_tItems ) do
-		if ( IsValid( item ) ) then
-			item:SetPos( pad, y )
+	if ( self.m_bHorizontal ) then
+		-- HL2SB: horizontal flow, same as GMod's DPanelList.  Items sit
+		-- left-to-right and wrap to the next row when they run out of width.
+		-- DPanelSelect calls EnableHorizontal( true ) for its icon grid.
+		local x = pad
+		local y = pad
+		local rowH = 0
 
-			local itemW = w - pad * 2
-			if ( itemW > 0 ) then item:SetWide( itemW ) end
+		for _, item in ipairs( self.m_tItems ) do
+			if ( IsValid( item ) ) then
+				local itemW = item:GetWide()
 
-			y = y + item:GetTall() + spacing
+				-- wrap
+				if ( x > pad and x + itemW > w - pad ) then
+					x = pad
+					y = y + rowH + spacing
+					rowH = 0
+				end
+
+				item:SetPos( x, y )
+				x = x + itemW + spacing
+
+				local ih = item:GetTall()
+				if ( ih > rowH ) then rowH = ih end
+			end
 		end
-	end
 
-	self.m_iContentHeight = y + pad
+		self.m_iContentHeight = y + rowH + pad
+	else
+		-- vertical stack (original behaviour)
+		local y = pad
+
+		for _, item in ipairs( self.m_tItems ) do
+			if ( IsValid( item ) ) then
+				item:SetPos( pad, y )
+
+				local itemW = w - pad * 2
+				if ( itemW > 0 ) then item:SetWide( itemW ) end
+
+				y = y + item:GetTall() + spacing
+			end
+		end
+
+		self.m_iContentHeight = y + pad
+	end
 
 	-- DScrollPanel owns the canvas size + the bar range
 	self:SetContentHeight( self.m_iContentHeight )
