@@ -260,13 +260,54 @@ function vgui.CreateFromTable( tbl, pParent, strName )
 	return panel
 end
 
+--- GMod's vgui.RegisterTable( tbl, base ) -- registers an ANONYMOUS control table and
+--- returns it, for controls that are built inline rather than in their own file:
+---
+---   local tblRow = vgui.RegisterTable( { Init = ..., Paint = ... }, "Panel" )
+---   ... self.Container:Add( tblRow )
+---
+--- (GMod's own DProperties is written exactly that way - two such tables, the row
+--- and the category.)  The whole implementation is the Base field: this fork's
+--- Panel:Add already forwards a table to vgui.CreateFromTable
+--- (lua/includes/extensions/client/panel.lua:515), which reads tbl.Base.  GMod
+--- additionally wraps the table in a metatable; nothing in the framework needs
+--- that here.
+function vgui.RegisterTable( tbl, strBase )
+	tbl = tbl or {}
+	tbl.Base = strBase or tbl.Base or "Panel"
+
+	return tbl
+end
+
 --[[-------------------------------------------------------------------------
 	derma namespace
 ---------------------------------------------------------------------------]]
 
 --- GMod's derma.DefineControl( name, description, table, base ).
+---
+--- GMod also publishes every control as a global ("Store as a global so controls
+--- can 'baseclass' easier -- TODO: STOP THIS", lua/derma/derma.lua:114-116), and
+--- that is load-bearing: GMod's own files call the parent class that way
+--- (lua/vgui/dlabeleditable.lua:21 `DLabel.GetContentSize( self )`,
+--- lua/vgui/dlabelurl.lua:59 `self:SetFGColor(...)` from the URLLabel base), and so
+--- do addons (`DPanel.Paint( self, w, h )`, `DButton.Init( self )`).
 function derma.DefineControl( strName, strDescription, tbl, strBase )
-	return vgui.Register( strName, tbl, strBase )
+	tbl = vgui.Register( strName, tbl, strBase )
+
+	if ( strName ) then
+		-- Already-registered globals that are not control tables win: the one
+		-- collision that matters is "Material" - global Material( path ) is the
+		-- IMaterial factory and lua/vgui/Material.lua registers a panel of that
+		-- name.  GMod avoids the clash by calling vgui.Register directly there
+		-- (gmod/vgui/material.lua:60), so this keeps the same outcome.
+		local existing = rawget( _G, strName )
+
+		if ( existing == nil or type( existing ) == "table" ) then
+			_G[ strName ] = tbl
+		end
+	end
+
+	return tbl
 end
 
 --- GMod's derma.DefinePanel( name, description, PANEL ) -- the base class has

@@ -45,9 +45,30 @@ function PANEL:SetContents( pnl, bDelete )
 end
 
 function PANEL:Toggle()
-	self.m_bCollapsed = not self.m_bCollapsed
-	self.m_pBody:SetVisible( not self.m_bCollapsed )
+	self:SetExpanded( self.m_bCollapsed )
+end
+
+--- GMod: DCollapsibleCategory:GetExpanded() / SetExpanded( expanded ) -- its
+--- AccessorFunc pair plus DoExpansion (gmod/vgui/dcategorycollapse.lua:48/198-233).
+--- This fork stores the state inverted in m_bCollapsed, and DCategoryHeader
+--- (lua/vgui/DCategoryHeader.lua, ported later) is what made the gap visible:
+--- its UpdateColours asks `self:GetParent():GetExpanded()`.
+function PANEL:GetExpanded()
+	return not self.m_bCollapsed
+end
+
+function PANEL:SetExpanded( bExpanded )
+	self.m_bCollapsed = not bExpanded
+
+	if ( IsValid( self.m_pBody ) ) then
+		self.m_pBody:SetVisible( not self.m_bCollapsed )
+	end
+
 	self:InvalidateLayout( true )
+end
+
+function PANEL:IsExpanded()
+	return not self.m_bCollapsed
 end
 
 function PANEL:GetContents()

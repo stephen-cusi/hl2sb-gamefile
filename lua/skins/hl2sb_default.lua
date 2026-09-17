@@ -51,6 +51,72 @@ SKIN.Colours = {
 	Error			= Color( 200, 40,  40,  255 ),
 }
 
+--[[ GMod's default skin carries a whole Properties sub-table (skins/default.lua:
+-- "SKIN.Colours.Properties"), and lua/vgui/DProperties.lua paints every row and
+-- category out of it.  GMod fills those from its GWEN atlas; this skin has no
+-- atlas, so the same slots get flat colours from the palette above.  The one
+-- value GMod spells out literally is Column_Disabled ( 240, 240, 240 ) -- kept. ]]
+SKIN.Colours.Properties = {
+	Line_Normal			= Color( 70,  75,  83,  255 ),
+	Line_Selected		= Color( 52,  108, 190, 255 ),
+	Line_Hover			= Color( 90,  96,  106, 255 ),
+	Title				= Color( 228, 228, 228, 255 ),
+	Column_Normal		= Color( 48,  52,  58,  255 ),
+	Column_Selected		= Color( 52,  108, 190, 255 ),
+	Column_Hover		= Color( 60,  64,  71,  255 ),
+	Column_Disabled		= Color( 240, 240, 240, 255 ),
+	Border				= Color( 25,  27,  30,  255 ),
+	Label_Normal		= Color( 228, 228, 228, 255 ),
+	Label_Selected		= Color( 255, 255, 255, 255 ),
+	Label_Hover			= Color( 255, 255, 255, 255 ),
+	-- GMod's DProperties row paints disabled labels with this; its own default skin
+	-- never defines it (nil would reach SetTextColor), so give it a value.
+	Label_Disabled		= Color( 120, 120, 120, 255 ),
+}
+
+--[[ GMod's default skin also carries Colours.Category, which DCategoryHeader
+-- (lua/vgui/DCategoryHeader.lua) reads for its open/closed caption colours; GMod
+-- fills them from its GWEN atlas, so the same slots get flat colours here
+-- (default.lua:294-296).  Colours.Tab is what DTab reads; kept next to it. ]]
+--[[ GMod's default skin has a whole Colours.Label group too (skins/default.lua:267-271);
+-- DListViewLabel:UpdateColours picks Bright for a selected row and Dark otherwise.
+-- The four slots get flat colours from this skin's palette. ]]
+SKIN.Colours.Label = {
+	Default		= Color( 228, 228, 228, 255 ),
+	Bright		= Color( 255, 255, 255, 255 ),
+	Dark		= Color( 180, 184, 190, 255 ),
+	Highlight	= Color( 255, 236, 170, 255 ),
+}
+
+SKIN.Colours.Category = {
+	Header			= Color( 228, 228, 228, 255 ),
+	Header_Closed	= Color( 180, 184, 190, 255 ),
+}
+
+SKIN.Colours.Tab = {
+	Active = {
+		Normal		= Color( 228, 228, 228, 255 ),
+		Down		= Color( 255, 255, 255, 255 ),
+		Hover		= Color( 255, 255, 255, 255 ),
+		Disabled	= Color( 120, 120, 120, 255 ),
+	},
+	Inactive = {
+		Normal		= Color( 160, 164, 170, 255 ),
+		Down		= Color( 200, 204, 210, 255 ),
+		Hover		= Color( 200, 204, 210, 255 ),
+		Disabled	= Color( 100, 100, 100, 255 ),
+	},
+}
+
+-- GMod's skin also carries Colours.Tree (DForm:ControlHelp reads
+-- `self:GetSkin().Colours.Tree.Hover` for its help text); same flat treatment.
+SKIN.Colours.Tree = {
+	Normal	= Color( 228, 228, 228, 255 ),
+	Hover	= Color( 220, 230, 240, 255 ),
+	Selected = Color( 255, 255, 255, 255 ),
+	Line	= Color( 70,  75,  83,  255 ),
+}
+
 local function col( self, key )
 	return self.Colours[ key ] or SKIN.Colours[ key ] or Color( 255, 255, 255, 255 )
 end
@@ -78,6 +144,24 @@ end
 --[[ Panel ------------------------------------------------------------------]]
 
 function SKIN:PaintPanel( pnl, w, h )
+	-- ⚠️ GMod paints the panel's OWN background colour here
+	-- (garrysmod/lua/skins/default.lua: `self.tex.Panels.Normal( 0, 0, w, h, panel.m_bgColor )`),
+	-- so a panel that called SetBackgroundColor shows that colour.  This hook used to
+	-- paint a flat skin colour and ignore it, which made every SetBackgroundColor in
+	-- GMod content invisible (DPropertySheet pages, DBubbleContainer, DFileBrowser's
+	-- list - the demo's three pages were all the same grey in game, 2026-09-17).
+	-- Only an explicitly set, non-transparent colour counts, so panels that never asked
+	-- for one keep the skin look.
+	local bg = pnl.m_bgColor
+
+	if ( bg == nil and pnl.GetBgColor ) then bg = pnl:GetBgColor() end
+
+	if ( bg and bg.a and bg.a > 0 ) then
+		surface.DrawSetColor( bg.r, bg.g, bg.b, bg.a )
+		surface.DrawFilledRect( 0, 0, w, h )
+		return
+	end
+
 	surface.DrawSetColor( col( self, "Panel" ).r, col( self, "Panel" ).g, col( self, "Panel" ).b, col( self, "Panel" ).a )
 	surface.DrawFilledRect( 0, 0, w, h )
 end

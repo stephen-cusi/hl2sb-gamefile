@@ -327,6 +327,24 @@ function meta:SetTooltipDelay( delay )
 end
 
 --[[---------------------------------------------------------
+	Name: SizeToContents
+
+	https://wiki.facepunch.com/gmod/Panel:SizeToContents - "Resizes the panel so that
+	its width and height fit all of the content inside.  Only works on Label derived
+	panels such as DLabel by default, and on any panel that manually implemented the
+	Panel:SizeToContents method, such as DNumberWang and DImage."
+
+	The label half is the engine binding (game/client/lua/scripted_controls/lLabel.cpp
+	SizeToContents, reached through DLabel:SizeToContents).  The panels that implement
+	it themselves in this fork are DLabel, DImage, DListLayout, DPanelList,
+	DScrollPanel, DButton, DCheckBox, DImageButton, DKillIcon, DNumberWang, DForm's
+	DSizeToContents.  This no-op is the "no content of its own" case, so an addon that
+	calls it generically does not hit "attempt to call a nil value".
+-----------------------------------------------------------]]
+function meta:SizeToContents()
+end
+
+--[[---------------------------------------------------------
 	Name: SizeToContentsY (Only works on Labels)
 -----------------------------------------------------------]]
 function meta:SizeToContentsY( addval )
@@ -493,6 +511,20 @@ function meta:IsOurChild( child )
 	if ( !IsValid( child ) ) then return false end
 
 	return child:HasParent( self )
+
+end
+
+--[[---------------------------------------------------------
+	Name: HasChildren
+	Desc: True when this panel has at least one child
+-----------------------------------------------------------]]
+--- GMod: Panel:HasChildren().  DTree_Node asks its child DListLayout for this to
+--- decide whether the expander is shown (lua/vgui/DTree_Node.lua:285).
+function meta:HasChildren()
+
+	if ( self.GetChildCount == nil ) then return false end
+
+	return self:GetChildCount() > 0
 
 end
 

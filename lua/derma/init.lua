@@ -93,6 +93,10 @@ function Derma_Install_Convar_Functions( Panel )
 		self.m_ConVarCallbackID = nil
 
 		self.m_ConVarName = strName
+		-- GMod's own field name for the same thing: its derma/init.lua:83 stores
+		-- m_strConVar, and the GMod controls that poll it through
+		-- ConVarNumberThink (DNumPad / DNumberScratch / DBinder) read that field.
+		self.m_strConVar = strName
 		self.m_ConVar = ( strName != nil and strName != "" ) and GetConVar( strName ) or nil
 
 		if ( !self.m_ConVar ) then return end
@@ -118,6 +122,40 @@ function Derma_Install_Convar_Functions( Panel )
 
 	-- default no-op; controls override to map the string value onto their state
 	function Panel:ConVarChanged( strName, strOld, strNew )
+	end
+
+	--[[ GMod's polling half of the same API, taken from its lua/derma/init.lua
+		:94-119.  GMod's controls call one of these from their Think and expect the
+		convar's value to arrive through SetValue:
+
+			DNumPad:Think        -> self:ConVarNumberThink()      (dnumpad.lua:154)
+			DNumberScratch:Think -> self:ConVarNumberThink()      (:256)
+			DBinder:Think        -> self:ConVarNumberThink()      (:102)
+
+		This fork's version was push-only (cvars.AddChangeCallback above), so those
+		three calls were "attempt to call a nil value".  Both halves now exist:
+		the callback pushes into ConVarChanged, and these poll.  --]]
+	function Panel:ConVarStringThink()
+		if ( !self.m_strConVar or #self.m_strConVar < 2 ) then return end
+
+		local strValue = GetConVarString( self.m_strConVar )
+		if ( self.m_strConVarValue == strValue ) then return end
+
+		self.m_strConVarValue = strValue
+		self:SetValue( self.m_strConVarValue )
+	end
+
+	function Panel:ConVarNumberThink()
+		if ( !self.m_strConVar or #self.m_strConVar < 2 ) then return end
+
+		local numValue = GetConVarNumber( self.m_strConVar )
+
+		-- In case the convar is a "nan"
+		if ( numValue != numValue ) then return end
+		if ( self.m_strConVarValue == numValue ) then return end
+
+		self.m_strConVarValue = numValue
+		self:SetValue( self.m_strConVarValue )
 	end
 
 end

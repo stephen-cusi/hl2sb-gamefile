@@ -78,6 +78,31 @@ function PANEL:SetDeleteOnClose( b )
 	self.m_bDeleteOnClose = b
 end
 
+--- GMod: DFrame:SetMinWidth / GetMinWidth / SetMinHeight / GetMinHeight
+--- (AccessorFunc( PANEL, "m_iMinWidth", "MinWidth", FORCE_NUMBER ) in GMod's
+--- lua/vgui/dframe.lua:11-12).
+--- ⚠️ They only store the values: this fork's DFrame has no resize implementation at
+--- all (SetSizable above just records a flag and the engine's C Frame resize handles are
+--- unreachable from a scripted panel), so there is no size the minimum could clamp.
+--- They exist so GMod code keeps working, e.g. the player model selector
+--- (garrysmod/gamemodes/sandbox/gamemode/editor_player.lua:25-26:
+---  window:SetMinWidth( 400 ) / window:SetMinHeight( 250 )).
+function PANEL:SetMinWidth( i )
+	self.m_iMinWidth = i
+end
+
+function PANEL:GetMinWidth()
+	return self.m_iMinWidth or 0
+end
+
+function PANEL:SetMinHeight( i )
+	self.m_iMinHeight = i
+end
+
+function PANEL:GetMinHeight()
+	return self.m_iMinHeight or 0
+end
+
 --- GMod's DFrame chrome API.  The engine's C Frame bindings ("Frame" metatable) are
 --- unreachable from here because DFrame is built on the scripted Panel (see the header
 --- comment), so these live in Lua.  Without them

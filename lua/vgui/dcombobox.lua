@@ -11,6 +11,7 @@ function PANEL:Init()
 	self:SetDrawBackground( false )
 
 	self.m_tOptions = {}
+	self.Data = {}			-- GMod: [ choice id ] = the choice's data
 	self.m_iSelected = 0
 	self.m_strLabel = ""
 	self.m_pDown = false
@@ -36,11 +37,16 @@ end
 function PANEL:RemoveItem( i )
 	table.remove( self.m_tOptions, i )
 	if ( self.m_iSelected > i ) then self.m_iSelected = self.m_iSelected - 1 end
+
+	-- the ids in Data are list positions, so they all shift: drop the table
+	self.Data = {}
+
 	self:BuildOptions()
 end
 
 function PANEL:Clear()
 	self.m_tOptions = {}
+	self.Data = {}
 	self.m_iSelected = 0
 	self:BuildOptions()
 end
@@ -86,10 +92,76 @@ function PANEL:ChooseOption( strLabel, iOptionID )
 	self:SetDropdownVisible( false )
 
 	if ( self.OnSelect ) then
-		local ok, err = pcall( self.OnSelect, self, self.m_iSelected, strLabel )
+		local opt = self.m_tOptions[ self.m_iSelected ]
+		local ok, err = pcall( self.OnSelect, self, self.m_iSelected, strLabel, opt and opt.data )
 		if ( not ok ) then Warning( "DComboBox:OnSelect failed: " .. tostring( err ) .. "\n" ) end
 	end
 end
+
+--[[---------------------------------------------------------------------------
+	GMod's own surface on top of the list above (lua/vgui/dcombobox.lua).  GMod
+	addons - and lua/vgui/prop_combo.lua - drive a combo box through these names,
+	not through AddItem/SelectIndex:
+
+		combo:AddChoice( text, data, select, icon )
+		combo:ChooseOptionID( id )
+		combo:GetOptionByID( id ) / GetSelected() / IsMenuOpen()
+		combo.Data[ id ] = data
+		combo.OnSelect( self, index, value, data )
+
+	AddItem keeps the fork's list, so the two APIs share one set of entries; `data`
+	is what identifies an entry to ChooseOptionID (GMod uses it for convar values).
+---------------------------------------------------------------------------]]
+
+--- GMod: DComboBox:AddChoice( strText, data, bSelect, strIcon ).
+function PANEL:AddChoice( strText, data, bSelect, strIcon )
+	local i = self:AddItem( strText )
+
+	self.Data[ i ] = data
+	self.m_tOptions[ i ].data = data
+	self.m_tOptions[ i ].icon = strIcon
+
+	if ( bSelect ) then
+		self:ChooseOptionID( i )
+	end
+
+	return i
+end
+
+--- GMod: DComboBox:ChooseOptionID( id ) -- selects by index and fires OnSelect.
+function PANEL:ChooseOptionID( id )
+	local opt = self.m_tOptions[ id ]
+	if ( opt ) then
+		self:ChooseOption( opt.label, id )
+	end
+end
+
+--- GMod: DComboBox:GetOptionByID( id ).
+function PANEL:GetOptionByID( id )
+	return self.m_tOptions[ id ]
+end
+
+--- GMod: DComboBox:GetSelected() -- the selected index.
+function PANEL:GetSelected()
+	return self.m_iSelected
+end
+
+--- GMod: DComboBox:IsMenuOpen() -- prop_combo's IsEditing.
+function PANEL:IsMenuOpen()
+	return self.m_pDown == true
+end
+
+--- GMod: DComboBox:IsEditing() -- see IsMenuOpen.
+function PANEL:IsEditing()
+	return self:IsMenuOpen()
+end
+
+--- GMod: DComboBox:SetValue( str ) -- sets the text shown in the box.  The
+--- framework's convar link (lua/derma/init.lua) also calls GetValue.
+function PANEL:SetValue( str )
+	self:SetText( str )
+end
+
 
 function PANEL:BuildOptions()
 	-- the engine Panel has no RemoveAll; tear the old rows down by hand

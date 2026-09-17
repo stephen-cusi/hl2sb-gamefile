@@ -9,10 +9,13 @@
 
 	Wiki: https://wiki.facepunch.com/gmod/DListLayout
 
-	⚠️ Documented gap: GMod's DListLayout derives from DDragBase and gains the drag &
-	drop rearrangement (MakeDroppable).  This fork has no DDragBase, so MakeDroppable
-	exists but only records the identifier - nothing can be dragged yet.  Everything
-	else (Add, Layout, PerformLayout, OnChildAdded/Removed) behaves as documented.
+	GMod's DListLayout derives from DDragBase; this one did not, because DDragBase
+	did not exist here when it was written.  DDragBase has since been ported
+	(lua/vgui/DDragBase.lua) and this control is re-based onto it, which is what
+	gives the tree's child containers (lua/vgui/DTree_Node.lua creates a DListLayout
+	and calls SetDropPos / MakeDroppable / InsertBefore on it) their drag & drop.
+	The fork's own layout pass below is unchanged: it stretches each child to this
+	layout's width and stacks them, exactly as the wiki describes.
 --]]
 
 local PANEL = {}
@@ -20,8 +23,11 @@ local PANEL = {}
 function PANEL:Init()
 	self:SetDrawBackground( false )
 
+	-- GMod's DListLayout:Init is just this line (its children dock TOP there; this
+	-- fork stacks them in PerformLayout instead, see below).
+	self:SetDropPos( "82" )
+
 	self.m_bPaintBackground = false
-	self.m_strDroppableName = nil
 	self.m_iContentHeight = 0
 end
 
@@ -47,11 +53,6 @@ function PANEL:Layout()
 	self:InvalidateLayout( true )
 end
 
---- declared-but-inert without DDragBase - see the note in the header
-function PANEL:MakeDroppable( strName )
-	self.m_strDroppableName = strName
-end
-
 function PANEL:OnChildAdded()
 	self:InvalidateLayout( true )
 end
@@ -63,6 +64,30 @@ end
 --- The height every child together takes, for callers that size something around it.
 function PANEL:GetContentHeight()
 	return self.m_iContentHeight or 0
+end
+
+--- GMod: `Panel:SizeToContents()`.  GMod's DListLayout has no own implementation - its
+--- PerformLayout calls the engine `SizeToChildren( false, true )` (dlistlayout.lua:24),
+--- and Panel:SizeToContents() itself is documented as doing nothing outside
+--- Label-derived panels - so on a DListLayout it was effectively "make my tall fit my
+--- children", which is what the engine pass did anyway.  Here PerformLayout records
+--- that height (GetContentHeight) and this returns it, so DTree_Node:PerformLayout
+--- (`self.ChildNodes:SizeToContents(); self:SetTall( LineHeight + self.ChildNodes:GetTall() )`)
+--- gets the number it expects.  See the header note about GMod's own engine call.
+function PANEL:SizeToContents()
+	if ( not self.m_iContentHeight or self.m_iContentHeight == 0 ) then
+		-- no layout pass has run yet: sum the children the same way PerformLayout does
+		local y = 0
+
+		for _, child in ipairs( self:GetChildren() ) do
+			local ch = child:GetTall()
+			if ( ch > 0 ) then y = y + ch end
+		end
+
+		self.m_iContentHeight = y
+	end
+
+	self:SetTall( self.m_iContentHeight )
 end
 
 function PANEL:PerformLayout( w, h )
@@ -89,4 +114,4 @@ function PANEL:Paint( w, h )
 	end
 end
 
-derma.DefineControl( "DListLayout", "HL2SB vertical list layout", PANEL, "DPanel" )
+derma.DefineControl( "DListLayout", "HL2SB vertical list layout", PANEL, "DDragBase" )

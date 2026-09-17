@@ -36,6 +36,11 @@ local function TextureID( path )
 end
 
 function PANEL:Init()
+	-- An image is decoration, not a hit target: GMod's DImage does the same
+	-- (_legacy_gmod/vgui/dimage.lua:13-14).  DPanel no longer disables mouse input for
+	-- its children (see the note in lua/vgui/DPanel.lua), so this has to be explicit.
+	self:SetMouseInputEnabled( false )
+	self:SetKeyBoardInputEnabled( false )
 	self:SetDrawBackground( false )
 
 	self.m_strImage = ""
@@ -54,6 +59,14 @@ function PANEL:SetImage( strImage, strBackup )
 end
 
 function PANEL:GetImage() return self.m_strImage end
+
+--- GMod: DImage:SetOnViewMaterial( MatName, MatNameBackup ) (dimage.lua:25-31) --
+--- the spawnmenu's material lists use it to defer loading; here it is the same
+--- path-based image plus GMod's ImageName field.
+function PANEL:SetOnViewMaterial( MatName, MatNameBackup )
+	self:SetImage( MatName, MatNameBackup )
+	self.ImageName = MatName
+end
 
 function PANEL:SetMatName( strMat )
 	self.m_strMatName = strMat or ""
@@ -121,6 +134,21 @@ function PANEL:GetSize()
 	end
 
 	return w, h
+end
+
+--- GMod: SizeToContents().  GMod sizes itself from the material's own dimensions
+--- (dimage.lua:143, "self:SetSize( self.ActualWidth, self.ActualHeight )").  Here
+--- GetSize answers the texture's pixel size when the engine can report it, so an
+--- icon16/folder.png becomes 16x16 - which is exactly what a DTree_Node needs, its
+--- PerformLayout places the label's text inset from the icon's width.  When the
+--- size is unknown GetSize answers the panel's current size, so this stays a no-op
+--- rather than collapsing the image to 0x0.
+function PANEL:SizeToContents()
+	local w, h = self:GetSize()
+
+	if ( w and h and w > 0 and h > 0 ) then
+		self:SetSize( w, h )
+	end
 end
 
 --- GMod's PaintAt( x, y, w, h ): draw the image into that rect, honouring

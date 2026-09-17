@@ -57,8 +57,19 @@ function PANEL:GetStretchWidth() return self.m_bStretchWidth end
 function PANEL:SetStretchHeight( b ) self.m_bStretchHeight = ( b == true ) end
 function PANEL:GetStretchHeight() return self.m_bStretchHeight end
 
---- GMod's Add: child + re-layout.
+--- GMod's Add: child + re-layout.  ⚠️ GMod's DIconLayout does **not** define Add at
+--- all - it falls through to `Panel:Add` (extensions/client/panel.lua), which accepts
+--- a class NAME, an anonymous control table or a panel.  DIconBrowser depends on the
+--- name form (`self.IconLayout:Add( "DImageButton" )`), so all three are accepted here.
+--- (The `SetParent == nil` test is what tells an anonymous table from a panel: real
+--- panel handles are userdata, but the offline harness's are tables.)
 function PANEL:Add( pnl )
+	if ( isstring( pnl ) ) then
+		pnl = vgui.Create( pnl, self )
+	elseif ( istable( pnl ) and pnl.SetParent == nil ) then
+		pnl = vgui.Create( pnl, self )
+	end
+
 	pnl:SetParent( self )
 	self:InvalidateLayout( true )
 	return pnl

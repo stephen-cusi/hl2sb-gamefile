@@ -349,6 +349,27 @@ if ( CLIENT and surface and vgui ) then
 			end
 
 			--=================================================================
+			-- HL2SB: Panel:SetExpensiveShadow( offset, color )
+			--
+			-- GMod's DCategoryHeader:UpdateColours calls it
+			-- (gmod/vgui/dcategorycollapse.lua:24-30):
+			--
+			--     self:SetExpensiveShadow( 1, Color( 0, 0, 0, 100 ) )
+			--         -> "attempt to call a nil value (method 'SetExpensiveShadow')"
+			--
+			-- vgui2's Label has no shadow concept at all (GMod draws it in its own
+			-- C++, and that header is a DButton here, not a Label, so the LabelMeta
+			-- shim in this file would not even be reachable).  Recorded only, like
+			-- that one -- the caption is legible without a shadow.
+			--=================================================================
+			if ( PanelMeta.SetExpensiveShadow == nil ) then
+				PanelMeta.SetExpensiveShadow = function( self, offset, color )
+					self.m_iExpensiveShadowOffset = offset
+					self.m_colExpensiveShadow = color
+				end
+			end
+
+			--=================================================================
 			-- HL2SB: Panel:HasHierarchicalFocus()
 			--
 			-- GMod addition to vgui -- it does NOT exist in this engine's vgui2
@@ -510,6 +531,79 @@ if ( CLIENT and surface and vgui ) then
 				end
 
 				Msg( "[HL2SB]   Panel:KillFocus approximated\n" )
+			end
+
+			--=================================================================
+			-- HL2SB: GMod's short spellings DockPadding / NoClipping.
+			--
+			-- GMod's own sh_init.lua (lua/includes/modules/gmod_compatibility/,
+			-- lines 1356 and 1359) installs exactly these two aliases onto the
+			-- Panel metatable, and NEITHER of them is reachable here: that file
+			-- sits behind GMOD_COMPATIBILITY = false and the folder pass does not
+			-- recurse into gmod_compatibility/ (AGENTS.md 5.4.3), while the engine
+			-- only binds the long spellings
+			-- (public/lua/vgui_controls/lPanel.cpp:1660-1662: SetDockPadding /
+			-- GetDockPadding / DockMargin):
+			--
+			--   lua/vgui/DBubbleContainer.lua:9   self:DockPadding( 0, 0, 0, 32 )
+			--   lua/vgui/DKillIcon.lua:10         self:NoClipping( true )
+			--   lua/vgui/DSprite.lua:18           self:NoClipping( true )
+			--
+			-- so both threw "attempt to call a nil value" the moment those GMod
+			-- controls were created.
+			--
+			-- NoClipping is the one that cannot be exact: this engine binds no
+			-- clipping switch at all (no SetPaintClippingEnabled / SetClipRect
+			-- anywhere in public/lua or public/vgui_controls), so when the alias
+			-- target is missing the flag is merely recorded -- GMod code that sets
+			-- it keeps running instead of erroring, and the panel simply clips as
+			-- it always did.
+			--=================================================================
+			if ( PanelMeta.DockPadding == nil and PanelMeta.SetDockPadding ~= nil ) then
+				PanelMeta.DockPadding = PanelMeta.SetDockPadding
+
+				Msg( "[HL2SB]   Panel:DockPadding aliased\n" )
+			end
+
+			if ( PanelMeta.NoClipping == nil ) then
+				if ( PanelMeta.SetPaintClippingEnabled ~= nil ) then
+					PanelMeta.NoClipping = PanelMeta.SetPaintClippingEnabled
+
+					Msg( "[HL2SB]   Panel:NoClipping aliased\n" )
+				else
+					function PanelMeta:NoClipping( bNoClipping )
+						self.m_bNoClipping = bNoClipping and true or false
+					end
+
+					Msg( "[HL2SB]   Panel:NoClipping recorded only (no clipping binding in this engine)\n" )
+				end
+			end
+
+			--=================================================================
+			-- HL2SB: Panel:CursorPos()
+			--
+			-- GMod spells the "cursor inside this panel" query CursorPos and a lot
+			-- of its Lua uses it, including the scrollbar being ported here:
+			--
+			--   lua/vgui/DVScrollBar.lua:207   local x, y = self:CursorPos()
+			--
+			-- This engine binds neither spelling, but the Lua extension already
+			-- has the exact function under GMod's *other* name for it:
+			-- lua/includes/extensions/client/panel.lua:542
+			--
+			--   function meta:LocalCursorPos()
+			--       return self:ScreenToLocal( gui.MouseX(), gui.MouseY() )
+			--   end
+			--
+			-- which is what GMod's CursorPos returns as well (GMod's own
+			-- Panel:CursorPos is documented as "Returns the position of the cursor
+			-- relative to this panel").  Aliased rather than reimplemented so the
+			-- two can never drift.
+			--=================================================================
+			if ( PanelMeta.CursorPos == nil and PanelMeta.LocalCursorPos ~= nil ) then
+				PanelMeta.CursorPos = PanelMeta.LocalCursorPos
+
+				Msg( "[HL2SB]   Panel:CursorPos aliased to LocalCursorPos\n" )
 			end
 		end
 	end
