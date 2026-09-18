@@ -1,0 +1,5 @@
+"UnlitGeneric"
+{
+	"$BaseTexture" "vgui/entities/GI_Hutao"
+	"$NoLOD" 	   "1"
+}
