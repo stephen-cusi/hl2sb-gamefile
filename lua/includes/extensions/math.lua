@@ -88,5 +88,33 @@ function math.IsNearlyEqual( a, b, epsilon )
   return abs( a - b ) <= epsilon
 end
 
+------------------------------------------------------------------------------
+-- math.random( min, max ) that tolerates max < min
+--
+-- GMod's own shim does exactly this - "Before Lua 5.3 math.random(1, #emptyTable) would
+-- return 1, but it errors now" (lua/includes/modules/gmod_compatibility/sh_init.lua:45-63,
+-- which never loads in this fork) - by SWAPPING the bounds.
+--
+-- ⚠️ cod_c4 relies on it: the throw computes
+--     weapons/seal6-c4/shared.lua:243  math.random( -100, -900 )
+-- Stock Lua rejects that with "bad argument #1 to 'random' (interval is empty)", and because
+-- the call sits in the middle of the throw timer the whole rest of the throw never ran:
+-- no ApplyForceCenter / SetAngleVelocity (the charge dropped instead of flying - "无法粘住表面")
+-- and, decisively, no `Owner.C4s[#Owner.C4s + 1] = ent` (line 254) - so the detonator's
+-- StartExplosionChain found an empty list and nothing ever exploded ("无法引爆").
+-- Logged as: [timer] ... seal6-c4\shared.lua:243: bad argument #1 to 'random' (interval is empty)
+if ( math.random ~= nil and math.__hl2sb_random_patched ~= true ) then
+  local originalRandom = math.random
+
+  math.random = function( mn, mx )
+    if ( mn == nil ) then return originalRandom() end
+    if ( mx == nil ) then mx, mn = mn, 1 end
+    if ( mx < mn ) then return originalRandom( mx, mn ) end
+    return originalRandom( mn, mx )
+  end
+
+  math.__hl2sb_random_patched = true
+end
+
 -- Load marker (console + ds_debug.log), for confirming the extension ran.
 print( "[HL2SB] math extension loaded" )

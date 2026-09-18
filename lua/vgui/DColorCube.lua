@@ -162,13 +162,21 @@ function PANEL:Paint( w, h )
 	surface.DrawSetColor( base.r, base.g, base.b, 255 )
 	surface.DrawFilledRect( 0, 0, w, h )
 
-	-- saturation: white at x = 0 -> the hue at x = w
+	-- saturation: the base hue at x = 0 -> white at x = w
+	--
+	-- ⚠️ 2026-09-17: this used to be drawn the OTHER WAY ROUND (white at x = 0), while
+	-- UpdateColor() maps the pixel to `saturation = 1 - x` and SetColor() parks the grip at
+	-- `1 - s` - both taken verbatim from GMod's dcolorcube.lua.  The square therefore showed
+	-- the *opposite* of the colour the grip actually selected: the player model selector's
+	-- colour mixer looked "inverted" (drag to the left, where the square is white, and the
+	-- colour comes out fully saturated).  The DSlider below maps slideX = 0 to the left edge
+	-- (lua/vgui/DSlider.lua:131), which is what settles the direction.
 	local steps = math.max( 2, math.min( w, 64 ) )
 	local stepW = w / steps
 
 	for i = 0, steps - 1 do
-		local t = i / ( steps - 1 )				-- 0 = white, 1 = hue
-		local alpha = 255 * ( 1 - t )
+		local t = i / ( steps - 1 )				-- 0 = hue, 1 = white
+		local alpha = 255 * t
 
 		surface.DrawSetColor( 255, 255, 255, alpha )
 		surface.DrawFilledRect( math.floor( i * stepW ), 0,
@@ -186,7 +194,9 @@ function PANEL:Paint( w, h )
 		surface.DrawFilledRect( 0, math.floor( i * stepH ), w, math.ceil( ( i + 1 ) * stepH ) )
 	end
 
-	self:DrawGrip( w, h )
+	-- the 2-D grip (a box), not DSlider's 1-D groove+grip: both axes of a cube mean
+	-- something (saturation on X, value on Y).  See DSlider:DrawBoxGrip.
+	self:DrawBoxGrip( w, h )
 end
 
 --- Wiki: "Panel:PaintOver" (GMod's DColorCube draws the frame here).

@@ -51,12 +51,21 @@ end
 
 -- The engine bridge (cvar.lua CallGlobalChangeCallbacks) calls this on every change.
 -- Each stored callback is either a plain function or { func, identifier }.
+--
+-- Re-entrancy guard: a callback that writes ITS OWN convar would re-enter here
+-- for the same name and recurse until the C stack dies.  (The engine bridge now
+-- also suppresses same-value notifications - cvar.lua - which is the common
+-- shape; this guard covers callbacks that flip between values.)
+local InDispatch = {}
+
 function OnConVarChanged( name, old, new )
 	local tab = ConVars[ name ]
 	if ( tab == nil ) then return end
+	if ( InDispatch[ name ] ) then return end
 
 	-- Iterate over slots by index and tolerate nils: a callback may Add/RemoveChangeCallback
 	-- and mutate the list while we walk it.
+	InDispatch[ name ] = true
 	for i = 1, #tab do
 		local cb = tab[ i ]
 		if ( cb ~= nil ) then
@@ -67,6 +76,7 @@ function OnConVarChanged( name, old, new )
 			end
 		end
 	end
+	InDispatch[ name ] = nil
 end
 
 function AddChangeCallback( name, func, identifier )

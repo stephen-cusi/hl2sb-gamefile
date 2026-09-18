@@ -231,6 +231,11 @@ function PANEL:Paint( w, h )
 	-- (wiki: render.SetLocalModelLights).
 	if ( render.SetLocalModelLights ) then render.SetLocalModelLights() end
 
+	-- The same is true of the local cubemap a PreDrawModel bound (the player model
+	-- selector binds editor/cubemap so the preview does not inherit the map's
+	-- reflections): no argument clears it again.
+	if ( render.BindLocalCubemap ) then render.BindLocalCubemap() end
+
 	render.SuppressEngineLighting( false )
 	render.PopView3D()
 

@@ -1,20 +1,19 @@
 HL2SB sibling-game detection -- realm=server
 gameDir=d:\srceng\hl2sb
 selfName=hl2sb
-baseDirs=12
+baseDirs=11
 found=3
-probe VPKEdit-Windows-Standalone-Compatibility-msvc-Release gameinfo=0
-probe hl2mp vpkdir gameinfo=0
-probe garrysmod_old_20260914_001820 gameinfo=0
-probe platform gameinfo=0
-probe garrysmod gameinfo=1
-probe mmod weaponpack gameinfo=0
-probe Users gameinfo=0
-probe _weapon_backup gameinfo=0
-probe hl2mp gameinfo=1
 probe bin gameinfo=0
+probe VPKEdit-Windows-Standalone-Compatibility-msvc-Release gameinfo=0
 probe hl2 gameinfo=1
-base dirs: _weapon_backup,bin,garrysmod,garrysmod_old_20260914_001820,hl2,hl2mp,hl2mp vpkdir,hl2sb,mmod weaponpack,platform,Users,VPKEdit-Windows-Standalone-Compatibility-msvc-Release
+probe Users gameinfo=0
+probe mmod weaponpack gameinfo=0
+probe hl2mp vpkdir gameinfo=0
+probe garrysmod gameinfo=1
+probe _weapon_backup gameinfo=0
+probe platform gameinfo=0
+probe hl2mp gameinfo=1
+base dirs: _weapon_backup,bin,garrysmod,hl2,hl2mp,hl2mp vpkdir,hl2sb,mmod weaponpack,platform,Users,VPKEdit-Windows-Standalone-Compatibility-msvc-Release
   garrysmod / garrysmod / 0
   hl2 / Half-Life 2 / 220
   hl2mp / HL2 Deathmatch / 320

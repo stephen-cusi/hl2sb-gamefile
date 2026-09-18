@@ -482,6 +482,47 @@ if ( CLIENT and surface and vgui ) then
 			end
 
 			--=================================================================
+			-- GMod "DLabel" methods that this fork's DButton cannot reach.
+			--
+			-- In GMod, DButton inherits DLabel, so DButton:SetWrap / SetContentAlignment
+			-- come for free -- and that is exactly what the GMod-style spawnmenu does to
+			-- its text-only icons (lua/autorun/client/hl2sb_spawnmenu_gmod.lua:282-283):
+			--
+			--     icon = vgui.Create( "DButton" )
+			--     icon:SetWrap( true )
+			--     icon:SetContentAlignment( 5 )
+			--
+			-- which raised "attempt to call a nil value (method 'SetWrap')" 21 times and
+			-- left +smenu broken.  This fork's DButton is a Panel, and the LabelMeta
+			-- versions below are not on its chain, so give Panel the same two methods.
+			-- (The engine's vgui::Label HAS SetWrap - public/vgui_controls/Label.h:154 -
+			--  but no Lua binding, so the flag is recorded here.)
+			--=================================================================
+
+			if ( PanelMeta.SetWrap == nil ) then
+				function PanelMeta:SetWrap( bWrap )
+					self.m_bHL2SBWrap = bWrap and true or false
+				end
+
+				function PanelMeta:GetWrap()
+					return self.m_bHL2SBWrap == true
+				end
+			end
+
+			if ( PanelMeta.SetContentAlignment == nil ) then
+				function PanelMeta:SetContentAlignment( align )
+					self.m_iContentAlignment = align
+					if ( self.SetContentAlignmentInternal ~= nil ) then
+						self:SetContentAlignmentInternal( align )
+					end
+				end
+
+				function PanelMeta:GetContentAlignment()
+					return self.m_iContentAlignment or 0
+				end
+			end
+
+			--=================================================================
 			-- HL2SB: Panel:HasParent( pnl )
 			--
 			-- GMod's vgui2 has Panel::HasParent(VPANEL) and binds it; this
@@ -690,3 +731,43 @@ if ( _E ~= nil ) then
 end
 
 include( "modules/gmod_compatibility/sh_enumerations.lua" )
+
+-- ===========================================================================
+-- GMod's Entity:SetNoDraw / Entity:GetNoDraw
+--
+-- GMod implements these on EF_NODRAW (garrysmod/lua/includes/modules/
+-- gmod_compatibility/sh_init.lua:772-782, "self:AddEffects( _E.ENTITY_EFFECT.NO_DRAW )"),
+-- and that file is never loaded here -- which broke every caller:
+--
+--   lua/vgui/DModelPanel.lua:131  DModelPanel:SetModel -> self.Entity:SetNoDraw( true )
+--       (the player model selector died there: "attempt to call a nil value (method
+--        'SetNoDraw')", with the window already drawn and empty)
+--   lua/includes/modules/render.lua:183   ent:SetNoDraw( true )
+--   lua/includes/modules/halo.lua:75      if ( !IsValid( v ) or v:GetNoDraw() )
+--
+-- The engine bindings are all present: AddEffects / RemoveEffects / IsEffectActive
+-- (game/shared/lua/lbaseentity_shared.cpp:3298/3504/3455).  This fork's
+-- sh_enumerations.lua publishes the flag as the bare global EF_NODRAW (= 32, :400)
+-- rather than through _E.ENTITY_EFFECT, so that is what is used here, with the
+-- literal as a last resort.  This block sits after the sh_enumerations include so the
+-- constant is already defined.
+-- ===========================================================================
+local hl2sb_EntityMeta = FindMetaTable( "Entity" )
+
+if ( hl2sb_EntityMeta ~= nil and hl2sb_EntityMeta.SetNoDraw == nil ) then
+	local hl2sb_NoDraw = EF_NODRAW or 32
+
+	--- GMod: toggles EF_NODRAW on the entity.
+	function hl2sb_EntityMeta:SetNoDraw( b )
+		if ( b ) then
+			self:AddEffects( hl2sb_NoDraw )
+		else
+			self:RemoveEffects( hl2sb_NoDraw )
+		end
+	end
+
+	function hl2sb_EntityMeta:GetNoDraw()
+		return self:IsEffectActive( hl2sb_NoDraw )
+	end
+
+	Msg( "[HL2SB]   Entity:SetNoDraw / GetNoDraw added (EF_NODRAW=" .. tostring( hl2sb_NoDraw ) .. ")\n" )end

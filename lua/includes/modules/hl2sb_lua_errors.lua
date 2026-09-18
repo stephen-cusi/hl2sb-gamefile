@@ -57,73 +57,137 @@ end
 
 local window
 
+-- GMod's colours for this kind of list: the message is what you must read, the
+-- traceback line is context.  The engine Label binding grew SetTextColor for
+-- exactly this (lLabel.cpp) -- before it had no colour setter at all, so the
+-- window was monochrome even though its own comment promised colours.
+local COL_HEADER = Color and Color( 235, 235, 235 ) or nil
+local COL_MESSAGE = Color and Color( 255, 90, 90 ) or nil
+local COL_TRACE   = Color and Color( 170, 170, 170 ) or nil
+local COL_IDLE    = Color and Color( 200, 200, 200 ) or nil
+
+-- Applies the colour on whichever control this realm ended up with; both the
+-- derma DLabel and the engine Label expose SetTextColor now.
+local function Colour( panel, clr )
+    if ( panel and clr and panel.SetTextColor ) then
+        panel:SetTextColor( clr )
+    end
+    return panel
+end
+
 local function OpenErrors()
     if ( window ) then
         window:Close()
         window = nil
     end
 
-    local frame = vgui.Create( "DFrame", rootPanel(), "HL2SB_LuaErrors" )
+    -- Prefer the derma window (scrollable, skinned); the plain engine Frame
+    -- version stays as the fallback for realms without the derma stack.
+    local useDerma = ( derma and derma.DefineControl ) and true or false
+    -- This fork's Lua parser rejects `f( a and b or c )`, so the class names are
+    -- picked once here instead of inline in the calls below.
+    local sLabel = useDerma and "DLabel" or "Label"
+    local sButton = useDerma and "DButton" or "Button"
+
+    local frame
+    if ( useDerma ) then
+        frame = vgui.Create( "DFrame", rootPanel(), "HL2SB_LuaErrors" )
+    else
+        frame = vgui.Frame and vgui.Frame( rootPanel(), "HL2SB_LuaErrors", true )
+    end
+
     if ( not frame ) then
         print( "[HL2SB] could not create the error window (vgui.Create returned nothing)" )
         return
     end
     window = frame
 
-    frame:SetSize( math.min( 900, ScrW() - 80 ), math.min( 600, ScrH() - 80 ) )
-    frame:SetPos( ScrW() / 2 - frame:GetWide() / 2, ScrH() / 2 - frame:GetTall() / 2 )
-    frame:SetTitle( "Lua 错误  (" .. #Errors .. ")" )
-    frame:MakePopup()
-    frame:SetVisible( true )
+    local wWide = math.min( 900, ScrW() - 80 )
+    local wTall = math.min( 600, ScrH() - 80 )
 
-    -- A header line, coloured, then one label per error.  No scroll panel exists
-    -- in HL2SB yet, so the list is capped at what fits.
-    local header = vgui.Create( "Label", frame, "Header" )
-    header:SetPos( 16, 36 )
-    header:SetSize( frame:GetWide() - 32, 22 )
-    if ( #Errors == 0 ) then
-        header:SetText( "目前没有 Lua 错误报告" )
-    else
-        header:SetText( "最近 " .. #Errors .. " 条错误（最新的在最上面）" )
+    frame:SetSize( wWide, wTall )
+    frame:SetPos( math.max( 0, ScrW() / 2 - wWide / 2 ), math.max( 0, ScrH() / 2 - wTall / 2 ) )
+    frame:SetTitle( "Lua 错误  (" .. #Errors .. ")" )
+    if ( frame.MakePopup ) then frame:MakePopup() end
+    if ( frame.SetVisible ) then frame:SetVisible( true ) end
+    if ( frame.Activate ) then frame:Activate() end
+
+    local host = frame
+    local listTop = 40
+    local listH = wTall - 40 - 48
+
+    if ( useDerma ) then
+        local sheet = vgui.Create( "DScrollPanel", frame, "List" )
+        sheet:SetPos( 8, listTop - 4 )
+        sheet:SetSize( wWide - 16, listH )
+        host = sheet:GetCanvas() or sheet
+        listTop = 4
     end
 
-    local y = 66
+    -- A coloured header line, then one coloured entry per error.
+    local header = vgui.Create( sLabel, frame, "Header" )
+    header:SetPos( 16, 16 )
+    header:SetSize( wWide - 32, 22 )
+    if ( #Errors == 0 ) then
+        header:SetText( "目前没有 Lua 错误报告" )
+        Colour( header, COL_IDLE )
+    else
+        header:SetText( "最近 " .. #Errors .. " 条错误（最新的在最上面）" )
+        Colour( header, COL_HEADER )
+    end
+
+    local y = listTop
     local shown = 0
     for _, entry in ipairs( Errors ) do
-        if ( y + 46 > frame:GetTall() - 48 ) then break end
-
-        local label = vgui.Create( "Label", frame, "Err" .. shown )
+        local label = vgui.Create( sLabel, host, "Err" .. shown )
         label:SetPos( 16, y )
-        label:SetSize( frame:GetWide() - 32, 20 )
-        label:SetText( string.format( "[%s] %s", string.format( "%.0f", entry.time ), summarise( entry.message ) ) )
+        label:SetSize( wWide - 48, 20 )
+        label:SetText( string.format( "[%.0fs] %s", entry.time or 0, summarise( entry.message ) ) )
+        Colour( label, COL_MESSAGE )
 
         -- The first frame of the traceback, which is where it actually broke.
         local where = entry.traceback:match( "\n\t([^\n]+)" ) or ""
         if ( where ~= "" ) then
-            local sub = vgui.Create( "Label", frame, "Loc" .. shown )
-            sub:SetPos( 32, y + 20 )
-            sub:SetSize( frame:GetWide() - 48, 20 )
+            y = y + 20
+            local sub = vgui.Create( sLabel, host, "Loc" .. shown )
+            sub:SetPos( 32, y )
+            sub:SetSize( wWide - 64, 20 )
             sub:SetText( where )
+            Colour( sub, COL_TRACE )
         end
 
-        y = y + 46
+        y = y + 26
         shown = shown + 1
     end
 
-    local clear = vgui.Create( "Button", frame, "Clear", "清除" )
-    clear:SetPos( 16, frame:GetTall() - 40 )
-    clear:SetSize( 120, 28 )
-    clear.DoClick = function()
-        Errors = {}
-        OpenErrors()
+    if ( useDerma ) then
+        local canvas = host
+        if ( canvas.SetTall ) then canvas:SetTall( math.max( y, listH ) ) end
+        -- the scroll range comes from the canvas height (kept out of an `and`
+        -- expression: this fork's Lua parser rejects method calls there)
+        local sheet = nil
+        if ( host.GetParent ) then sheet = host:GetParent() end
+        if ( sheet and sheet.SetContentHeight ) then sheet:SetContentHeight( y + 4 ) end
     end
 
-    local close = vgui.Create( "Button", frame, "Close", "关闭" )
-    close:SetPos( frame:GetWide() - 136, frame:GetTall() - 40 )
-    close:SetSize( 120, 28 )
-    close.DoClick = function()
-        frame:Close()
-        window = nil
+    local clear = vgui.Create( sButton, frame, "Clear", "清除" )
+    if ( clear ) then
+        clear:SetPos( 16, wTall - 40 )
+        clear:SetSize( 120, 28 )
+        clear.DoClick = function()
+            Errors = {}
+            OpenErrors()
+        end
+    end
+
+    local close = vgui.Create( sButton, frame, "Close", "关闭" )
+    if ( close ) then
+        close:SetPos( wWide - 136, wTall - 40 )
+        close:SetSize( 120, 28 )
+        close.DoClick = function()
+            frame:Close()
+            window = nil
+        end
     end
 
     print( "[HL2SB] hl2sb_errors: " .. #Errors .. " error(s) collected" )

@@ -1862,6 +1862,13 @@ local function BuildWindow()
 
 	local OPT_W, OPT_ROWS_H = 190, 180
 
+	-- HL2SB: the local has to exist BEFORE optBtn.DoClick is defined.  It used to be
+	-- declared after this closure (line ~1875), so the closure saw the GLOBAL optList
+	-- (nil) and every click raised
+	--     hl2sb_spawnmenu.lua:1871: attempt to index a nil value (global 'optList')
+	-- (8 of them in one session).
+	local optList
+
 	local optBtn = vgui.Create( "DButton", content )
 	optBtn:SetText( "NPC weapon   +" )
 	optBtn:SetPos( PAD, top )
@@ -1872,7 +1879,7 @@ local function BuildWindow()
 		self:SetText( MENU.bOptOpen and "NPC weapon   -" or "NPC weapon   +" )
 	end
 
-	local optList = vgui.Create( "DPanel", content )
+	optList = vgui.Create( "DPanel", content )
 	optList:SetPos( PAD, top + 21 )
 	optList:SetSize( OPT_W, OPT_ROWS_H )
 	optList:SetVisible( false )

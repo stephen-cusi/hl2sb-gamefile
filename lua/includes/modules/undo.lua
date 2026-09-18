@@ -782,6 +782,13 @@ local function HL2SB_UndoNow()
 	return flTime
 end
 
+-- HL2SB: forward declaration.  CC_UndoLast_Body's compaction branch calls
+-- CC_UndoLast( pl ), but the actual definition below was a `local function`
+-- AFTER this point -- out of scope there, so the call resolved to the global
+-- nil and every undo that removed nothing raised
+-- "attempt to call a nil value (global 'CC_UndoLast')".
+local CC_UndoLast
+
 local function CC_UndoLast_Body( pl, command, args )
 
 	local flNow = HL2SB_UndoNow()
@@ -880,7 +887,7 @@ end
 -- address in the minidumps).  pcall-based catching does work on the ordinary
 -- paths (that is why "[timer] ... failed:" lines appear), so catching here keeps
 -- the error visible as text instead of killing the process.
-local function CC_UndoLast( pl, command, args )
+CC_UndoLast = function( pl, command, args )
 	local ok, err = pcall( CC_UndoLast_Body, pl, command, args )
 
 	if ( !ok ) then

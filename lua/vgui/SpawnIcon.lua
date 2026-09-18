@@ -179,6 +179,12 @@ function PANEL:SetModel( mdl, iSkin, BodyGroups )
 
 	if ( IsValid( self.Icon ) ) then
 		self.Icon:SetModel( mdl, iSkin, BodyGroups )
+
+		-- engine LModelPanel (ModelImage) keeps the camera the model was loaded with
+		-- unless it is asked to fit again; without this the thumbnails of models whose
+		-- bounds differ from the modelinfo defaults framed the head only
+		-- (2026-09-17 screenshot).  RefitCamera is the binding for FitCameraToModel.
+		if ( self.Icon.RefitCamera ) then self.Icon:RefitCamera() end
 	end
 
 	if ( iSkin && iSkin > 0 ) then

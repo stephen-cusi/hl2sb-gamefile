@@ -47,14 +47,41 @@ end
 --- GMod: DLabel:SetDark( b ) / SetBright( b ) -- "sets the text of the label to be
 --- dark/bright colored in accordance with the currently active Derma skin"
 --- (GMod's lua/vgui/dlabel.lua:107-121; its AccessorFunc pair is m_bDark/m_bBright).
---- This fork's skin defines no per-state label colour, so the two values
---- DCheckBoxLabel:SetDark already uses (lua/vgui/DCheckBoxLabel.lua:67) are what
---- paints here.  ContextBase:Init calls SetDark( true ) on its label.
+---
+--- ⚠️ These used to hardcode Color( 60, 60, 60 ) for "dark", which is invisible on every
+--- panel this fork has (they are all dark): in the player model selector the category
+--- header printed "Other" barely legibly (2026-09-17, seen in a screenshot).  GMod asks
+--- the skin - skins/default.lua:267-271 has the whole Colours.Label group, and this
+--- fork's lua/skins/hl2sb_default.lua has it too.  The hardcoded pair stays as the
+--- fallback for a skin that defines no such group, so nothing changes there.
+local FALLBACK_LABEL_DARK = Color( 60, 60, 60, 255 )
+local FALLBACK_LABEL_BRIGHT = Color( 255, 255, 255, 255 )
+
+--- GMod: DLabel:UpdateColours( skin ) -- the scheme pass asks for the colour (DLabel's
+--- ApplySchemeSettings in this file calls it), so the skin's values keep winning after a
+--- later skin/theme pass too.
+function PANEL:UpdateColours( skin )
+	if ( self.m_bBright ) then return self:SetTextColor( self:SkinLabelColour( skin, "Bright" ) ) end
+	if ( self.m_bDark ) then return self:SetTextColor( self:SkinLabelColour( skin, "Dark" ) ) end
+
+	return self:SetTextColor( self.m_colText )
+end
+
+--- The skin's Colours.Label[ key ], or this file's own default pair.
+function PANEL:SkinLabelColour( skin, strKey )
+	skin = skin or ( self.GetSkin and self:GetSkin() )
+	local col = skin and skin.Colours and skin.Colours.Label and skin.Colours.Label[ strKey ]
+
+	if ( col ) then return col end
+
+	return ( strKey == "Dark" ) and FALLBACK_LABEL_DARK or FALLBACK_LABEL_BRIGHT
+end
+
 function PANEL:SetDark( bDark )
 	self.m_bDark = bDark and true or false
 	if ( self.m_bDark ) then self.m_bBright = false end
 
-	self:SetTextColor( self.m_bDark and Color( 60, 60, 60, 255 ) or Color( 255, 255, 255, 255 ) )
+	self:SetTextColor( self:SkinLabelColour( nil, "Dark" ) )
 end
 
 function PANEL:GetDark()
@@ -65,7 +92,7 @@ function PANEL:SetBright( bBright )
 	self.m_bBright = bBright and true or false
 	if ( self.m_bBright ) then self.m_bDark = false end
 
-	self:SetTextColor( self.m_bBright and Color( 255, 255, 255, 255 ) or Color( 60, 60, 60, 255 ) )
+	self:SetTextColor( self:SkinLabelColour( nil, "Bright" ) )
 end
 
 function PANEL:GetBright()

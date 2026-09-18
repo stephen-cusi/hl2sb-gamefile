@@ -1,22 +1,21 @@
 HL2SB content dialog -- Games page
 self=PropertyPage: "(no name)" type(self)=panel parent=PropertyDialog: "ContentDialog"
-detector=function: 00000220536C6EA0 games=3
+detector=function: 000001D0C518F180 games=3
   game[1] folder=garrysmod name=garrysmod appId=0
   game[2] folder=hl2 name=Half-Life 2 appId=220
   game[3] folder=hl2mp name=HL2 Deathmatch appId=320
-detector: gameDir=d:\srceng\hl2sb selfName=hl2sb baseDirs=12 found=3
-  probe VPKEdit-Windows-Standalone-Compatibility-msvc-Release gameinfo=0
-  probe garrysmod_old_20260914_001820 gameinfo=0
-  probe bin gameinfo=0
-  probe _weapon_backup gameinfo=0
-  probe mmod weaponpack gameinfo=0
-  probe hl2mp vpkdir gameinfo=0
-  probe hl2mp gameinfo=1
-  probe garrysmod gameinfo=1
-  probe Users gameinfo=0
-  probe platform gameinfo=0
+detector: gameDir=d:\srceng\hl2sb selfName=hl2sb baseDirs=11 found=3
   probe hl2 gameinfo=1
-  base dirs: _weapon_backup,bin,garrysmod,garrysmod_old_20260914_001820,hl2,hl2mp,hl2mp vpkdir,hl2sb,mmod weaponpack,platform,Users,VPKEdit-Windows-Standalone-Compatibility-msvc-Release
+  probe VPKEdit-Windows-Standalone-Compatibility-msvc-Release gameinfo=0
+  probe _weapon_backup gameinfo=0
+  probe platform gameinfo=0
+  probe bin gameinfo=0
+  probe garrysmod gameinfo=1
+  probe mmod weaponpack gameinfo=0
+  probe hl2mp gameinfo=1
+  probe hl2mp vpkdir gameinfo=0
+  probe Users gameinfo=0
+  base dirs: _weapon_backup,bin,garrysmod,hl2,hl2mp,hl2mp vpkdir,hl2sb,mmod weaponpack,platform,Users,VPKEdit-Windows-Standalone-Compatibility-msvc-Release
   probe cb[1] parent=Panel: "(no name)" parentSize=(64,24)
   probe cb[2] parent=Panel: "(no name)" parentSize=(64,24)
   probe cb[3] parent=Panel: "(no name)" parentSize=(64,24)

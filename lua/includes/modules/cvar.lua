@@ -60,11 +60,22 @@ function CallGlobalChangeCallbacks( var, pOldString, flOldValue )
   -- cvars.OnConVarChanged, which nothing used to invoke - so every
   -- cvars.AddChangeCallback (and every Panel:SetConVar built on it) was dead.
   -- Per the wiki the callback receives three STRINGS: name, old value, new value.
+  --
+  -- HL2SB: only bridge an ACTUAL change.  The engine fires CV_GlobalChange even
+  -- when a script writes the value it already has, and without this guard a
+  -- derma convar panel loops forever: ConVarChanged applies the value ->
+  -- OnValueChanged -> RunConsoleCommand writes the SAME value -> callback fires
+  -- again -> ... (C stack overflow; the minecraft SWEP's block-health slider
+  -- froze the game this way).  GMod notifies on change only.
   local cvars = GlobalTable.cvars   -- resolved at call time via the captured global table
   if ( cvars and cvars.OnConVarChanged ) then
-    bError, strError = pcall( cvars.OnConVarChanged, strName, tostring( pOldString ), tostring( var:GetString() ) )
-    if ( bError == false ) then
-      Warning( "cvars.OnConVarChanged (" .. tostring( strName ) .. ") Failed: " .. tostring( strError ) .. "\n" )
+    local strNew = tostring( var:GetString() )
+    local strOld = tostring( pOldString )
+    if ( strNew ~= strOld ) then
+      bError, strError = pcall( cvars.OnConVarChanged, strName, strOld, strNew )
+      if ( bError == false ) then
+        Warning( "cvars.OnConVarChanged (" .. tostring( strName ) .. ") Failed: " .. tostring( strError ) .. "\n" )
+      end
     end
   end
 end

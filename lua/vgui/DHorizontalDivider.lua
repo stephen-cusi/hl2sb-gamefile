@@ -124,11 +124,26 @@ function PANEL:GetHoldPos()	return self.m_iHoldPos end
 -- layout
 -------------------------------------------------------------------------------
 --- Clamp the requested left width against both minimums.  Returns leftW, rightW.
+---
+--- ⚠️ `m_iLeftWidth` is the REQUEST and must never receive the clamped result back:
+--- while the panel is being docked it is laid out with a bogus width (0, or a few
+--- pixels), and at w = 8 the right side alone exceeds the whole divider, so the clamp
+--- drives leftW to 0 and a write-back would destroy the caller's request for good.
+--- That is exactly what happened in game (2026-09-17): the player model editor asks for
+--- half/half - `SetLeftWidth( window:GetWide() / 2 )` right after `Dock( FILL )` - and
+--- got a 150px preview column, with the model squashed into a 7-degree FOV sliver.
+--- Only a real drag (PANEL:ApplyDrag) writes m_iLeftWidth.
 function PANEL:GetClampedWidths()
 	local w = self:GetWide()
 
 	local leftW = self.m_iLeftWidth
 	local divW = self.m_iDividerWidth
+
+	if ( w <= divW ) then
+		-- no usable width yet: report the request unchanged, the next layout settles it
+		return leftW, math.max( 0, w - divW - leftW )
+	end
+
 	local rightW = w - divW - leftW
 
 	if ( leftW < self.m_iLeftMin ) then
@@ -144,8 +159,6 @@ function PANEL:GetClampedWidths()
 	-- a divider narrower than the two minimums cannot satisfy both: the left side wins
 	if ( leftW < 0 ) then leftW = 0 end
 	if ( rightW < 0 ) then rightW = 0 end
-
-	self.m_iLeftWidth = leftW
 
 	return leftW, rightW
 end

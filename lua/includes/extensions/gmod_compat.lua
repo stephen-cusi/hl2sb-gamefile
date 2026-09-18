@@ -356,7 +356,13 @@ if ( entmeta ~= nil ) then
 	Alias( entmeta, "GetVelocity",   entmeta.GetAbsVelocity )
 	Alias( entmeta, "SetVelocity",   entmeta.SetAbsVelocity )
 	Alias( entmeta, "GetClass",      entmeta.GetClassname )
-	Alias( entmeta, "GetTable",      entmeta.GetClassname )
+	-- HL2SB: GetTable has to answer the entity's per-entity Lua field table (the
+	-- same table the engine __newindex writes), never the classname.  The old
+	-- GetClassname alias made ent:GetTable() a STRING, so tab[key] fell through
+	-- the string metatable and every custom entity field read back nil
+	-- silently - player.lua's __index fallback (Owner.C4s in cod_c4) and
+	-- construct.lua's ent:GetTable().toggle both died on it.
+	Alias( entmeta, "GetTable",      entmeta.GetRefTable )
 	Alias( entmeta, "Health",        entmeta.GetHealth )
 	Alias( entmeta, "SetHealth",     entmeta.SetHealth )
 	Alias( entmeta, "GetOwner",      entmeta.GetOwnerEntity )
@@ -416,6 +422,39 @@ if ( hl2meta ~= nil ) then
 	Alias( hl2meta, "Nick",     hl2meta.GetPlayerName )
 	Alias( hl2meta, "Alive",    hl2meta.IsAlive )
 	Alias( hl2meta, "GetModel", hl2meta.GetModelName )
+end
+
+-- ===========================================================================
+-- 4b. NW 库的 GMod 旧拼法（SetNetworkedBool == SetNWBool 等）
+--     minecraft 等老插件全用 Networked 拼法。
+-- ===========================================================================
+if ( entmeta ~= nil ) then
+	Alias( entmeta, "SetNetworkedBool",   entmeta.SetNWBool )
+	Alias( entmeta, "GetNetworkedBool",   entmeta.GetNWBool )
+	Alias( entmeta, "SetNetworkedInt",    entmeta.SetNWInt )
+	Alias( entmeta, "GetNetworkedInt",    entmeta.GetNWInt )
+	Alias( entmeta, "SetNetworkedFloat",  entmeta.SetNWFloat )
+	Alias( entmeta, "GetNetworkedFloat",  entmeta.GetNWFloat )
+	Alias( entmeta, "SetNetworkedString", entmeta.SetNWString )
+	Alias( entmeta, "GetNetworkedString", entmeta.GetNWString )
+	Alias( entmeta, "SetNetworkedEntity", entmeta.SetNWEntity )
+	Alias( entmeta, "GetNetworkedEntity", entmeta.GetNWEntity )
+	Alias( entmeta, "SetNetworkedVector", entmeta.SetNWVector )
+	Alias( entmeta, "GetNetworkedVector", entmeta.GetNWVector )
+	Alias( entmeta, "SetNetworkedAngle",  entmeta.SetNWAngle )
+	Alias( entmeta, "GetNetworkedAngle",  entmeta.GetNWAngle )
+end
+
+-- ===========================================================================
+-- 4c. ClientsideModel( model, renderGroup ) —— 客户端临时模型全局
+--     引擎侧已有 Entities.CreateClientEntity，这里补 GMod 的全局拼法。
+--     返回的实体走 CBaseFlex 元表链（继承 CBaseAnimating/CBaseEntity 方法：
+--     SetPos/SetAngles/SetSkin/SetNoDraw/DrawShadow/DrawModel/Remove/骨骼操作）。
+-- ===========================================================================
+if ( CLIENT and _G.ClientsideModel == nil and entmeta ~= nil and Entities ~= nil and Entities.CreateClientEntity ~= nil ) then
+	_G.ClientsideModel = function( model, renderGroup )
+		return Entities.CreateClientEntity( model, renderGroup )
+	end
 end
 
 -- ===========================================================================
@@ -547,3 +586,33 @@ end
 TEAM_CONNECTING = TEAM_CONNECTING or 0
 TEAM_UNASSIGNED = TEAM_UNASSIGNED or 0
 TEAM_SPECTATOR  = TEAM_SPECTATOR  or 1
+
+-- ===========================================================================
+-- 10. engine.ActiveGamemode()
+--
+-- GMod: the active gamemode's folder name.  ⚠️ It was defined ONLY in the never-loaded
+-- modules/gmod_compatibility/sh_init.lua:335 - via `Gamemodes.GetActiveName()`, a symbol
+-- from Experiment: Source that does not exist in this fork either - so addons calling it
+-- raised "attempt to call a nil value (method 'ActiveGamemode')".
+--
+-- cod_c4 throws a charge through
+--     if engine.ActiveGamemode() ~= "nzombies" then undo.Create( "C4" ) ... end
+-- (addons/cod_c4/lua/weapons/seal6-c4/shared.lua:256), i.e. right after the charge was
+-- registered in Owner.C4s, so the error killed the undo entry and the cleanup registration
+-- (and printed once per throw).
+--
+-- This fork's equivalent is the replicated `gamemode` convar
+-- (game/shared/lua/luamanager.cpp:57, default "sandbox") - the same string GMod's gamemode
+-- folder name carries.
+-- ===========================================================================
+
+if ( engine ~= nil and engine.ActiveGamemode == nil ) then
+	engine.ActiveGamemode = function()
+		local cvar = GetConVar and GetConVar( "gamemode" )
+
+		if ( cvar ~= nil ) then return cvar:GetString() end
+
+		return "sandbox"
+	end
+end
+

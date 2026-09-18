@@ -297,7 +297,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Courier New"
+				"name"		"Microsoft YaHei"
 				"tall"		"14"
 				"weight"	"400"
 				"antialias" "1"
@@ -308,7 +308,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Courier New"
+				"name"		"Microsoft YaHei"
 				"tall"		"14"
 				"weight"	"400"
 				"antialias" "1"
@@ -320,7 +320,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"9"
 				"weight"	"700"
 				"antialias" "1"
@@ -328,7 +328,7 @@ Scheme
 			}
 			"2"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"12"
 				"weight"	"700"
 				"antialias" "1"
@@ -336,7 +336,7 @@ Scheme
 			}
 			"3"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"14"
 				"weight"	"900"
 				"antialias" "1"
@@ -344,7 +344,7 @@ Scheme
 			}
 			"4"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"20"
 				"weight"	"900"
 				"antialias" "1"
@@ -352,7 +352,7 @@ Scheme
 			}
 			"5"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"24"
 				"weight"	"900"
 				"antialias" "1"
@@ -364,7 +364,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"12"
 				"weight"	"0"
 				"range"		"0x0000 0x017F"
@@ -372,7 +372,7 @@ Scheme
 			}
 			"2"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"13"
 				"weight"	"0"
 				"range"		"0x0000 0x017F"
@@ -380,7 +380,7 @@ Scheme
 			}
 			"3"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"14"
 				"weight"	"0"
 				"range"		"0x0000 0x017F"
@@ -389,7 +389,7 @@ Scheme
 			}
 			"4"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"20"
 				"weight"	"0"
 				"range"		"0x0000 0x017F"
@@ -398,7 +398,7 @@ Scheme
 			}
 			"5"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"24"
 				"weight"	"0"
 				"range"		"0x0000 0x017F"
@@ -407,7 +407,7 @@ Scheme
 			}
 			"6"
 			{
-				"name"		"Arial"
+				"name"		"Microsoft YaHei"
 				"tall"		"12"
 				"range" 		"0x0000 0x00FF"
 				"weight"		"0"
@@ -417,7 +417,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"12"
 				"weight"	"0"
 				"range"		"0x0000 0x017F" //	Basic Latin, Latin-1 Supplement, Latin Extended-A
@@ -425,7 +425,7 @@ Scheme
 			}
 			"2"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"13"
 				"weight"	"0"
 				"range"		"0x0000 0x017F" //	Basic Latin, Latin-1 Supplement, Latin Extended-A
@@ -433,7 +433,7 @@ Scheme
 			}
 			"3"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"14"
 				"weight"	"0"
 				"range"		"0x0000 0x017F" //	Basic Latin, Latin-1 Supplement, Latin Extended-A
@@ -442,7 +442,7 @@ Scheme
 			}
 			"4"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"20"
 				"weight"	"0"
 				"range"		"0x0000 0x017F" //	Basic Latin, Latin-1 Supplement, Latin Extended-A
@@ -451,7 +451,7 @@ Scheme
 			}
 			"5"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"24"
 				"weight"	"0"
 				"range"		"0x0000 0x017F" //	Basic Latin, Latin-1 Supplement, Latin Extended-A
@@ -460,14 +460,14 @@ Scheme
 			}
 			"6"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"12"
 				"range" 		"0x0000 0x00FF"
 				"weight"		"0"
 			}
 			"7"
 			{
-				"name"		"Arial"
+				"name"		"Microsoft YaHei"
 				"tall"		"11"
 				"range" 		"0x0000 0x00FF"
 				"weight"		"0"
@@ -567,7 +567,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"9"
 				"weight"	"700"
 				"antialias" "1"
@@ -575,7 +575,7 @@ Scheme
 			}
 			"2"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"13"
 				"weight"	"700"
 				"antialias" "1"
@@ -583,7 +583,7 @@ Scheme
 			}
 			"3"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"14"
 				"weight"	"900"
 				"antialias" "1"
@@ -591,7 +591,7 @@ Scheme
 			}
 			"4"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"20"
 				"weight"	"900"
 				"antialias" "1"
@@ -599,7 +599,7 @@ Scheme
 			}
 			"5"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"28"
 				"weight"	"900"
 				"antialias" "1"
@@ -608,7 +608,7 @@ Scheme
 			}
 			"6"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"40"
 				"weight"	"900"
 				"antialias" "1"
@@ -632,7 +632,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"11"
 				"weight"	"700"
 				"antialias" "1"
@@ -643,7 +643,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"14"
 				"weight"	"1000"
 				"antialias" "1"
@@ -654,7 +654,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"11"
 				"weight"	"0"
 				"antialias" "1"
@@ -665,7 +665,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"8"
 				"weight"	"700"
 				"antialias" "1"
@@ -673,7 +673,7 @@ Scheme
 			}
 			"2"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"10"
 				"weight"	"700"
 				"antialias" "1"
@@ -681,7 +681,7 @@ Scheme
 			}
 			"3"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"12"
 				"weight"	"900"
 				"antialias" "1"
@@ -689,7 +689,7 @@ Scheme
 			}
 			"4"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"16"
 				"weight"	"900"
 				"antialias" "1"
@@ -697,7 +697,7 @@ Scheme
 			}
 			"5"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"17"
 				"weight"	"1000"
 				"antialias" "1"
@@ -708,7 +708,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Courier New"
+				"name"		"Microsoft YaHei"
 				"tall"		"14"
 				"weight"	"400"
 				"outline"	"1"
@@ -718,7 +718,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Courier New"
+				"name"		"Microsoft YaHei"
 				"tall"		"14"
 				"weight"	"400"
 				"outline"	"1"
@@ -728,7 +728,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Tahoma"
+				"name"		"Microsoft YaHei"
 				"tall"		"26"
 				"weight"	"500"
 			}
@@ -737,7 +737,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Tahoma"
+				"name"		"Microsoft YaHei"
 				"tall"		"26"
 				"weight"	"500"
 				"italic"	"1"
@@ -747,7 +747,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Tahoma"
+				"name"		"Microsoft YaHei"
 				"tall"		"26"
 				"weight"	"900"
 			}
@@ -756,7 +756,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Tahoma"
+				"name"		"Microsoft YaHei"
 				"tall"		"26"
 				"weight"	"900"
 				"italic"	"1"
@@ -777,7 +777,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Trebuchet MS"
+				"name"		"Microsoft YaHei"
 				"tall"		"24"
 				"weight"	"900"
 				"range"		"0x0000 0x007F"	//	Basic Latin
@@ -789,7 +789,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Trebuchet MS"
+				"name"		"Microsoft YaHei"
 				"tall"		"18"
 				"weight"	"900"
 			}
@@ -821,7 +821,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Trebuchet MS"
+				"name"		"Microsoft YaHei"
 				"tall"		"20"
 				"weight"	"900"
 				"antialias" "1"
@@ -844,7 +844,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"9"
 				"weight"	"900"
 				"antialias" "1"
@@ -855,7 +855,7 @@ Scheme
 			// note that this scales with the screen resolution
 			"1"
 			{
-				"name"		"Trebuchet MS"
+				"name"		"Microsoft YaHei"
 				"tall"		"18"
 				"weight"	"900"
 				"antialias" "1"
@@ -866,7 +866,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"12"
 				"weight"	"700"
 				"yres"	"480 599"
@@ -874,7 +874,7 @@ Scheme
 			}
 			"2"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"13"
 				"weight"	"700"
 				"yres"	"600 767"
@@ -882,7 +882,7 @@ Scheme
 			}
 			"3"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"14"
 				"weight"	"700"
 				"yres"	"768 1023"
@@ -890,7 +890,7 @@ Scheme
 			}
 			"4"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"20"
 				"weight"	"700"
 				"yres"	"1024 1199"
@@ -898,7 +898,7 @@ Scheme
 			}
 			"5"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"24"
 				"weight"	"700"
 				"yres"	"1200 10000"
@@ -909,7 +909,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Trebuchet MS"
+				"name"		"Microsoft YaHei"
 				"tall"		"24"
 				"weight"	"900"
 				"range"		"0x0000 0x007F"	//	Basic Latin
@@ -972,7 +972,7 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"10"
 				"weight"	"0"
 				"range"		"0x0000 0x017F" //	Basic Latin, Latin-1 Supplement, Latin Extended-A
@@ -981,7 +981,7 @@ Scheme
 			}
 			"2"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"12"
 				"weight"	"0"
 				"range"		"0x0000 0x017F" //	Basic Latin, Latin-1 Supplement, Latin Extended-A
@@ -990,7 +990,7 @@ Scheme
 			}
 			"3"
 			{
-				"name"		"Verdana"
+				"name"		"Microsoft YaHei"
 				"tall"		"15"
 				"weight"	"0"
 				"range"		"0x0000 0x017F" //	Basic Latin, Latin-1 Supplement, Latin Extended-A

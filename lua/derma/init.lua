@@ -32,22 +32,26 @@ include( "derma/hl2sb_skin.lua" )
 	13px HUD text this fork already ships.
 ---------------------------------------------------------------------------]]
 
+-- HL2SB: CJK-capable faces.  Tahoma/Roboto carry no CJK glyphs, so every
+-- localised Chinese string drawn through a derma control came out as empty
+-- boxes.  Microsoft YaHei covers Latin AND CJK (standard on Vista+), so the
+-- derma UI renders both scripts with the same metrics.
 derma.CreateFont( "DermaDefault", {
-	font		= "Tahoma",
+	font		= "Microsoft YaHei",
 	size		= 13,
 	weight		= 500,
 	extended	= true
 } )
 
 derma.CreateFont( "DermaDefaultBold", {
-	font		= "Tahoma",
+	font		= "Microsoft YaHei",
 	size		= 13,
 	weight		= 800,
 	extended	= true
 } )
 
 derma.CreateFont( "DermaLarge", {
-	font		= "Roboto",
+	font		= "Microsoft YaHei",
 	size		= 32,
 	weight		= 500,
 	extended	= true

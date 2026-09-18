@@ -18,9 +18,11 @@
 -- as it loads and silently gives up without it.
 if ( not file and Files ) then file = Files end
 
-include( "../includes/extensions/table.lua" )
-include( "../includes/extensions/vgui.lua" )
-include( "../autorun/detect_source_games.lua" )
+-- HL2SB: root-relative (see basepanel.lua) - include() does not resolve "../", it produced
+-- hl2sb\lua\gameuiincludes/extensions/table.lua and tried to open that.
+include( "includes/extensions/table.lua" )
+include( "includes/extensions/vgui.lua" )
+include( "autorun/detect_source_games.lua" )
 
 local CContentSubGames = {}
 local m_CheckBoxes = {}
@@ -202,21 +204,38 @@ end
     run -- and "the dialog is empty and nothing was printed" was exactly how the
     missing file library hid itself once already.
 ]]
-local function Dump( lines, name )
-    -- Both channels on purpose.  The console is the only feedback the user gets
-    -- when the page comes up empty ("no output at all" was the symptom that hid
-    -- the missing file library), and the file survives for review afterwards.
+local m_DumpedNames = {}
+-- Set by `hl2sb_contentdump` for the duration of its OnPageShow call, so the
+-- on-demand dump is not swallowed by the once-per-session guard.
+local m_bForceDump = false
+
+local function Dump( lines, name, bForce )
+    name = name or "hl2sb_contentdialog.txt"
+
+    -- Once per session per file: the same numbers on every page show are pure
+    -- console noise (they used to print twice per open -- OnPageShow runs again
+    -- when the sheet takes the page over -- and the whole block repeated).
+    -- `hl2sb_contentdump` passes bForce to get a fresh one on demand.
+    if ( not bForce and m_DumpedNames[ name ] ) then
+        return
+    end
+    m_DumpedNames[ name ] = true
+
     local say = Msg or print
-    if ( say ) then
+
+    if ( file and file.Write ) then
+        file.Write( name, table.concat( lines, "\n" ) .. "\n" )
+        -- One line on the console: the file has the details, the user still
+        -- learns that a dump happened and where it went.
+        if ( say ) then
+            say( "[HL2SB] " .. name .. " written (" .. #lines .. " lines)\n" )
+        end
+    elseif ( say ) then
+        -- No file library in this realm: the console is the only channel left,
+        -- so print the whole thing.
         for _, line in ipairs( lines ) do
             say( "[HL2SB] " .. line .. "\n" )
         end
-    end
-
-    if ( file and file.Write ) then
-        file.Write( name or "hl2sb_contentdialog.txt", table.concat( lines, "\n" ) .. "\n" )
-    elseif ( say ) then
-        say( "[HL2SB] content dialog: no file library in this realm, see the lines above\n" )
     end
 end
 
@@ -376,7 +395,7 @@ function CContentSubGames:OnPageShow()
             i, Geometry( entry.panel ), tostring( p ), pw, ph )
     end
 
-    Dump( lines, "hl2sb_contentdialog_shown.txt" )
+    Dump( lines, "hl2sb_contentdialog_shown.txt", m_bForceDump )
 end
 
 function CContentSubGames:OnResetData()
@@ -407,6 +426,8 @@ vgui.register( CContentSubGames, "CContentSubGames", "PropertyPage" )
 -- only way to see the numbers once the dialog has been up for a while (the two
 -- dumps above are written at build and at page-show time).
 concommand.Create( "hl2sb_contentdump", function()
+    m_bForceDump = true
+
     if ( m_Page ) then
         m_Page:OnPageShow()
     else
@@ -415,4 +436,6 @@ concommand.Create( "hl2sb_contentdump", function()
             say( "[HL2SB] content dialog page not built yet\n" )
         end
     end
+
+    m_bForceDump = false
 end, "Dump the Content dialog's Games page geometry.", FCVAR_CLIENTDLL )
