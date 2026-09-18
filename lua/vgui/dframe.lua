@@ -236,9 +236,35 @@ function PANEL:IsActive()
 	return self.m_bActive
 end
 
+--- GMod's resize grip: a `SIZEGRIP`-sized square in the bottom-right corner that drags
+--- the frame's size, clamped by SetMinWidth/SetMinHeight (DFrame:SetSizable( true ) used
+--- to be a flag this fork stored and never acted on, so every GMod window that asks to be
+--- resizable - the player model selector does - simply could not be).
+local SIZEGRIP = 16
+
+function PANEL:IsSizeGripPoint( x, y )
+	if ( not self.m_bSizable ) then return false end
+
+	local w, h = self:GetSize()
+
+	return x >= w - SIZEGRIP and y >= h - SIZEGRIP
+end
+
 function PANEL:OnMousePressed( code )
-	if ( code == MOUSE_LEFT and self:IsDraggable() ) then
-		local x, y = derma.CursorPos( self )
+	if ( code != MOUSE_LEFT ) then return end
+
+	local x, y = derma.CursorPos( self )
+
+	-- the grip is in the bottom-right corner; it wins over the title bar / dragging
+	if ( self:IsSizeGripPoint( x, y ) ) then
+		self.m_bResizing = true
+		self.m_nResizeW, self.m_nResizeH = self:GetSize()
+		self.m_nResizeX, self.m_nResizeY = x, y
+		self:MouseCapture( true )
+		return
+	end
+
+	if ( self:IsDraggable() ) then
 		if ( y < TITLEBAR_TALL and not self:IsCloseButtonPoint( x, y ) ) then
 			self.m_bDragMoving = true
 			self.m_nDragOffX = x
@@ -254,6 +280,23 @@ function PANEL:IsCloseButtonPoint( x, y )
 end
 
 function PANEL:OnCursorMoved( x, y )
+	if ( self.m_bResizing ) then
+		local w = math.max( self:GetMinWidth() or 0, self.m_nResizeW + ( x - self.m_nResizeX ) )
+		local h = math.max( self:GetMinHeight() or 0, self.m_nResizeH + ( y - self.m_nResizeY ) )
+
+		self:SetSize( w, h )
+		return
+	end
+
+	-- show the diagonal resize cursor while hovering the grip, like GMod does
+	if ( self.SetCursor ) then
+		local want = self:IsSizeGripPoint( x, y ) and "sizenwse" or "arrow"
+		if ( self.m_strCursor ~= want ) then
+			self:SetCursor( want )
+			self.m_strCursor = want
+		end
+	end
+
 	if ( not self.m_bDragMoving ) then return end
 
 	-- CursorPos is panel-relative; the window moves so that the point the drag
@@ -263,6 +306,11 @@ function PANEL:OnCursorMoved( x, y )
 end
 
 function PANEL:OnMouseReleased( code )
+	if ( self.m_bResizing ) then
+		self.m_bResizing = false
+		self:MouseCapture( false )
+	end
+
 	if ( self.m_bDragMoving ) then
 		self.m_bDragMoving = false
 		self:MouseCapture( false )

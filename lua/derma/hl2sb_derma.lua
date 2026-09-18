@@ -27,6 +27,16 @@
 
 if ( not ( ( CLIENT or _GAMEUI ) and surface and vgui ) ) then return end
 
+-- HL2SB: this file is also reached from the MAIN MENU (GameUI) state --
+-- lua/gameui/addonsdialog.lua builds its dialog with it -- where lua/includes/util.lua has
+-- not run, so GMod's istable() does not exist.  vgui.Create() below then died with
+--
+--     lua/derma/hl2sb_derma.lua:190: attempt to call a nil value (global 'istable')
+--
+-- and the addons dialog fell back to its plain path (which failed too, so the menu printed
+-- a wall of red).  A local fallback keeps the framework usable in either state.
+local istable = istable or function( v ) return type( v ) == "table" end
+
 -- GMod scripts call ErrorNoHalt / Warning for non-fatal problems.  This fork
 -- only registers dbg.Warning, and several older copied modules already assume a
 -- bare global, so publish one on top of the engine's.

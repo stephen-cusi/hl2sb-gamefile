@@ -188,6 +188,16 @@ function PANEL:UpdateDefaultColor()
 	self.m_DefaultColor = table.Copy( self.m_Color )
 end
 
+--- GMod keeps the "default" on the HSV picker: `panel.HSV:SetDefaultColor( color )`
+--- (gamemodes/sandbox/gamemode/editor_player.lua:6-11).  This fork has no HSV sub-object,
+--- so the baseline lives here - and unlike UpdateDefaultColor() it does NOT read the
+--- current colour: setting the default must never change what the panel shows.
+function PANEL:SetDefaultColor( col )
+	if ( not col ) then return end
+
+	self.m_DefaultColor = Color( col.r or 255, col.g or 255, col.b or 255, col.a or 255 )
+end
+
 --- Wiki: "Internal ... Use DColorMixer:SetColor instead!"
 function PANEL:UpdateColor( col )
 	local c = col or ( IsValid( self.cube ) and self.cube:GetRGB() ) or self.m_Color
@@ -364,23 +374,26 @@ function PANEL:PerformLayout( w, h )
 		self.Label:SetSize( w - 2 * PAD, 14 )
 	end
 
-	if ( IsValid( self.picker ) ) then
-		self.picker:SetPos( PAD, top )
-		self.picker:SetSize( PICKER_W, boxH )
-	end
-
 	if ( IsValid( self.cube ) ) then
-		self.cube:SetPos( PAD + PICKER_W + PAD, top )
+		self.cube:SetPos( PAD, top )
 		self.cube:SetSize( cubeW, boxH )
 	end
 
+	-- GMod puts the hue strip to the RIGHT of the square (dcolormixer.lua's
+	-- PerformLayout: cube first, then the picker, then the Wangs), which is what the
+	-- GMod screenshot shows; this fork had it on the left (2026-09-17).
+	if ( IsValid( self.picker ) ) then
+		self.picker:SetPos( PAD + cubeW + PAD, top )
+		self.picker:SetSize( PICKER_W, boxH )
+	end
+
 	if ( IsValid( self.alphabar ) ) then
-		self.alphabar:SetPos( PAD + PICKER_W + PAD + cubeW + PAD, top )
+		self.alphabar:SetPos( PAD + cubeW + PAD + PICKER_W + PAD, top )
 		self.alphabar:SetSize( barW, boxH )
 	end
 
 	if ( IsValid( self.Wangs ) ) then
-		self.Wangs:SetPos( PAD + PICKER_W + PAD + cubeW + PAD + barW + PAD, top )
+		self.Wangs:SetPos( PAD + cubeW + PAD + PICKER_W + PAD + barW + PAD, top )
 		self.Wangs:SetSize( wangsW, boxH )
 
 		for i, key in ipairs( { "r", "g", "b", "a" } ) do

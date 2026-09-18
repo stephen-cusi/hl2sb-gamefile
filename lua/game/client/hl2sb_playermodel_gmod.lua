@@ -134,24 +134,21 @@ local default_animations = { "idle_all_01", "menu_walk" }
 -- Helpers
 -- ---------------------------------------------------------------------------
 --- GMod: local function SetDefaultColorFromConVar( panel, convarName ).
---- Adapted for this fork's DColorMixer, which has no `HSV` sub-object: the default
---- goes in through SetColor, and UpdateDefaultColor() (no arguments here) makes it
---- the baseline the convar poll compares against.
+--- It sets the BASELINE only - `panel.HSV:SetDefaultColor( color )`
+--- (gamemodes/sandbox/gamemode/editor_player.lua:6-11) - and never touches the panel's
+--- current colour.  This fork's version used to call panel:SetColor( col ) instead, which
+--- also made the convar's DEFAULT the panel's current colour.
 local function SetDefaultColorFromConVar( panel, convarName )
 	local cv = GetConVar( convarName )
 
-	if ( not cv or not panel.SetColor ) then return end
+	if ( not cv or not panel.SetDefaultColor ) then return end
 
 	-- Vector( "r g b" ) is GMod's string overload, added to this fork's Vector()
 	-- for exactly this call (public/lua/mathlib/lvector.cpp).
 	local col = Vector( cv:GetDefault() ):ToColor()
 
 	if ( col ) then
-		panel:SetColor( col )
-
-		if ( panel.UpdateDefaultColor ) then
-			panel:UpdateDefaultColor()
-		end
+		panel:SetDefaultColor( col )
 	end
 end
 
@@ -241,46 +238,74 @@ local function BuildEditor( window )
 
 	local categorized = {}
 
-	for name, info in pairs( GetModelList() ) do
-		local catName = Phrase( info.category or "#spawnmenu.category.other" )
+	--- ⚠️ Populating is a function, not a one-shot loop.  This window is cached
+	--- (ActiveWindow) and can be built before lua/autorun/client/hl2sb_playermodels.lua
+	--- has finished its scan - the scan re-runs 5s and 15s into the map because the
+	--- custom mounts are not all on disk at autorun time - and a list built from an
+	--- empty player_manager stayed empty for the whole session: the "menu opens with
+	--- almost no models after a map reload" report.
+	local function PopulateModelList()
+		-- The window is SetDeleteOnClose(true), so this can be reached after the panels
+		-- are gone (the hook below outlives the window until it is re-registered).
+		if ( not IsValid( PanelSelect ) or not IsValid( SearchBar ) ) then return end
 
-		categorized[ catName ] = categorized[ catName ] or {}
-		table.insert( categorized[ catName ], { title = Phrase( info.title ), model = info.model, name = name } )
-	end
+		PanelSelect:CleanList()
+		categorized = {}
 
-	for catName, items in SortedPairs( categorized ) do
+		for name, info in pairs( GetModelList() ) do
+			local catName = Phrase( info.category or "#spawnmenu.category.other" )
 
-		local label = vgui.Create( "DLabel" )
-		label:SetFont( "DermaLarge" )
-		label:SetText( catName )
-		label:SetTall( 32 )
-		label:SetDark( true )
-		label:SizeToContentsX()
-		label.m_strLineState = "ownline"
-		PanelSelect:AddPanel( label )
-		label.DoClick = function() end -- Unselectable
+			categorized[ catName ] = categorized[ catName ] or {}
+			table.insert( categorized[ catName ], { title = Phrase( info.title ), model = info.model, name = name } )
+		end
 
-		for _, info in SortedPairsByMemberValue( items, "title" ) do
+		for catName, items in SortedPairs( categorized ) do
 
-			local icon = vgui.Create( "SpawnIcon" )
-			icon:SetModel( info.model )
-			icon:SetSize( 64, 64 )
-			icon:SetTooltip( info.title )
-			icon.playermodel = info.name
-			icon.model_path = info.model
-			icon.OpenMenu = function()
-				local menu = DermaMenu()
-				menu:AddOption( Phrase( "#spawnmenu.menu.copy" ), function() SetClipboardText( info.model ) end )
-					:SetIcon( "icon16/page_copy.png" )
-				menu:Open()
+			local label = vgui.Create( "DLabel" )
+			label:SetFont( "DermaLarge" )
+			label:SetText( catName )
+			label:SetTall( 32 )
+			label:SetDark( true )
+			label:SizeToContentsX()
+			label.m_strLineState = "ownline"
+			PanelSelect:AddPanel( label )
+			label.DoClick = function() end -- Unselectable
+
+			for _, info in SortedPairsByMemberValue( items, "title" ) do
+
+				local icon = vgui.Create( "SpawnIcon" )
+				icon:SetModel( info.model )
+				icon:SetSize( 64, 64 )
+				icon:SetTooltip( info.title )
+				icon.playermodel = info.name
+				icon.model_path = info.model
+				icon.OpenMenu = function()
+					local menu = DermaMenu()
+					menu:AddOption( Phrase( "#spawnmenu.menu.copy" ), function() SetClipboardText( info.model ) end )
+						:SetIcon( "icon16/page_copy.png" )
+					menu:Open()
+				end
+
+				-- ⚠️ GMod passes { cl_playermodel = info.name }; this fork's server reads
+				-- cl_playermodel as a model path, so the path goes in (see the header).
+				PanelSelect:AddPanel( icon, { cl_playermodel = info.model } )
+
 			end
-
-			-- ⚠️ GMod passes { cl_playermodel = info.name }; this fork's server reads
-			-- cl_playermodel as a model path, so the path goes in (see the header).
-			PanelSelect:AddPanel( icon, { cl_playermodel = info.model } )
 
 		end
 
+		-- Re-apply the search filter: freshly built items are all visible.
+		if ( SearchBar.OnValueChange ~= nil ) then
+			SearchBar.OnValueChange( SearchBar, SearchBar:GetText() or "" )
+		end
+	end
+
+	PopulateModelList()
+
+	-- The autorun scan announces every rebuild; pull the new models in even while this
+	-- window is closed, so the next open shows them.
+	if ( hook ~= nil and hook.Add ~= nil ) then
+		hook.Add( "HL2SB_PlayerModelsBuilt", "HL2SB_PlayerModelEditor", PopulateModelList )
 	end
 
 	SearchBar.OnValueChange = function( _, str )
@@ -365,6 +390,8 @@ local function BuildEditor( window )
 
 	-- Updating
 	local function UpdateBodyGroups( pnl, val )
+		if ( not IsValid( mdl.Entity ) ) then return end
+
 		if ( pnl.type == "bgroup" ) then
 
 			mdl.Entity:SetBodygroup( pnl.typenum, math.floor( val ) )
@@ -386,6 +413,10 @@ local function BuildEditor( window )
 		bdcontrolspanel:Clear()
 
 		bgTab.Tab:SetVisible( false )
+
+		-- Nothing to read the bodygroups from when the model could not be loaded
+		-- (lua/vgui/DModelPanel.lua reports that once and leaves Entity nil).
+		if ( not IsValid( mdl.Entity ) ) then return end
 
 		local nskins = mdl.Entity:SkinCount() - 1
 		if ( nskins > 0 ) then
@@ -433,6 +464,16 @@ local function BuildEditor( window )
 		sheet.tabScroller:InvalidateLayout()
 	end
 
+	-- ⚠️ True while UpdateFromConvars() is pushing the stored values into the two mixers.
+	-- GMod's DColorMixer fires ValueChanged from a programmatic SetColor too - SetColor ->
+	-- UpdateColor -> ValueChanged (lua/vgui/dcolormixer.lua:255-264 + :297-333) - but there
+	-- both mixers are initialised from the same two convars before the callbacks are
+	-- wired, so writing them back is a no-op.  Here UpdateFromConvars() can return early
+	-- (the preview model failed to load) or run after only one panel was refreshed, and
+	-- then a write-back would push the OTHER mixer's stale value into its convar - the
+	-- "opening the menu changes my colour / the last adjustment is not kept" report.
+	local bUpdatingFromConvars = false
+
 	local function UpdateFromConvars()
 
 		if ( not IsValid( mdl ) ) then return end
@@ -441,37 +482,48 @@ local function BuildEditor( window )
 		local modelname = player_manager.TranslatePlayerModel( model )
 		util.PrecacheModel( modelname )
 		mdl:SetModel( modelname )
-		mdl.Entity.GetPlayerColor = function() return Vector( GetConVarString( "cl_playercolor" ) ) end
+
+		-- ⚠️ The entity only exists when the model actually loaded (DModelPanel warns
+		-- once and leaves Entity nil otherwise).  Everything below needs it.
+		if ( IsValid( mdl.Entity ) ) then
+			mdl.Entity.GetPlayerColor = function() return Vector( GetConVarString( "cl_playercolor" ) ) end
+
+			PlayPreviewAnimation( mdl, model )
+			RebuildBodygroupTab()
+		end
+
+		bUpdatingFromConvars = true
 
 		plycol:SetVector( Vector( GetConVarString( "cl_playercolor" ) ) )
 		wepcol:SetVector( Vector( GetConVarString( "cl_weaponcolor" ) ) )
 
-		PlayPreviewAnimation( mdl, model )
-		RebuildBodygroupTab()
+		bUpdatingFromConvars = false
 
 	end
 
-	local function UpdateFromControls()
+	--- GMod's UpdateFromControls() writes BOTH convars from the two panels, which is
+	--- only safe when the callback fires from a real user change.  Here each mixer now
+	--- writes exactly its own convar, so the player colour and the weapon colour can
+	--- never bleed into each other (the "两个颜色连在一起" report).
+	local function UpdateFromControls( panel )
+
+		-- Programmatic refresh (window open, model switch): never write back.
+		if ( bUpdatingFromConvars ) then return end
 
 		-- GMod writes tostring( plycol:GetVector() ), because its Vector __tostring is
 		-- the bare "r g b" that its Vector( string ) overload reads back.  This fork's
 		-- __tostring is "Vector: r g b" (public/lua/mathlib/lvector.cpp:372), which the
 		-- server's sscanf( "%f %f %f" ) would read as 0 0 0 - every colour would come
 		-- out black - so the components are formatted explicitly.
-		local function ColorString( panel )
-			local v = panel:GetVector()
-			return string.format( "%f %f %f", v.x, v.y, v.z )
-		end
+		local v = panel:GetVector()
 
-		RunConsoleCommand( "cl_playercolor", ColorString( plycol ) )
-		RunConsoleCommand( "cl_weaponcolor", ColorString( wepcol ) )
+		RunConsoleCommand( ( panel == wepcol ) and "cl_weaponcolor" or "cl_playercolor",
+			string.format( "%f %f %f", v.x, v.y, v.z ) )
 
 	end
 
-	plycol.ValueChanged = UpdateFromControls
-	wepcol.ValueChanged = UpdateFromControls
-
-	UpdateFromConvars()
+	plycol.ValueChanged = function() UpdateFromControls( plycol ) end
+	wepcol.ValueChanged = function() UpdateFromControls( wepcol ) end
 
 	function PanelSelect:OnActivePanelChanged( old, new )
 
@@ -523,6 +575,12 @@ local function BuildEditor( window )
 		-- Use local lights as it produces much better looking rendering than the light box
 		render.SetLocalModelLights( self.LocalLights )
 
+		-- This allows us to have consistent preview, regardless of current map location
+		-- (GMod: render.BindLocalCubemap( "editor/cubemap" )).  Guarded: the binding is
+		-- only in the engine build that ships it, and lua/vgui/DModelPanel.lua:Paint
+		-- clears it again after the draw so the world pass cannot inherit it.
+		if ( render.BindLocalCubemap ) then render.BindLocalCubemap( "editor/cubemap" ) end
+
 		return true
 	end
 
@@ -530,6 +588,15 @@ local function BuildEditor( window )
 	mdl:SetFOV( mdl.StoredFOV )
 
 	function mdl:LayoutEntity( ent )
+		-- ⚠️ DELIBERATELY NOT tinted here (2026-09-17).  DModelPanel:Paint feeds
+		-- self.colColor to render.SetColorModulation() before it draws, and the studio
+		-- renderer writes that into $color2 for EVERY material - so the preview tinted the
+		-- FACE and HANDS of models whose clothes have no $color2 (the HL2 stock players,
+		-- e.g. Kleiner), which is the opposite of GMod: there the colour reaches only the
+		-- materials the model's VMTs declare (Proxies { PlayerColor { resultVar $color2 } }),
+		-- i.e. the body sheet.  The world models already work that way through the
+		-- PlayerColor proxy, so the preview must too - it will simply show no tint for a
+		-- model whose content does not opt in, exactly like GMod with the same content.
 		if ( self.bAnimated ) then self:RunAnimation() end
 
 		if ( self.Pressed ) then
@@ -550,9 +617,30 @@ local function BuildEditor( window )
 
 		-- GMod: the eyes follow the camera.  Accepted here, but inert: this engine has
 		-- no CIKContext::SetEyeTarget (the binding prints one line about it).
-		mdl.Entity:SetEyeTarget( mdl:GetCamPos() )
+		if ( IsValid( mdl.Entity ) ) then
+			mdl.Entity:SetEyeTarget( mdl:GetCamPos() )
+		end
 
 	end
+
+	--[[ ⚠️ LAST, and deliberately so.
+
+		GMod calls UpdateFromConvars() in the middle of this list (right after the two
+		ValueChanged assignments).  That call reaches into the engine - SetModel,
+		SkinCount, GetNumBodyGroups ... - and on 2026-09-17 it raised
+
+		    hl2sb_playermodel_gmod.lua:444: attempt to index a CBaseFlex value (field 'Entity')
+
+		(the CBaseFlex metatable had no __newindex; fixed engine-side).  Because the
+		concommand's chunk aborted right there, *everything below that line was never
+		defined*: OnActivePanelChanged (so a clicked icon never reset bodygroups or
+		refreshed the preview), the drag handlers, PreDrawModel / LayoutEntity (so the
+		preview kept the stock spinner), and StoredFOV 47.  A window that mostly worked
+		raised no error the player could see - it just quietly was not the editor.
+
+		Running it last means a failure in the model setup cannot take the interactive
+		parts with it. ]]
+	UpdateFromConvars()
 
 	return window
 end

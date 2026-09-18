@@ -33,6 +33,23 @@ function GetTable()
 	return cleanup_types
 end
 
+-- ---------------------------------------------------------------------------
+-- GMod registers its core cleanup types from the sandbox gamemode
+-- (gamemodes/sandbox/gamemode/shared.lua:35-42).  HL2SB has no sandbox gamemode and
+-- nothing in the tree ever called Register(), so IsType() answered false for every type
+-- and cleanup.Add() silently dropped everything - Player:AddCleanup included.  The list
+-- below is GMod's, verbatim; "sents" is the one the cod_c4 weapon uses
+-- (addons/cod_c4/lua/weapons/seal6-c4/shared.lua:274-277).
+-- ---------------------------------------------------------------------------
+Register( "props" )
+Register( "ragdolls" )
+Register( "effects" )
+Register( "npcs" )
+Register( "constraints" )
+Register( "ropeconstraints" )
+Register( "sents" )
+Register( "vehicles" )
+
 
 if ( SERVER ) then
 
@@ -89,6 +106,10 @@ if ( SERVER ) then
 
 		if ( !ent ) then return end
 
+		-- HL2SB: GMod's Add() indexes the player straight away, which raises on a nil
+		-- player (an addon calling cleanup.Add( nil, ... )).  Same guard as AddCount.
+		if ( !IsValid( pl ) ) then return end
+
 		if ( !IsType( type ) ) then return end
 
 		local id = pl:UniqueID()
@@ -123,6 +144,58 @@ if ( SERVER ) then
 
 	end
 
+	-- ---------------------------------------------------------------------------
+	-- GMod: Player:AddCleanup / Player:AddCount
+	--
+	-- AddCleanup is the sandbox gamemode's wrapper around this module's Add()
+	-- (gamemodes/sandbox/gamemode/player_extension.lua:145-151); AddCount only bumps a
+	-- counter and does NOT make the entity removable - that is why the duplicator calls
+	-- AddCount once and AddCleanup for every entity
+	-- (lua/includes/modules/duplicator.lua:778-786).
+	--
+	-- ⚠️ The cod_c4 weapon calls all three unguarded when a charge is placed
+	-- (addons/cod_c4/lua/weapons/seal6-c4/shared.lua:274-277), and the duplicator here
+	-- guards on `ply.AddCleanup` - i.e. the fork knew they could be missing.
+	-- ---------------------------------------------------------------------------
+	local cleanup_counts = {}	-- [ userid ][ type ] = number
+
+	function AddCount( pl, type, ent )
+
+		if ( !IsValid( pl ) or !ent ) then return end
+
+		local id = pl:UniqueID()
+
+		cleanup_counts[ id ] = cleanup_counts[ id ] or {}
+		cleanup_counts[ id ][ type ] = ( cleanup_counts[ id ][ type ] or 0 ) + 1
+
+	end
+
+	function GetCount( pl, type )
+
+		if ( !IsValid( pl ) ) then return 0 end
+
+		local id = pl:UniqueID()
+		local counts = cleanup_counts[ id ]
+
+		if ( counts == nil ) then return 0 end
+
+		return counts[ type ] or 0
+
+	end
+
+	local plymeta = FindMetaTable( "Player" )
+
+	if ( plymeta ~= nil ) then
+
+		if ( plymeta.AddCleanup == nil ) then
+			function plymeta:AddCleanup( type, ent ) Add( self, type, ent ) end
+		end
+
+		if ( plymeta.AddCount == nil ) then
+			function plymeta:AddCount( type, ent ) AddCount( self, type, ent ) end
+		end
+
+	end
 
 	function CC_Cleanup( pl, command, args )
 
@@ -246,7 +319,14 @@ else
 
 		local cleanup_types_s = {}
 		for _, val in ipairs( cleanup_types ) do
-			cleanup_types_s[ language.GetPhrase( "Cleanup_" .. val ) ] = val
+			-- GMod's "Cleanup_<type>" phrases live in its own language files, which this
+			-- fork does not ship: with the types registered (see the top of the file) the
+			-- tool menu would list the raw keys.  Fall back to a readable name instead.
+			local phrase = language.GetPhrase( "Cleanup_" .. val )
+
+			if ( phrase == "Cleanup_" .. val ) then phrase = string.NiceName( val ) end
+
+			cleanup_types_s[ phrase ] = val
 		end
 
 		pnl:Clear()

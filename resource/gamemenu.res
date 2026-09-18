@@ -68,6 +68,11 @@
 	}
 	"12"
 	{
+		"label" "#HL2SB_MainMenu_Addons"
+		"command" "engine OpenAddonsDialog"
+	}
+	"13"
+	{
 		"label" "#GameUI_GameMenu_Quit"
 		"command" "Quit"
 	}

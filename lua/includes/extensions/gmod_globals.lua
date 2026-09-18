@@ -50,6 +50,7 @@ ACT_VM_DRAW			= 171
 ACT_VM_HOLSTER		= 172
 ACT_VM_IDLE			= 173
 ACT_VM_FIDGET		= 174
+ACT_VM_THROW			= 178	-- HL2SB: was missing; the cod_c4 SWEP's throw animation needs it
 ACT_VM_PRIMARYATTACK	= 180
 ACT_VM_SECONDARYATTACK	= 181
 ACT_VM_RELOAD		= 182
@@ -191,6 +192,20 @@ if ( not _CLIENT ) then
 		return c and c:GetBool() or false
 	end
 
+	-- GMod: ConVarExists( name ) -> boolean.
+	--
+	-- ⚠️ cod_c4 gates the creation of every one of its convars on it:
+	--     addons/cod_c4/lua/entities/cod-c4/shared.lua:19  if !ConVarExists( ... ) then CreateConVar(...)
+	--     addons/cod_c4/lua/entities/cod-c4/shared.lua:46  if !ConVarExists( "C4_RedLight" ) then ...
+	-- As a nil global BOTH realms failed to load that file entirely
+	-- ("[Lua] FAILED ... shared.lua:19: attempt to call a nil value (global 'ConVarExists')",
+	-- ds_debug.log:18941): the six C4_* convars were never created, the
+	-- net.Receive( "C4_Convars_Change" ) handler was never registered and the client never
+	-- built its convar-change callbacks or the tool-menu panel.
+	ConVarExists = ConVarExists or function( name )
+		return ConVar( name ) ~= nil
+	end
+
 	return
 end
 
@@ -277,6 +292,13 @@ end
 GetConVarBool = GetConVarBool or function( name )
 	local c = ConVar( name )
 	return c and c:GetBool() or false
+end
+
+-- GMod: ConVarExists( name ) -> boolean.  Client half - see the server-side note above:
+-- cod_c4 checks it before CreateClientConVar (entities/cod-c4/shared.lua:46), so without it
+-- the client half of that file failed to load too (ds_debug.log:19736).
+ConVarExists = ConVarExists or function( name )
+	return ConVar( name ) ~= nil
 end
 
 -- ===========================================================================

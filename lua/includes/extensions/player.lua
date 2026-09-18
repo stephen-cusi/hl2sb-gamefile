@@ -5,6 +5,16 @@ local entity = FindMetaTable( "Entity" )
 -- Return if there's nothing to add on to
 if ( !meta ) then return end
 
+-- HL2SB: capture the engine's own C++ __index (CBasePlayer___index) BEFORE the
+-- override below replaces it, and chain to it first.  It reads the engine
+-- fields AND the per-entity Lua field table - the same table the C++ __newindex
+-- writes.  Without this chain, a custom field written to a player
+-- (cod_c4's Owner.C4s, any addon's ply.Whatever) could never be read back:
+-- the GetTable() fallback at the bottom only answers it when GetTable() really
+-- is GetRefTable, and with the old GetClassname alias that call returned a
+-- STRING whose metatable lookup answered nil for every key.
+local EngineIndex = meta.__index
+
 --
 -- Entity index accessor. This used to be done in engine, but it's done in Lua now because it's faster
 --
@@ -17,17 +27,30 @@ function meta:__index( key )
 	if ( val ~= nil ) then return val end
 
 	--
+	-- Engine fields + the per-entity Lua field table (C++ CBasePlayer___index)
+	--
+	if ( EngineIndex ~= nil ) then
+		local ok, engineVal = pcall( EngineIndex, self, key )
+		if ( ok and engineVal ~= nil ) then return engineVal end
+	end
+
+	--
 	-- Search the entity metatable
 	--
 	local entval = entity[key]
 	if ( entval ~= nil ) then return entval end
 
 	--
-	-- Search the entity table
+	-- Search the entity table.  Guarded: GetTable is an alias the compat layer
+	-- installs, and if it is missing (or still aliased to a non-table source)
+	-- indexing through it must stay silent rather than abort the lookup.
 	--
-	local tab = entity.GetTable( self )
-	if ( tab ) then
-		return tab[ key ]
+	local getTable = entity.GetTable
+	if ( getTable ~= nil ) then
+		local ok, tab = pcall( getTable, self )
+		if ( ok and istable( tab ) ) then
+			return tab[ key ]
+		end
 	end
 
 	return nil

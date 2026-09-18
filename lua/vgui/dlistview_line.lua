@@ -31,6 +31,12 @@ function PANEL:GetColumnText( iCol )
 	return self.m_tColumns[ iCol ] or ""
 end
 
+--- GMod: DListViewLine:GetID() -- the 1-based row index.  The minecraft SWEP
+--- reads it right after AddLine (cl_init.lua:82).
+function PANEL:GetID()
+	return self.m_iIndex or self.m_iRow or 0
+end
+
 function PANEL:SetSelected( b )
 	self.m_bSelected = b
 end

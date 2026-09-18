@@ -4,8 +4,9 @@
 --
 --===========================================================================--
 
-include( "../includes/extensions/table.lua" )
-include( "../includes/extensions/vgui.lua" )
+-- HL2SB: root-relative (see basepanel.lua) - include() does not resolve "../".
+include( "includes/extensions/table.lua" )
+include( "includes/extensions/vgui.lua" )
 
 local vgui = vgui
 

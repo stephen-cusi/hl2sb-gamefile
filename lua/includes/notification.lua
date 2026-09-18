@@ -40,8 +40,10 @@ if ( not ( CLIENT or _GAMEUI ) ) then return end
 local textH = math.max( 12, math.ceil( ( ScreenScaleH and ScreenScaleH( 9 ) ) or 9 ) )
 local iconH = math.ceil( textH * 1.25 )
 
+-- HL2SB: CJK-capable face (Arial has no CJK glyphs; notifications show
+-- localised text).
 surface.CreateFont( "GModNotify", {
-	font		= "Arial",
+	font		= "Microsoft YaHei",
 	size		= textH,
 	weight		= 500,
 	extended	= true

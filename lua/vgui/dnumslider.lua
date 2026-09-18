@@ -14,6 +14,21 @@ function PANEL:Init()
 	self.m_Slider = vgui.Create( "DSlider", self, "Slider" )
 	self.m_Entry = vgui.Create( "DTextEntry", self, "Entry" )
 
+	-- GMod: dnumslider.lua:Init -- `self.Slider:SetLockY( 0.5 )`.  It is not decoration:
+	-- a DSlider with both axes free is drawn as a 2-D *box* grip (DSlider:DrawBoxGrip) and
+	-- has no groove, which is exactly how this row looked broken in the player model
+	-- selector's Bodygroups tab (2026-09-17).  Locking Y makes it the horizontal slider
+	-- GMod shows, and stops a drag from writing a Y value nothing reads.
+	self.m_Slider:SetLockY( 0.5 )
+
+	-- GMod also gives the value box no chrome and a numeric filter
+	-- (dnumslider.lua: `self.TextArea:SetPaintBackground( false )`, `:SetNumeric( true )`).
+	-- Without the first one this fork painted the DTextEntry skin behind "1" - a black box
+	-- in the middle of a dark row.
+	self.m_Entry:SetPaintBackground( false )
+	self.m_Entry:SetNumeric( true )
+
+
 	-- GMod's names for the same three panels (see SetDark/IsEditing below)
 	self.Label = self.m_Label
 	self.Slider = self.m_Slider
@@ -28,6 +43,27 @@ function PANEL:Init()
 	self.m_Entry.OnEnter = function( pnl )
 		local fl = tonumber( pnl:GetValue() )
 		if ( fl ) then self:SetValue( fl ) end
+	end
+end
+
+--- GMod: DNumSlider:ApplySchemeSettings() -- "Copy the color of the label to the slider
+--- notches and the text entry" (dnumslider.lua:135-150).  It is what makes the notch marks
+--- and the value text readable on the fork's dark theme (GMod's default is the label
+--- colour with alpha 100 for the notches).
+function PANEL:ApplySchemeSettings()
+	local col = nil
+
+	if ( self.m_Label ) then
+		col = self.m_Label.GetTextStyleColor and self.m_Label:GetTextStyleColor()
+		if ( not col and self.m_Label.GetTextColor ) then col = self.m_Label:GetTextColor() end
+	end
+
+	if ( not col ) then return end
+
+	if ( self.m_Entry and self.m_Entry.SetTextColor ) then self.m_Entry:SetTextColor( col ) end
+
+	if ( self.m_Slider and self.m_Slider.SetNotchColor ) then
+		self.m_Slider:SetNotchColor( Color( col.r or 255, col.g or 255, col.b or 255, 100 ) )
 	end
 end
 
@@ -76,10 +112,27 @@ function PANEL:IsEnabled()
 	return self.m_bEnabled ~= false
 end
 
-function PANEL:SetMin( v ) self.m_flMin = v end
-function PANEL:SetMax( v ) self.m_flMax = v end
+function PANEL:SetMin( v ) self.m_flMin = v; self:UpdateNotches() end
+function PANEL:SetMax( v ) self.m_flMax = v; self:UpdateNotches() end
 function PANEL:GetMin() return self.m_flMin end
 function PANEL:GetMax() return self.m_flMax end
+
+--- GMod: DNumSlider:UpdateNotches() -- "the slider draws a notch for every value it can
+--- take" (dnumslider.lua:289-300, which caps the count at a quarter of the width so a wide
+--- range does not turn the groove into a solid bar).
+function PANEL:UpdateNotches()
+	if ( not self.m_Slider or not self.m_Slider.SetNotches ) then return end
+
+	local range = ( self.m_flMax or 0 ) - ( self.m_flMin or 0 )
+
+	self.m_Slider:SetNotches( nil )
+
+	if ( range < self:GetWide() / 4 ) then
+		self.m_Slider:SetNotches( range )
+	else
+		self.m_Slider:SetNotches( self:GetWide() / 4 )
+	end
+end
 
 --- GMod: DNumSlider:SetMinMax( min, max ) -- one call for both ends (DForm's
 --- NumSlider row uses it; the fork only had the two setters).
@@ -88,7 +141,7 @@ function PANEL:SetMinMax( min, max )
 	self:SetMax( max )
 end
 
-function PANEL:SetDecimals( i ) self.m_iDecimals = i end
+function PANEL:SetDecimals( i ) self.m_iDecimals = i; self:UpdateNotches() end
 
 function PANEL:SetValue( flVal, bFromSlider )
 	flVal = math.Clamp( flVal or 0, self.m_flMin, self.m_flMax )
@@ -125,6 +178,9 @@ function PANEL:PerformLayout( w, h )
 
 	self.m_Slider:SetPos( labelW + 4, math.floor( h / 2 ) - 6 )
 	self.m_Slider:SetSize( math.max( 20, w - labelW - entryW - 12 ), 12 )
+
+	-- the notch cap in UpdateNotches depends on the width, so re-run it here
+	self:UpdateNotches()
 end
 
 derma.DefineControl( "DNumSlider", "HL2SB number slider", PANEL, "DPanel" )

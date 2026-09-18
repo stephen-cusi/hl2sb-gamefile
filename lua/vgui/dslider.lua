@@ -76,6 +76,14 @@ function PANEL:GetLockY() return self.m_bLockY end
 function PANEL:SetDragging( b ) self.m_bHeld = b and true or false end
 function PANEL:GetDragging() return self.m_bHeld end
 
+--- GMod: DSlider:SetNotches( n ) / SetNotchColor( col ) -- the little tick marks along the
+--- groove ("How many notches to draw on the slider").  DNumSlider calls SetNotches for every
+--- integer step, which is what makes its rows look like GMod's instead of a bare bar.
+function PANEL:SetNotches( n ) self.m_iNotches = tonumber( n ) end
+function PANEL:GetNotches() return self.m_iNotches end
+function PANEL:SetNotchColor( col ) self.m_colNotch = col end
+function PANEL:GetNotchColor() return self.m_colNotch end
+
 --- GMod: DSlider:IsEditing() -- "Returns whether the slider is being dragged"
 --- (its dslider.lua:50 is `return self.Dragging || self.Knob.Depressed`).  The
 --- DNumSlider editor and DProperty_Float's row painter both read it.
@@ -177,30 +185,65 @@ function PANEL:Paint( w, h )
 	self:DrawGrip( w, h )
 end
 
---- The grip: a bar for the 1-D case, a small box for the 2-D case (DColorCube leaves a
---- locked X and hides this by overriding Paint itself).
+--- The grip of a normal slider: a groove across the panel with a 12px grip on it.
+---
+--- ⚠️ 2026-09-17: this used to choose between this bar and the 2-D box below with
+--- `m_bLockX == nil and m_bLockY == nil` - i.e. "free on both axes".  That is the DEFAULT
+--- of every DSlider (Init sets both to nil), so it was true for every slider in the tree,
+--- and DNumSlider's slider was drawn as the box: a 12x12 square with no groove
+--- (seen in the player model selector's Bodygroups tab - "the slider looks broken").
+--- GMod's own DNumSlider locks the Y axis (`self.Slider:SetLockY( 0.5 )`,
+--- dnumslider.lua:Init) and its DSlider is always drawn as a track with a knob, so the
+--- box is now an explicit opt-in used only by DColorCube (DrawBoxGrip below).
 function PANEL:DrawGrip( w, h )
-	local twoAxis = ( self.m_bLockX == nil or self.m_bLockX == false ) and
-		( self.m_bLockY == nil or self.m_bLockY == false )
-
-	if ( twoAxis ) then
-		local kx = math.floor( self.m_flSlideX * ( w - GRIP_W ) )
-		local ky = math.floor( self.m_flSlideY * h - 6 )
-
-		surface.DrawSetColor( 0, 0, 0, 220 )
-		surface.DrawOutlinedRect( kx, math.max( 0, ky ), kx + GRIP_W, math.max( 0, ky ) + 12 )
-		surface.DrawSetColor( 255, 255, 255, 255 )
-		surface.DrawOutlinedRect( kx + 1, math.max( 0, ky ) + 1, kx + GRIP_W - 1, math.max( 0, ky ) + 11 )
-		return
-	end
-
 	local gx = math.floor( self.m_flSlideX * ( w - GRIP_W ) )
+	local cy = math.floor( h / 2 )
 
 	surface.DrawSetColor( 70, 70, 70, 255 )
-	surface.DrawFilledRect( 0, math.floor( h / 2 ) - 2, w, math.floor( h / 2 ) + 2 )
+	surface.DrawFilledRect( 0, cy - 2, w, cy + 2 )
+
+	-- GMod's notches (its skin's Colours.NumSliderNotch is Color( 0, 0, 0, 100 ))
+	if ( self.m_iNotches and self.m_iNotches >= 1 ) then
+		local col = self.m_colNotch or Color( 0, 0, 0, 100 )
+
+		surface.DrawSetColor( col.r or 0, col.g or 0, col.b or 0, col.a or 100 )
+
+		for i = 0, math.floor( self.m_iNotches ) do
+			local x = math.floor( ( i / self.m_iNotches ) * ( w - 1 ) )
+
+			surface.DrawFilledRect( x, cy - 4, x + 1, cy + 4 )
+		end
+	end
 
 	surface.DrawSetColor( 200, 200, 200, 255 )
 	surface.DrawFilledRect( gx, 0, gx + GRIP_W, h )
+end
+
+--- The 2-D grip: a small circle outline, for a picker where both axes mean something
+--- (DColorCube: saturation on X, value on Y).  GMod's DColorCube uses the
+--- "vgui/minixhair" image for its knob - a circle - and this fork kept drawing a square.
+--- There is no surface.DrawCircle binding here, so the ring is dotted in with small
+--- squares; at 12 px the two are indistinguishable.
+function PANEL:DrawBoxGrip( w, h )
+	local cx = self.m_flSlideX * ( w - GRIP_W ) + GRIP_W * 0.5
+	local cy = math.Clamp( self.m_flSlideY * h, GRIP_W * 0.5, h - GRIP_W * 0.5 )
+	local radius = GRIP_W * 0.5
+	local steps = 24
+
+	for pass = 1, 2 do
+		local col = ( pass == 1 ) and Color( 0, 0, 0, 220 ) or Color( 255, 255, 255, 255 )
+		local r = ( pass == 1 ) and radius or ( radius - 1 )
+
+		surface.DrawSetColor( col.r, col.g, col.b, col.a )
+
+		for i = 0, steps - 1 do
+			local angle = ( i / steps ) * math.pi * 2
+			local px = math.floor( cx + math.cos( angle ) * r )
+			local py = math.floor( cy + math.sin( angle ) * r )
+
+			surface.DrawFilledRect( px, py, px + 1, py + 1 )
+		end
+	end
 end
 
 derma.DefineControl( "DSlider", "HL2SB two-axis slider", PANEL, "DPanel" )

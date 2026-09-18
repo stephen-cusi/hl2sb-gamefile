@@ -54,6 +54,17 @@ function PANEL:GetHeaderHeight()
 	return HEADER_H
 end
 
+--- GMod: DListView:SetDataHeight( h ) -- row height.  This fork used a fixed
+--- ROW_H; honour the override (the minecraft menu sets 16).
+function PANEL:SetDataHeight( h )
+	self.m_iDataHeight = math.max( 8, tonumber( h ) or ROW_H )
+	self:RelayoutRows()
+end
+
+function PANEL:GetDataHeight()
+	return self.m_iDataHeight or ROW_H
+end
+
 --- GMod: DListView:SetMultiSelect( b ) / GetMultiSelect().  This fork's list keeps a
 --- single selection (the row itself decides), so the flag is recorded and documented
 --- rather than implemented; DFileBrowser sets it to false, which is the behaviour here.
@@ -182,6 +193,8 @@ function PANEL:GetSelected()
 end
 
 function PANEL:RelayoutRows()
+	local rowH = self.m_iDataHeight or ROW_H
+
 	local colW = {}
 	for i = 1, #self.m_tColumns do
 		colW[ i ] = self:ColumnWidth( i )
@@ -189,10 +202,10 @@ function PANEL:RelayoutRows()
 
 	local totalH = 0
 	for j, row in ipairs( self.m_tRows ) do
-		row:SetSize( self:GetWide(), ROW_H )
-		row:SetPos( 0, ( j - 1 ) * ROW_H )
+		row:SetSize( self:GetWide(), rowH )
+		row:SetPos( 0, ( j - 1 ) * rowH )
 		row:SetColumnWidths( colW )
-		totalH = j * ROW_H
+		totalH = j * rowH
 	end
 
 	self.m_pScroll:SetContentHeight( totalH )
