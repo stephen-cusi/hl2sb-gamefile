@@ -4,13 +4,15 @@
 	Replaces both older implementations (the 2000-line hl2sb_spawnmenu.lua and
 	spawnmenu_gmod.lua v2).  This file is the only spawn menu now.
 
-	LAYOUT (GMod's spawnmenu, wiki.facepunch.com/gmod/spawnmenu):
-	  top row ....... search box | tab buttons (Entities/Weapons/NPCs/Vehicles/
-	                  Props) | hint label
-	  left sidebar .. category list ("All" + one row per GMod Category)
-	  right ......... the icon grid: SpawnIcon (GMod's 3D model thumbnail,
-	                  lua/vgui/SpawnIcon.lua) for everything with a model on
-	                  disk, a text DButton otherwise
+LAYOUT (GMod's spawnmenu, wiki.facepunch.com/gmod/spawnmenu):
+  top row ....... search box | tab buttons (Entities/Weapons/NPCs/Vehicles/
+                  Props) | hint label
+  left sidebar .. category list (one row per GMod Category -- GMod has NO
+                  "All" page, a tab always shows ONE category, and that is
+                  also what keeps every page small)
+  right ......... the icon grid: SpawnIcon (GMod's 3D model thumbnail,
+                  lua/vgui/SpawnIcon.lua) for everything with a model on
+                  disk, a text DButton otherwise
 
 	CONTENT IS THE REGISTRY, not a curated hand list:
 	  Entities   list.Get( "SpawnableEntities" )  +  hl2sb.GetSpawnableClasses()
@@ -35,8 +37,9 @@
 	    while a mouse event is inside it;
 	  * a repopulate never runs inside the click that caused it -- it is
 	    deferred one tick (timer.Simple( 0 ));
-	  * cells are created through a per-frame budget (24 per tick), so opening
-	    a big tab cannot create 400 panels in one frame;
+	  * cells are CACHED per tab (entry key -> panel) and re-docked on a
+	    category / search / tab switch; only cells never built before are
+	    created, through a per-frame budget, so a big tab cannot stall;
 	  * ASCII only -- the derma font has no CJK glyphs.
 
 	CONSOLE:
@@ -48,7 +51,9 @@ if ( not CLIENT ) then return end
 
 local TAG    = "[HL2SB][SpawnMenu] "
 local ICON   = 64
-local BUDGET = 24		-- cells created per frame while a fill is pending
+local BUDGET = 4		-- NEW cells created per frame while a fill is pending
+					-- (a Material() decode or a clientside model is tens of ms;
+					-- a burst of ten of those per frame was a visible stall)
 
 -- ---------------------------------------------------------------------------
 -- stock content (everything the registries do not already carry)
@@ -86,7 +91,6 @@ local STOCK_VEHICLES = {
 	{ class = "prop_vehicle_prisoner_pod", name = "Chair",   model = "models/vehicles/prisoner_pod_inner.mdl", script = "scripts/vehicles/prisoner_pod.txt" },
 	{ class = "prop_vehicle_jeep",         name = "Jeep",    model = "models/buggy.mdl",                       script = "scripts/vehicles/jeep.txt" },
 	{ class = "prop_vehicle_airboat",      name = "Airboat", model = "models/airboat.mdl",                     script = "scripts/vehicles/airboat.txt" },
-	{ class = "prop_vehicle_jeep",         name = "Jalopy",  model = "models/vehicle.mdl",                     script = "scripts/vehicles/jalopy.txt" },
 }
 
 -- models, grouped by the folder that names them
@@ -146,6 +150,37 @@ local STOCK_PROPS = {
 	"models/props_trainstation/Bench001a.mdl",
 	"models/props_borealis/bluebarrel001.mdl",
 }
+
+-- HL2SB: register the stock NPCs into list.Get( "NPC" ) with their proper
+-- names.  Two wins: the NPC tab reads like GMod's, and the death/undo name
+-- resolution (hl2sb_displayname.lua) answers stock classes with stock names
+-- instead of whichever reskin pack happened to register the same class first.
+local STOCK_NPC_NAMES = {
+	npc_alyx = "Alyx", npc_barney = "Barney", npc_kleiner = "Kleiner",
+	npc_magnusson = "Magnusson", npc_eli = "Eli", npc_mossman = "Mossman",
+	npc_breen = "Breen", npc_monk = "Father Grigori", npc_vortigaunt = "Vortigaunt",
+	npc_dog = "D.O.G.", npc_citizen = "Citizen", npc_combine_s = "Combine Soldier",
+	npc_metropolice = "Civil Protection Officer", npc_manhack = "Manhack",
+	npc_stalker = "Stalker", npc_cscanner = "Scanner", npc_clawscanner = "Claw Scanner",
+	npc_rollermine = "Rollermine", npc_turret_floor = "Turret",
+	npc_turret_ceiling = "Ceiling Turret", npc_strider = "Strider",
+	npc_helicopter = "Hunter-Chopper", npc_hunter = "Hunter",
+	npc_combine_camera = "Combine Camera", npc_zombie = "Zombie",
+	npc_zombie_torso = "Torso Zombie", npc_fastzombie = "Fast Zombie",
+	npc_poisonzombie = "Poison Zombie", npc_headcrab = "Headcrab",
+	npc_headcrab_fast = "Fast Headcrab", npc_headcrab_black = "Poison Headcrab",
+	npc_antlion = "Antlion", npc_antlionguard = "Antlion Guard",
+	npc_barnacle = "Barnacle", npc_sniper = "Sniper",
+	npc_combinegunship = "Combine Gunship", npc_crow = "Crow",
+	npc_pigeon = "Pigeon", npc_seagull = "Seagull",
+}
+
+for _, group in ipairs( STOCK_NPCS ) do
+	for _, class in ipairs( group.classes ) do
+		local nm = STOCK_NPC_NAMES[ class ] or class
+		list.Set( "NPC", class, { Name = nm, PrintName = nm, Class = class, Category = group.cat } )
+	end
+end
 
 -- ---------------------------------------------------------------------------
 -- entry helpers
@@ -299,16 +334,28 @@ local function CollectNPCs()
 
 	local reg = ( list ~= nil and list.Get ) and list.Get( "NPC" ) or nil
 	if ( istable( reg ) ) then
-		for class, data in pairs( reg ) do
-			local e, key = NewEntry( class )
-			if ( e and istable( data ) ) then
-				e.name       = tostring( data.Name or class )
-				e.category   = ( isstring( data.Category ) and data.Category ~= "" ) and data.Category or "Other"
-				e.model      = ( isstring( data.Model ) ) and data.Model or ""
-				e.spawnname  = tostring( class )
-				e.iconOverride = ( isstring( data.IconOverride ) ) and data.IconOverride or nil
-				e.cat        = "npc"
-				byKey[ key ] = e
+		for spawnname, data in pairs( reg ) do
+			-- GMod's NPC list is keyed by SPAWN NAME; the class to spawn is
+			-- data.Class.  The hutao pack registers spawn name
+			-- "gi_hutao_hostile" with Class "npc_combine_s" -- spawning the key
+			-- produced "unknown entity type" server-side.
+			if ( istable( data ) ) then
+				local e = {
+					name       = tostring( data.Name or spawnname ),
+					class      = tostring( data.Class or spawnname ),
+					key        = "n:" .. tostring( spawnname ),
+					model      = ( isstring( data.Model ) ) and data.Model or "",
+					script     = "",
+					cat        = "npc",
+					spawnname  = tostring( spawnname ),
+					iconOverride = ( isstring( data.IconOverride ) ) and data.IconOverride or nil,
+					category   = ( isstring( data.Category ) and data.Category ~= "" ) and data.Category or "Other",
+					-- GMod forwards data.KeyValues through gmod_spawnnpc (the
+					-- hutao pack's citizentype = 4 makes npc_citizen keep the
+					-- reskin model); ride them on the concommand the same way
+					keyvalues  = ( istable( data.KeyValues ) and data.KeyValues ) or nil,
+				}
+				byKey[ e.key ] = e
 			end
 		end
 	end
@@ -442,6 +489,12 @@ local Collectors = {
 -- spawn dispatch
 -- ---------------------------------------------------------------------------
 
+-- quote a console argument, stripping anything that could break out of it
+local function Q( v )
+	v = tostring( v or "" ):gsub( '"', "" )
+	return '"' .. v .. '"'
+end
+
 local function SpawnEntry( e )
 	if ( e == nil ) then return end
 	local line
@@ -449,16 +502,32 @@ local function SpawnEntry( e )
 	if ( e.cat == "weapon" ) then
 		line = "gm_giveswep " .. e.class
 	elseif ( e.cat == "npc" ) then
-		line = "gm_spawnnpc " .. e.class
+		-- slot 2 is the weapon override (empty = the NPC's own / gmod_npcweapon),
+		-- slot 3 the display name for undo + kill feed, slot 4 the reskin model
+		-- (reskin packs register Class = a stock NPC + their own Model), slots
+		-- 5.. the registry KeyValues as name/value pairs
+		line = "gm_spawnnpc " .. e.class .. ' "" ' .. Q( e.name )
+			.. ( ( e.model and e.model ~= "" ) and ( " " .. Q( e.model ) ) or "" )
+		-- GMod ships list.Set( "NPC", ... ) data.KeyValues through gmod_spawnnpc's
+		-- net table; here they ride the concommand.  Without the hutao pack's
+		-- citizentype = 4 (CT_UNIQUE), npc_citizen rewrites the reskin model into
+		-- models/Humans/Group01/<file> -- a file that does not exist -- and the
+		-- NPC spawns as the ERROR model (2026-09-19, gi_hutao_friendly).
+		if ( istable( e.keyvalues ) ) then
+			for k, v in pairs( e.keyvalues ) do
+				line = line .. " " .. Q( tostring( k ) ) .. " " .. Q( tostring( v ) )
+			end
+		end
 	elseif ( e.cat == "vehicle" ) then
 		-- the MODEL rides along: a model-less prop_vehicle is a server crash
 		line = "gm_spawnvehicle " .. e.class
-			.. ( ( e.model and e.model ~= "" ) and ( " " .. e.model ) or "" )
-			.. ( ( e.script and e.script ~= "" ) and ( " " .. e.script ) or "" )
+			.. ( ( e.model and e.model ~= "" ) and ( " " .. e.model ) or ' ""' )
+			.. ( ( e.script and e.script ~= "" ) and ( " " .. e.script ) or ' ""' )
+			.. " " .. Q( e.name )
 	elseif ( e.model ~= nil and e.model ~= "" ) then
-		line = "gm_spawn " .. e.class .. " " .. e.model
+		line = "gm_spawn " .. e.class .. " " .. e.model .. " " .. Q( e.name )
 	else
-		line = "gm_spawn " .. e.class
+		line = "gm_spawn " .. e.class .. ' "" ' .. Q( e.name )
 	end
 
 	print( TAG .. "spawn: " .. line )
@@ -497,6 +566,10 @@ local g_ActiveTab  = "entities"
 local g_ActiveCat  = nil		-- nil = All
 local g_Pending    = {}		-- entries queued for the grid
 local g_Cache      = {}		-- tab id -> collected entries (refreshed on Open)
+local g_CellCache  = {}		-- tab id -> entry key -> built cell panel.  The point
+							-- of the cache: a category / search / tab switch re-docks
+							-- cached panels instead of re-probing icons, re-decoding
+							-- materials and re-creating clientside models.
 
 -- ⚠️ MOUSE INPUT IS A GATE IN THIS ENGINE, NOT INHERITED
 -- (vgui2/vgui_controls/Panel.cpp:3343 -- "if it doesn't want mouse input its
@@ -555,11 +628,10 @@ end
 
 local ICON_EXTS = { ".png", ".vmt" }
 
--- GMod's icon conventions plus this fork's own (the C++ menu probed the same
--- order): the registry's IconOverride, the spawn name / class under entities/
--- and vgui/entities/, and the model's base name.  The file probe prepends
--- materials/; the returned name is the MATERIAL name (with .png for raw
--- images, without for .vmt).
+-- GMod icon conventions + this fork's own probe order (the C++ menu used
+-- the same): registry IconOverride, spawn name / class under entities/ and
+-- vgui/entities/, model base name under vgui/smenu/.  The probe returns the
+-- MATERIAL name: with .png for raw images, without for .vmt.
 local function ProbeIconPath( e )
 	local candidates = {}
 	if ( e.iconOverride and e.iconOverride ~= "" ) then
@@ -590,48 +662,81 @@ local function ProbeIconPath( e )
 	return nil
 end
 
+--- A cell is 64px wide; a longer name bled over its neighbours and read as one
+--- run-on line ("utao - Frutao - He", the 2026-09-19 video).  Trim to fit.
+--- surface.SetFont resolves a scheme font and returns the HFont handle;
+--- surface.GetTextSize measures against an explicit handle here.
+local function FitLabel( text, maxw )
+	text = tostring( text or "" )
+
+	local okF, hFont = pcall( surface.SetFont, "DermaDefault" )
+	if ( not okF or hFont == nil or surface.GetTextSize == nil ) then return text end
+
+	local okW, w = pcall( surface.GetTextSize, hFont, text )
+	if ( not okW or w == nil or w <= maxw ) then return text end
+
+	while ( #text > 1 ) do
+		text = string.sub( text, 1, #text - 1 )
+		local okT, wt = pcall( surface.GetTextSize, hFont, text .. "..." )
+		if ( okT and wt ~= nil and wt <= maxw ) then return text .. "..." end
+	end
+
+	return "..."
+end
+
 local function MakeCell( e )
-	-- 1) a shipped icon image: static and exact -- what GMod shows for
-	--    everything that has one (materials/entities/<name>.png is its own
-	--    convention; the vehicle/seat registrations carry IconOverride).
+	-- 1) a shipped icon image: static and exact, what GMod shows for anything
+	--    that ships one (materials/entities/<name>.png; IconOverride rides)
 	local iconPath = ProbeIconPath( e )
 	if ( iconPath ~= nil ) then
-		local ok, btn = pcall( vgui.Create, "DImageButton" )
-		if ( ok and IsValid( btn ) ) then
-			btn:SetImage( iconPath )
-			pcall( function() btn:SetTooltip( ( e.name or e.class ) .. "\n" .. e.class ) end )
-			btn.DoClick = function() SpawnEntry( e ) end
-			btn.DoRightClick = function() EntryMenu( e ) end
-			return btn, "image"
+		local okM, mat = pcall( Material, iconPath )
+		-- a file that exists but does not DECODE comes back as the error
+		-- material and draws as the magenta/black checkerboard (the Sniper
+		-- cell, 2026-09-19 video).  IsError() is the only reliable tell, so
+		-- fall through to the 3D icon / text cell when it fires.
+		if ( okM and mat ~= nil and not ( mat.IsError and mat:IsError() ) ) then
+			local label = FitLabel( e.name or e.class, ICON - 6 )
+			local ok, btn = pcall( vgui.Create, "DButton" )
+			if ( ok and IsValid( btn ) ) then
+				btn:SetText( "" )
+				btn.Paint = function( pnl, w, h )
+					surface.SetDrawColor( 45, 48, 52, 255 )
+					surface.DrawRect( 0, 0, w, h )
+					surface.SetMaterial( mat )
+					surface.SetDrawColor( 255, 255, 255, 255 )
+					surface.DrawTexturedRect( 0, 0, w, h )
+					draw.SimpleText( label, "DermaDefault", w / 2, h - 8, Color( 220, 220, 220, 255 ), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
+				end
+				pcall( function() btn:SetTooltip( ( e.name or e.class ) .. "\n" .. e.class ) end )
+				btn.DoClick = function() SpawnEntry( e ) end
+				btn.DoRightClick = function() EntryMenu( e ) end
+				return btn, "image"
+			end
+		else
+			print( TAG .. "icon material is error for '" .. iconPath .. "' - next fallback" )
 		end
 	end
 
-	-- 2) a live 3D thumbnail for models.  No file.Exists gate on the MODEL:
-	--    the Lua file API does not see every mounted model tree (hl2 content
-	--    answered false for existing weapons), and a model that fails to come
-	--    up is caught by the entity check below.
+	-- 2) a live 3D thumbnail.  No file.Exists gate: the Lua file API does not
+	--    see every mounted model tree.  The MODEL LOAD itself is deferred
+	--    inside SpawnIcon (queued, one per tick, on-screen cells only -- the
+	--    load is the expensive part and a burst of them was the stutter), so
+	--    there is no entity to check here anymore: a model that fails marks
+	--    its icon and the icon's Paint degrades to the model's file name
+	--    instead of the error checkerboard.
 	local mdl = e.model or ""
 	if ( mdl ~= "" ) then
 		local ok, icon = pcall( vgui.Create, "SpawnIcon" )
 		if ( ok and IsValid( icon ) ) then
 			local okSet, errSet = pcall( function() icon:SetModel( mdl, 0, "" ) end )
 			if ( okSet ) then
-				-- did the model actually come up clientside?  A SpawnIcon whose
-				-- DModelPanel has no entity paints an empty dark tile.
-				local ent = icon.Entity
-				if ( ent ~= nil and IsValid( ent ) ) then
-					pcall( function() icon:SetTooltip( ( e.name or e.class ) .. "\n" .. e.class ) end )
-					icon.DoClick = function() SpawnEntry( e ) end
-					icon.DoRightClick = function() EntryMenu( e ) end
-					-- GMod's SpawnIcon calls self:OpenMenu() on right click; keep
-					-- the fork's DButton DoRightClick path covered as well.
-					icon.OpenMenu = function() EntryMenu( e ) end
-					return icon, "spawnicon"
-				end
-				print( TAG .. "no clientside model for '" .. mdl .. "' - text cell" )
-			else
-				print( TAG .. "SetModel failed for '" .. mdl .. "': " .. tostring( errSet ) )
+				pcall( function() icon:SetTooltip( ( e.name or e.class ) .. "\n" .. mdl ) end )
+				icon.DoClick = function() SpawnEntry( e ) end
+				icon.DoRightClick = function() EntryMenu( e ) end
+				icon.OpenMenu = function() EntryMenu( e ) end
+				return icon, "spawnicon"
 			end
+			print( TAG .. "SetModel failed for '" .. mdl .. "': " .. tostring( errSet ) )
 			if ( IsValid( icon ) ) then icon:Remove() end
 		else
 			print( TAG .. "vgui.Create( SpawnIcon ) failed: " .. tostring( icon ) )
@@ -642,29 +747,60 @@ local function MakeCell( e )
 	local btn = vgui.Create( "DButton" )
 	btn:SetText( e.name or e.class )
 	btn:SetWrap( true )
-	btn:SetContentAlignment( 5 )
+		btn:SetContentAlignment( 5 )
 	btn:SetTooltip( ( e.name or e.class ) .. "\n" .. e.class )
 	btn.DoClick = function() SpawnEntry( e ) end
 	btn.DoRightClick = function() EntryMenu( e ) end
 	return btn, "text"
 end
-local g_IconsMade, g_TextsMade = 0, 0
+
+local g_IconsMade, g_TextsMade, g_ImagesMade = 0, 0, 0
+local g_Failed = 0
+local g_VehicleProbeDumped = false
 
 local function FillStep()
-	local n = 0
-	while ( #g_Pending > 0 and n < BUDGET ) do
-		local e = table.remove( g_Pending, 1 )
-		n = n + 1
+	-- Two cost classes share the queue.  Re-docking a CACHED cell is a
+	-- SetVisible + AddItem (Rebuild is only an InvalidateLayout) -- do as many
+	-- of those as the queue holds.  Creating a cell is an icon probe plus a
+	-- Material() decode or a clientside model -- that path is budgeted.
+	local nCreated = 0
+	local nDocked = 0
 
-		if ( g_Grid ~= nil and IsValid( g_Grid ) ) then
-			local ok, cell, kind = pcall( MakeCell, e )
+	while ( #g_Pending > 0 ) do
+		local e = table.remove( g_Pending, 1 )
+
+		if ( g_Grid == nil or not IsValid( g_Grid ) ) then break end
+
+		local cache = g_CellCache[ g_ActiveTab ]
+		local cell = ( cache ~= nil ) and cache[ e.key ] or nil
+		if ( cell ~= nil and not IsValid( cell ) ) then cell = nil end
+
+		if ( cell ~= nil ) then
+			cell:SetVisible( true )
+			g_Grid:AddItem( cell )
+			nDocked = nDocked + 1
+		else
+			if ( nCreated >= BUDGET ) then
+				-- budget spent: put it back for the next frame
+				table.insert( g_Pending, 1, e )
+				break
+			end
+			nCreated = nCreated + 1
+
+			local ok, c, kind = pcall( MakeCell, e )
 			if ( not ok ) then
 				g_Failed = g_Failed + 1
-				print( TAG .. "cell failed for '" .. tostring( e.class ) .. "': " .. tostring( cell ) )
+				print( TAG .. "cell failed for '" .. tostring( e.class ) .. "': " .. tostring( c ) )
 			else
-				if ( kind == "spawnicon" ) then g_IconsMade = g_IconsMade + 1 else g_TextsMade = g_TextsMade + 1 end
-				cell:SetSize( ICON, ICON )
-				g_Grid:AddItem( cell )
+				if ( kind == "spawnicon" ) then g_IconsMade = g_IconsMade + 1
+				elseif ( kind == "image" ) then g_ImagesMade = g_ImagesMade + 1
+				else g_TextsMade = g_TextsMade + 1 end
+				c:SetSize( ICON, ICON )
+				g_Grid:AddItem( c )
+
+				cache = g_CellCache[ g_ActiveTab ]
+				if ( cache == nil ) then cache = {}; g_CellCache[ g_ActiveTab ] = cache end
+				cache[ e.key ] = c
 			end
 		end
 	end
@@ -674,9 +810,10 @@ local function FillStep()
 			g_Grid:InvalidateLayout( true )
 		end
 		AssertMouseInput()
-		print( TAG .. "fill done: cells=" .. n .. " icons=" .. g_IconsMade .. " text=" .. g_TextsMade
-			.. " failed=" .. g_Failed .. ", pending=" .. #g_Pending )
-		g_IconsMade, g_TextsMade = 0, 0
+		print( TAG .. "fill done: created=" .. nCreated .. " docked=" .. nDocked
+			.. " images=" .. g_ImagesMade .. " spawnicons=" .. g_IconsMade
+			.. " text=" .. g_TextsMade .. " failed=" .. g_Failed )
+		g_IconsMade, g_TextsMade, g_ImagesMade = 0, 0, 0
 	end
 end
 
@@ -697,8 +834,14 @@ local function Repopulate( bRebuildSidebar )
 	if ( g_Frame == nil or not IsValid( g_Frame ) ) then return end
 	KillFill()
 
+	-- Detach, do NOT destroy: cells land in g_CellCache at creation, and a
+	-- switch re-docks the cached ones instead of rebuilding them.  (The old
+	-- g_Grid:Clear() here was ALSO the lag bug: this fork's DPanelList:Clear
+	-- left the panels inside m_tItems, so every switch stacked another
+	-- invisible copy of the whole grid on top of the new one and the list was
+	-- walked -- and grown -- forever.)
 	if ( g_Grid ~= nil and IsValid( g_Grid ) ) then
-		g_Grid:Clear()
+		g_Grid:DetachAll()
 	end
 
 	local entries = EntriesFor( g_ActiveTab )
@@ -707,9 +850,20 @@ local function Repopulate( bRebuildSidebar )
 		g_Side:Clear()
 		g_CatButtons = {}
 
-		local rows = { "All" }
-		for _, c in ipairs( CategoriesFor( entries ) ) do
-			rows[ #rows + 1 ] = c
+		local rows = CategoriesFor( entries )
+
+		-- GMod has NO "All" page: a tab always shows ONE category, chosen the
+		-- moment the tab opens.  The old "All" row was also the one page that
+		-- queued every entry of the tab at once -- the big page the player
+		-- called out as the lag page.
+		local function HasCat( list, c )
+			for _, r in ipairs( list ) do
+				if ( r == c ) then return true end
+			end
+			return false
+		end
+		if ( g_ActiveCat == nil or not HasCat( rows, g_ActiveCat ) ) then
+			g_ActiveCat = rows[ 1 ] or nil
 		end
 
 		for _, c in ipairs( rows ) do
@@ -717,12 +871,12 @@ local function Repopulate( bRebuildSidebar )
 			btn:SetText( c )
 			btn:SetTall( 20 )
 			btn:SetContentAlignment( 4 )
-			btn.m_bDepressed = ( c == "All" )
+			btn.m_bDepressed = ( c == g_ActiveCat )
 			btn.DoClick = function()
-				g_ActiveCat = ( c == "All" ) and nil or c
+				g_ActiveCat = c
 				for cc, bb in pairs( g_CatButtons ) do
 					if ( IsValid( bb ) ) then
-						bb.m_bDepressed = ( cc == c or c == "All" )
+						bb.m_bDepressed = ( cc == c )
 					end
 				end
 				Repopulate( false )
@@ -731,6 +885,11 @@ local function Repopulate( bRebuildSidebar )
 			g_Side:AddItem( btn )
 		end
 		g_Side:InvalidateLayout( true )
+	elseif ( g_ActiveCat == nil ) then
+		-- no sidebar rebuild (category click / search) and no category yet:
+		-- fall back to the first one so the grid is never an "everything" dump
+		local rows = CategoriesFor( entries )
+		g_ActiveCat = rows[ 1 ] or nil
 	end
 
 	local filter = ""
