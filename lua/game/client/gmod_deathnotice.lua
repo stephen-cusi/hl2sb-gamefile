@@ -283,6 +283,10 @@ local FRIENDLY_NPC = {
 	["gman"]       = true,
 	["griggs"]     = true,
 	["sheckley"]   = true,
+	-- reskin packs name their entries "... - Friendly" / "... - Hostile"; the
+	-- feed now receives the DISPLAY name (the entity's targetname), so match
+	-- the word too -- without it a friendly reskin fed red
+	["friendly"]   = true,
 }
 
 local function IsFriendlyNPC( name )
