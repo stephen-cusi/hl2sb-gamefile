@@ -15,8 +15,9 @@
 
     What "disabling" does
     ---------------------
-    An addon is a folder under addons/ (or a .gma archive, which the engine
-    unpacks into addons/<name>/).  Both are MOUNTED as search paths at startup
+    An addon is a folder under addons/ (or a .gma archive, which the filesystem
+    mounts READ-ONLY IN PLACE -- GMod style, nothing is extracted).  Both are
+    MOUNTED as search paths at startup
     (game/shared/lua/mountaddons.cpp + shared/hl2sb/hl2sb_gma.cpp).  A disabled
     addon is simply not mounted -- the Lua side never sees it.
 
@@ -118,6 +119,64 @@ local PAGE_SIZE = 14
 -- the addons
 -- ---------------------------------------------------------------------------
 
+-- Parse a .gma header for its addon metadata (GMod shows title/author in its
+-- Addons panel; we do the same).  Pure Lua over file.Open -- the .gma header
+-- is: "GMAD" + version byte, v3+: 16 bytes (steamid+timestamp), a NUL-list of
+-- required content ended by an empty string, then name/description/author as
+-- NUL-terminated strings.  Returns title, author, description (or nothing).
+local function ReadGmaInfo( gmaName )
+    if ( not file.Open ) then return nil end
+    local f = file.Open( "addons/" .. gmaName, "rb", "MOD" )
+    if ( not f ) then return nil end
+
+    local function cstring( max )
+        local chars = {}
+        for _ = 1, max or 4096 do
+            local b = f:Read( 1 )
+            if ( not b or b == "" ) then return nil end
+            local c = b:byte()
+            if ( c == 0 ) then return table.concat( chars ) end
+            chars[ #chars + 1 ] = b
+        end
+        return table.concat( chars )
+    end
+
+    local title, author, desc
+
+    repeat
+        local magic = f:Read( 4 )
+        if ( magic != "GMAD" ) then break end
+
+        local verByte = f:Read( 1 )
+        local ver = verByte and verByte:byte() or 0
+        if ( ver < 1 or ver > 3 ) then break end
+
+        if ( ver >= 3 ) then
+            f:Read( 16 )        -- steamid + timestamp
+        end
+
+        -- required content: NUL-separated, ended by an empty string
+        local broken = false
+        for _ = 1, 64 do
+            local s = cstring( 1024 )
+            if ( s == nil ) then broken = true break end
+            if ( s == "" ) then break end
+        end
+        if ( broken ) then break end
+
+        title  = cstring()
+        desc   = cstring()
+        author = cstring()
+    until true
+
+    f:Close()
+
+    if ( not title or title == "" ) then return nil end
+    return title, author, desc
+end
+
+local m_GmaInfo = {}    -- archive file name -> { title = , author = , desc = }
+
 local function ListAddons()
     local out = {}
 
@@ -132,12 +191,37 @@ local function ListAddons()
     for _, name in ipairs( files or {} ) do
         if ( name:lower():sub( -4 ) == ".gma" ) then
             local base = name:sub( 1, -5 )
-            out[ #out + 1 ] = { name = name, key = base:lower(), isGma = true }
+            local entry = { name = name, key = base:lower(), isGma = true }
+
+            -- addon metadata straight out of the archive header (cached per
+            -- dialog session; reading it is a few header bytes)
+            local info = m_GmaInfo[ name ]
+            if ( info == nil ) then
+                local title, author, desc = ReadGmaInfo( name )
+                info = { title = title, author = author, desc = desc }
+                m_GmaInfo[ name ] = info
+            end
+            entry.title, entry.author, entry.desc = info.title, info.author, info.desc
+
+            out[ #out + 1 ] = entry
         end
     end
 
     table.sort( out, function( a, b ) return a.key < b.key end )
     return out
+end
+
+-- What a row shows: GMod style title (by author) when the archive carries it,
+-- otherwise the file/folder name.
+local function DisplayName( entry )
+    if ( entry.isGma and entry.title ) then
+        local s = entry.title
+        if ( entry.author and entry.author != "" ) then
+            s = s .. "  -  " .. entry.author
+        end
+        return s
+    end
+    return entry.name .. ( entry.isGma and "  [GMA]" or "" )
 end
 
 local function DedupeList( list )
@@ -163,7 +247,9 @@ local function FilteredAddons( addons )
     local query = ( m_Filter or "" ):lower()
     local rows = {}
     for _, entry in ipairs( addons ) do
-        if ( query == "" or entry.name:lower():find( query, 1, true ) ) then
+        local hay = entry.name:lower()
+        if ( entry.title ) then hay = hay .. "\n" .. entry.title:lower() end
+        if ( query == "" or hay:find( query, 1, true ) ) then
             rows[ #rows + 1 ] = entry
         end
     end
@@ -340,12 +426,15 @@ local function OpenPlain()
     for i = 1, show do
         local entry = rows[ i ]
         local cb = nil
-        if ( vgui.CheckButton ) then cb = vgui.CheckButton( frame, "addon_" .. i, entry.name .. ( entry.isGma and "  [GMA]" or "" ) ) end
+        if ( vgui.CheckButton ) then cb = vgui.CheckButton( frame, "addon_" .. i, DisplayName( entry ) ) end
         if ( cb ~= nil ) then
             cb:SetBounds( M, rowsTop + ( i - 1 ) * ROW_H, innerW, ROW_H )
             Layout[ #Layout + 1 ] = { cb, M, rowsTop + ( i - 1 ) * ROW_H, innerW, ROW_H }
             cb:SetSelected( not disabled[ entry.key ] )
             ApplyFont( cb, FONT_TEXT )
+            if ( entry.desc and entry.desc != "" and cb.SetTooltip ) then
+                cb:SetTooltip( entry.desc )
+            end
             cb.OnCheckButtonChecked = function( btn )
                 Status( SetEnabled( entry.key, btn:IsChecked() ) )
             end
@@ -582,7 +671,10 @@ local function OpenDerma()
     for i = 1, #rows do
         local entry = rows[ i ]
         local row = vgui.Create( "DCheckBoxLabel", canvas )
-        row:SetText( entry.name .. ( entry.isGma and "  [GMA]" or "" ) )
+        row:SetText( DisplayName( entry ) )
+        if ( entry.desc and entry.desc != "" and row.SetTooltip ) then
+            row:SetTooltip( entry.desc )
+        end
         row:SetPos( 6, y )
         row:SetSize( 430, ROW_H )
         row:SetChecked( not disabled[ entry.key ] )
