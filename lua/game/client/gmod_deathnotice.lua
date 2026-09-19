@@ -80,7 +80,7 @@ local killicon = killicon
 --
 -- GMod 的图标字体 "HL2MPTypeDeath" 是 tall **64**
 -- （D:\games\garrysmod\garrysmod\resource\ClientScheme.res:639-650），于是：
---   * 材质类图标（killicon.Add，Lua 武器/插件注册的图片，例如 nyan 枪）
+--   * 材质类图标（killicon.Add，Lua 武器/插件注册的图片，例如插件武器）
 --     高 = 方案字体 64 * 0.75 = **48px**（宽按素材比例，见 killicon.lua:205-212）
 --   * 字体类图标（引擎 mod_textures.txt 的武器字形，走 AddFont）
 --     字形框 = **64px**（killicon.lua:202-204，不走 heightScale）
@@ -482,7 +482,7 @@ local bDrawError = false
 -- forward): attacker, attackerTeam, inflictor, victim, victimTeam, suicide,
 -- victimIsNPC, killerIsPlayer, weaponClass.
 --
--- weaponClass (9th) is the full weapon class name (e.g. "weapon_nyangun").
+-- weaponClass (9th) is the full weapon class name (e.g. "weapon_medkit").
 -- Lua SWEPs register their killicon by class name (killicon.Add), while the
 -- 3rd argument is HL2MP's mod_textures.txt short name ("death_smg1",
 -- "d_skull").  When weaponClass has a killicon of its own it wins.
@@ -573,7 +573,7 @@ hook.add( "AddDeathNotice", "gmod_deathnotice", function( attacker, attackerTeam
 	victim   = PrettyName( victim )
 	-- Prefer the weapon's own killicon.  The 3rd argument is HL2MP's
 	-- mod_textures.txt short name ("death_smg1", "d_skull"); the 9th is the full
-	-- weapon class the server put in the event ("weapon_nyangun"), and a Lua SWEP
+	-- weapon class the server put in the event (a Lua SWEP class name), and a Lua SWEP
 	-- registers its killicon by class name (killicon.Add) - so when that class
 	-- has an icon it wins.  GMod does the same thing: it hands
 	-- `inflictor:GetClass()` to AddDeathNotice (player.lua:172 / npc.lua:121).

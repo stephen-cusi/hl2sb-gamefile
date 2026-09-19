@@ -1,16 +1,27 @@
 --[[--------------------------------------------------------------------
-    weapon_base  --  Faithful GMod SWEP base ported to HL2SB.
+    weapon_base  --  GMod SWEP base for HL2SB, restructured to match
+    Facepunch/garrysmod gamemodes/base/entities/weapons/weapon_base:
 
-    Source: Facepunch/garrysmod  gamemodes/base/entities/weapons/
-            weapon_base/shared.lua  (verbatim method set, GMod semantics).
+        shared.lua    (this file)   realm-neutral methods and defaults
+        init.lua      server-only fields and NPC hooks
+        cl_init.lua   client-only fields and HUD hooks
+        sh_anim.lua   SetWeaponHoldType / TranslateActivity parity layer
+        ai_translations.lua           NPC activity translations
+
+    The loader runs init.lua on the server and cl_init.lua on the client;
+    both include shared.lua (same as GMod's entity layout).
 
     HL2SB adaptations (engine-level, no shims):
-      * SetHoldType(t) -> drives HL2SB's m_acttable (numeric baseAct ->
-        weaponAct triples) so the player body/world-model animates.  GMod's
-        engine reads HoldType; HL2SB's postures from m_acttable.  We keep the
-        GMod HoldType name and the helper, and map it here.
+      * SetHoldType(t) drives the engine's m_acttable (the engine translates
+        player activities itself, CBaseCombatWeapon::ActivityOverride), so
+        GMod's ActivityTranslate table is filled for scripts but the engine
+        consumes m_acttable.
+      * The engine applies SWEP.Primary/Secondary.Delay after each attack
+        (CHL2MPScriptedWeapon::ItemPostFrame) unless the SWEP called
+        SetNextPrimaryFire/SetNextSecondaryFire itself -- the GMod contract.
       * Clip1/Clip2/Ammo1/Ammo2/SetClip1/SetClip2/GetPrimaryAmmoType/
-        GetSecondaryAmmoType refer to the engine bindings.
+        GetSecondaryAmmoType refer to the engine bindings; the engine seeds
+        both clips from Primary/Secondary DefaultClip on first ItemPostFrame.
 ----------------------------------------------------------------------]]--
 
 -- PrintName / header fields (GMod shows these on the HUD)
@@ -284,6 +295,8 @@ end
 	Name: SWEP:SetHoldType
 	Desc: GMod sets a hold type string; HL2SB animates via m_acttable.
 		  We keep the GMod API and translate to the activity table.
+		  (GMod's SetWeaponHoldType entry point lives in sh_anim.lua and
+		  routes here.)
 -----------------------------------------------------------]]
 function SWEP:SetHoldType( t )
 	-- GMod hold types are matched case-insensitively ("Pistol" == "pistol").
@@ -293,25 +306,13 @@ function SWEP:SetHoldType( t )
 	return self.HoldType
 end
 
--- GMod API name: stock SWEP Initialize calls self:SetWeaponHoldType(t).
-SWEP.SetWeaponHoldType = SWEP.SetHoldType
-
 --[[---------------------------------------------------------
 	Name: SWEP:Initialize
 -----------------------------------------------------------]]
 function SWEP:Initialize()
+	-- GMod applies SWEP.HoldType automatically; this engine's hold type is
+	-- consumed through SetHoldType, so honour the field here.
 	self:SetHoldType( self.HoldType or "pistol" )
-	self.m_bReloadsSingly	= false
-	self.m_bFiresUnderwater	= true
-	if ( self.Primary and self.Primary.ClipSize and self.Primary.ClipSize ~= -1 ) then
-		self.m_iClip1 = self.Primary.DefaultClip or self.Primary.ClipSize
-	end
-	if ( self.Secondary and self.Secondary.ClipSize and self.Secondary.ClipSize ~= -1 ) then
-		self.m_iClip2 = self.Secondary.DefaultClip or self.Secondary.ClipSize
-	end
-	self.m_flNextPrimaryAttack	= 0
-	self.m_flNextSecondaryAttack	= 0
-	return true
 end
 
 --[[---------------------------------------------------------
@@ -319,10 +320,6 @@ end
 -----------------------------------------------------------]]
 function SWEP:PrimaryAttack()
 	if ( not self:CanPrimaryAttack() ) then return end
-	-- HL2SB FX DEBUG (temporary): which realm runs the Lua attack?  If both run,
-	-- every sound is emitted twice (client + server) and bullet effects depend
-	-- on the client-side FireBullets actually executing.
-	print( "[swepdbg] PrimaryAttack realm=" .. ( SERVER and "sv" or "cl" ) )
 	self:EmitSound( self.Primary.Sound or "Weapon_AR2.Single" )
 	self:ShootBullet( self.Primary.Damage or 150, self.Primary.NumberofShots or 1,
 		(self.Primary.Spread or 0.01) * 0.1, self.Primary.Ammo or "Pistol",
@@ -339,8 +336,6 @@ end
 -----------------------------------------------------------]]
 function SWEP:SecondaryAttack()
 	if ( not self:CanSecondaryAttack() ) then return end
-	-- HL2SB FX DEBUG (temporary)
-	print( "[swepdbg] SecondaryAttack realm=" .. ( SERVER and "sv" or "cl" ) )
 	self:EmitSound( self.Secondary.Sound or "Weapon_Shotgun.Single" )
 	self:ShootBullet( self.Secondary.Damage or 150, self.Secondary.NumberofShots or 9,
 		(self.Secondary.Spread or 0.2) * 0.1, self.Secondary.Ammo or self.Primary.Ammo or "Pistol",
@@ -354,9 +349,12 @@ end
 
 --[[---------------------------------------------------------
 	Name: SWEP:Reload
+	Desc: GMod form -- DefaultReload( act ) fills both clips from the
+	      weapon's max clip sizes (the engine binding accepts the GMod
+	      single-argument call and the Source three-argument call).
 -----------------------------------------------------------]]
 function SWEP:Reload()
-	return self:DefaultReload( self:GetMaxClip1(), self:GetMaxClip2(), ACT_VM_RELOAD )
+	return self:DefaultReload( ACT_VM_RELOAD )
 end
 
 --[[---------------------------------------------------------
@@ -374,9 +372,10 @@ end
 
 --[[---------------------------------------------------------
 	Name: SWEP:Deploy
+	Desc: GMod verbatim -- return true.  The draw animation comes from
+	      GetDrawActivity() below, which the engine dispatches.
 -----------------------------------------------------------]]
 function SWEP:Deploy()
-	self:SendWeaponAnim( ACT_VM_DRAW )
 	return true
 end
 
@@ -399,9 +398,14 @@ end
 -----------------------------------------------------------]]
 function SWEP:ShootEffects()
 	local owner = self:GetOwner()
-	if ( self:GetOwner() ) then
+	if ( owner ) then
 		self:SendWeaponAnim( ACT_VM_PRIMARYATTACK )
-		owner:DoMuzzleFlash()
+		-- GMod names it MuzzleFlash; older HL2SB scripts use DoMuzzleFlash.
+		if ( owner.MuzzleFlash ) then
+			owner:MuzzleFlash()
+		elseif ( owner.DoMuzzleFlash ) then
+			owner:DoMuzzleFlash()
+		end
 		owner:SetAnimation( PLAYER_ATTACK1 )
 	end
 end
@@ -493,16 +497,19 @@ end
 	Name: SWEP:Ammo1
 -----------------------------------------------------------]]
 function SWEP:Ammo1()
-	if ( not self:GetOwner() ) then return 0 end
-	return self:GetOwner():GetAmmoCount( self:GetPrimaryAmmoType() )
+	-- Owner cannot have ammo? Such as NPCs.  (Also covers "no owner".)
+	local owner = self:GetOwner()
+	if ( not owner or not owner.GetAmmoCount ) then return 0 end
+	return owner:GetAmmoCount( self:GetPrimaryAmmoType() )
 end
 
 --[[---------------------------------------------------------
 	Name: SWEP:Ammo2
 -----------------------------------------------------------]]
 function SWEP:Ammo2()
-	if ( not self:GetOwner() ) then return 0 end
-	return self:GetOwner():GetAmmoCount( self:GetSecondaryAmmoType() )
+	local owner = self:GetOwner()
+	if ( not owner or not owner.GetAmmoCount ) then return 0 end
+	return owner:GetAmmoCount( self:GetSecondaryAmmoType() )
 end
 
 --[[---------------------------------------------------------
@@ -555,4 +562,77 @@ function SWEP:NetworkVar( nwType, slot, name )
 
 		return value
 	end
+end
+
+-- ===========================================================================
+-- HL2SB: initial NetworkVar seed for the predicted client realm.
+--
+-- GMod replicates NetworkVars; this engine's Lua NW storage does not.  The
+-- server realm seeds SetupDataTables values (gmod_camera: SetZoom( 70 )), but
+-- the client realm's storage started empty, so GetZoom() answered 0 and the
+-- first zoom ran from FOV 0.1 instead of 70.  One seed at creation is enough:
+-- afterwards both realms integrate the same prediction deltas, and
+-- Reload/Equip resync by themselves.
+--
+--      client, after SetupDataTables:  hl2sb_nwrequest <entindex>
+--      server: reads the weapon's __hl2sb_nw_* fields, replies
+--              hl2sb_nwseed <entindex> <name>=<value> ...
+--      client: writes them back onto the weapon's table (the NW storage).
+-- The engine records the declared names as __hl2sb_nw_names right after
+-- SetupDataTables (CHL2MPScriptedWeapon::InitScriptedWeapon) and fires the
+-- request; the handlers here are the two ends of it.
+-- ===========================================================================
+if ( SERVER ) then
+	concommand.Add( "hl2sb_nwrequest", function( ply, _, args )
+
+		if ( not IsValid( ply ) or args == nil or args[ 1 ] == nil ) then return end
+		if ( ents == nil or ents.GetByIndex == nil ) then return end
+
+		local ent = ents.GetByIndex( tonumber( args[ 1 ] ) or 0 )
+		if ( ent == nil or ent.__hl2sb_nw_names == nil ) then
+			print( "[HL2SB] nwseed: request for ent " .. tostring( args[ 1 ] ) .. " but no names table" )
+			return
+		end
+		print( "[HL2SB] nwseed: request for ent " .. tostring( args[ 1 ] ) )
+
+		local parts = { args[ 1 ] }
+		for _, name in ipairs( ent.__hl2sb_nw_names ) do
+			local ok, value = pcall( function() return ent[ "__hl2sb_nw_" .. name ] end )
+			if ( ok and value ~= nil ) then
+				parts[ #parts + 1 ] = name .. "=" .. tostring( value )
+			end
+		end
+
+		if ( #parts > 1 ) then
+			print( "[HL2SB] nwseed: replying -> " .. table.concat( parts, " " ) )
+			ply:ConCommand( "hl2sb_nwseed " .. table.concat( parts, " " ) )
+		else
+			print( "[HL2SB] nwseed: nothing to send for ent " .. tostring( args[ 1 ] ) )
+		end
+
+	end )
+end
+
+if ( CLIENT ) then
+	concommand.Add( "hl2sb_nwseed", function( _, _, args )
+
+		if ( args == nil or args[ 1 ] == nil ) then return end
+		if ( ents == nil or ents.GetByIndex == nil ) then return end
+
+		local ent = ents.GetByIndex( tonumber( args[ 1 ] ) or 0 )
+		if ( ent == nil ) then
+			print( "[HL2SB] nwseed: seed for ent " .. tostring( args[ 1 ] ) .. " but no local entity" )
+			return
+		end
+		print( "[HL2SB] nwseed: applying seed for ent " .. tostring( args[ 1 ] ) )
+
+		for i = 2, #args do
+			local name, value = string.match( args[ i ], "^([%w_]+)=(.*)$" )
+			if ( name ~= nil and value ~= nil ) then
+				local num = tonumber( value )
+				ent[ "__hl2sb_nw_" .. name ] = ( num ~= nil ) and num or value
+			end
+		end
+
+	end )
 end

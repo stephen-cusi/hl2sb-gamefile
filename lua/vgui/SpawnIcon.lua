@@ -48,11 +48,23 @@ function PANEL:Init()
 
 	self:SetText( "" )
 
-	self.Icon = vgui.Create( "ModelImage", self )
+	-- HL2SB: the thumbnail renderer is the LUA DModelPanel, not the engine's
+	-- ModelImage/CModelPanel.  The engine panel rendered only some models --
+	-- weapons showed one cell in twenty, vehicles and most NPCs painted
+	-- nothing at all, and big models bled outside the cell (no scissor) --
+	-- while DModelPanel is the renderer the player-model selector proved:
+	-- it draws every model, fits the camera, scissors to the panel and
+	-- cleans its clientside entity up on remove.
+	self.Icon = vgui.Create( "DModelPanel", self )
+	if ( not IsValid( self.Icon ) ) then
+		self.Icon = vgui.Create( "ModelImage", self )
+	end
 
 	if ( IsValid( self.Icon ) ) then
 		self.Icon:SetMouseInputEnabled( false )
 		self.Icon:SetKeyboardInputEnabled( false )
+		-- thumbnails are static: no sequence processing per icon per frame
+		if ( self.Icon.SetAnimated ) then self.Icon:SetAnimated( false ) end
 	end
 
 	self:SetSize( 64, 64 )
@@ -78,7 +90,22 @@ function PANEL:OpenMenu()
 end
 
 function PANEL:Paint( w, h )
-	-- Do not draw the default background
+	-- HL2SB: an opaque cell background so a model thumbnail reads as a cell
+	-- (GMod's spawn icons sit on a dark tile), and a SCISSOR around the cell:
+	-- the ModelImage child paints a live 3D model that knows nothing about
+	-- this panel's bounds -- without the scissor a big model (an NPC, a
+	-- vehicle) painted far outside its 64px cell, over the whole menu.
+	-- PaintOver (which runs after the children) turns the scissor back off.
+	surface.SetDrawColor( 45, 48, 52, 255 )
+	surface.DrawRect( 0, 0, w, h )
+
+	if ( render and render.SetScissorRectangle and self.LocalToScreen ) then
+		local ok, ax, ay = pcall( self.LocalToScreen, self, 0, 0 )
+		if ( ok and ax ~= nil ) then
+			render.SetScissorRectangle( ax, ay, ax + w, ay + h, true )
+			self.m_bScissorSet = true
+		end
+	end
 end
 
 --- GMod's Think (see the header for the OnThink bridge this engine needs).
@@ -108,6 +135,12 @@ if ( GWEN and GWEN.CreateTextureBorder and matHover ) then
 end
 
 function PANEL:PaintOver( w, h )
+	-- release the scissor Paint enabled (children painted inside it)
+	if ( self.m_bScissorSet and render and render.SetScissorRectangle ) then
+		render.SetScissorRectangle( 0, 0, 0, 0, false )
+		self.m_bScissorSet = false
+	end
+
 	if ( self.OverlayFade > 0 ) then
 		local alpha = self.OverlayFade
 
@@ -179,6 +212,21 @@ function PANEL:SetModel( mdl, iSkin, BodyGroups )
 
 	if ( IsValid( self.Icon ) ) then
 		self.Icon:SetModel( mdl, iSkin, BodyGroups )
+
+		-- DModelPanel path: fit the camera to the model's bounds, the way
+		-- GMod's thumbnail camera frames every model no matter its size (a
+		-- strider and a can must both fill the cell).
+		if ( self.Icon.SetCamPos and IsValid( self.Icon.Entity ) ) then
+			local ent = self.Icon.Entity
+			local mins, maxs = ent:OBBMins(), ent:OBBMaxs()
+			local center = ( mins + maxs ) * 0.5
+			local radius = math.max( maxs.x - mins.x, maxs.y - mins.y, maxs.z - mins.z ) * 0.5
+			if ( radius < 1 ) then radius = 10 end
+
+			self.Icon:SetLookAt( center )
+			self.Icon:SetCamPos( center + Vector( radius * 1.9, radius * 1.4, radius * 1.1 ) )
+			self.Icon:SetFOV( 70 )
+		end
 
 		-- engine LModelPanel (ModelImage) keeps the camera the model was loaded with
 		-- unless it is asked to fit again; without this the thumbnails of models whose

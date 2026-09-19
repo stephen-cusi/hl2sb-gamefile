@@ -6,5 +6,5 @@
 	"icon"		"icon16/plugin.png"
 	"id"		"12"
 	"parentid"	"0"
-	"contents"	"weapon_nyangun pist_weagon"
+	"contents"	"pist_weagon"
 }
