@@ -41,6 +41,34 @@ AccessorFunc( PANEL, "m_iSkin", "SkinID" )
 AccessorFunc( PANEL, "m_strBodyGroups", "BodyGroup" )
 AccessorFunc( PANEL, "m_strIconName", "IconName" )
 
+-- ===========================================================================
+-- HL2SB (perf): deferred model loading.
+--
+-- Creating the clientside model is the most expensive thing a cell does
+-- (tens of ms each).  Building a big tab used to do 50+ of them back to
+-- back and stuttered through the whole fill.  SetModel now only RECORDS the
+-- model; LoadModel does the real work, queued from OnThink and pumped at
+-- most one per tick, and only for cells that are actually on screen.
+-- ===========================================================================
+local g_LoadQueue = {}
+local g_NextLoad  = 0
+
+local function PumpModelLoads()
+	if ( #g_LoadQueue == 0 ) then return end
+	if ( RealTime() < g_NextLoad ) then return end
+
+	local pnl = table.remove( g_LoadQueue, 1 )
+	pnl.m_bQueued = nil
+
+	if ( not IsValid( pnl ) ) then return end
+	if ( pnl.m_bModelLoaded or pnl.m_bModelFailed ) then return end
+
+	if ( pnl.IsVisible and not pnl:IsVisible() ) then return end	-- hidden tab/category: OnThink requeues when shown
+
+	pnl:LoadModel()
+	g_NextLoad = RealTime() + 0.04
+end
+
 function PANEL:Init()
 	if ( self.SetDoubleClickingEnabled ) then
 		self:SetDoubleClickingEnabled( false )
@@ -99,8 +127,34 @@ function PANEL:Paint( w, h )
 	surface.SetDrawColor( 45, 48, 52, 255 )
 	surface.DrawRect( 0, 0, w, h )
 
+	-- a model that never came up (missing file / error model): draw the model's
+	-- file name where the thumbnail would be -- NOT the magenta checkerboard
+	if ( self.m_bModelFailed ) then
+		if ( draw and draw.SimpleText ) then
+			local name = self:GetModelName() or ""
+			local short = string.match( name, "([^/]+)%.mdl$" ) or name
+			draw.SimpleText( short, "DermaDefault", w / 2, h / 2 - 4,
+				Color( 210, 210, 210, 255 ), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
+		end
+		return
+	end
+
+	-- viewport culling: the live 3D thumbnail is the one expensive thing a
+	-- cell does per frame; a cell scrolled out of the screen (or behind the
+	-- menu edge) skips it entirely.  The child reads the flag in its Paint.
+	local bOnScreen = true
+	local ok, ax, ay = pcall( self.LocalToScreen, self, 0, 0 )
+	if ( ok and ax ~= nil ) then
+		bOnScreen = not ( ay + h < 0 or ay > ScrH() or ax + w < 0 or ax > ScrW() )
+	end
+
+	if ( IsValid( self.Icon ) ) then
+		self.Icon.m_bCulled = not bOnScreen
+	end
+
+	if ( not bOnScreen ) then return end
+
 	if ( render and render.SetScissorRectangle and self.LocalToScreen ) then
-		local ok, ax, ay = pcall( self.LocalToScreen, self, 0, 0 )
 		if ( ok and ax ~= nil ) then
 			render.SetScissorRectangle( ax, ay, ax + w, ay + h, true )
 			self.m_bScissorSet = true
@@ -110,6 +164,15 @@ end
 
 --- GMod's Think (see the header for the OnThink bridge this engine needs).
 function PANEL:OnThink()
+	-- queue the (deferred) model load, then pump the queue -- one model per
+	-- tick, on-screen cells first-come-first-served
+	if ( not self.m_bModelLoaded and not self.m_bModelFailed and not self.m_bQueued ) then
+		self.m_bQueued = true
+		g_LoadQueue[ #g_LoadQueue + 1 ] = self
+	end
+
+	PumpModelLoads()
+
 	self.OverlayFade = math.Clamp( self.OverlayFade - RealFrameTime() * 640 * 2, 0, 255 )
 
 	if ( dragndrop.IsDragging() or !self:IsHovered() ) then return end
@@ -210,14 +273,56 @@ function PANEL:SetModel( mdl, iSkin, BodyGroups )
 
 	self.m_strBodyGroups = BodyGroups
 
-	if ( IsValid( self.Icon ) ) then
-		self.Icon:SetModel( mdl, iSkin, BodyGroups )
+	-- HL2SB (perf): the model does NOT load here (see the queue note at the
+	-- top of the file).  OnThink queues LoadModel, which does the real work
+	-- one cell per tick for on-screen cells only.
+	self.m_bModelLoaded = false
+	self.m_bModelFailed = false
 
-		-- DModelPanel path: fit the camera to the model's bounds, the way
-		-- GMod's thumbnail camera frames every model no matter its size (a
-		-- strider and a can must both fill the cell).
-		if ( self.Icon.SetCamPos and IsValid( self.Icon.Entity ) ) then
-			local ent = self.Icon.Entity
+	if ( iSkin && iSkin > 0 ) then
+		self:SetTooltip( string.format( "%s (Skin %i)", mdl, iSkin + 1 ) )
+	else
+		self:SetTooltip( string.format( "%s", mdl ) )
+	end
+end
+
+--- HL2SB: the real load, run from the queue (see PumpModelLoads).  Keeps the
+--- camera-fit the old SetModel did right after the load, plus the error-model
+--- check the spawn menu used to run at creation time -- a model that fails
+--- marks the icon and Paint degrades to the model's file name.
+function PANEL:LoadModel()
+	if ( self.m_bModelLoaded or self.m_bModelFailed ) then return end
+	self.m_bModelLoaded = true
+
+	local mdl = self:GetModelName()
+	if ( mdl == nil or mdl == "" ) then return end
+
+	if ( not IsValid( self.Icon ) or self.Icon.SetModel == nil ) then
+		self.m_bModelFailed = true
+		return
+	end
+
+	local ok, err = pcall( self.Icon.SetModel, self.Icon, mdl, self:GetSkinID(), self.m_strBodyGroups )
+	if ( not ok ) then
+		print( "[SpawnIcon] SetModel failed for '" .. mdl .. "': " .. tostring( err ) )
+		self.m_bModelFailed = true
+		return
+	end
+
+	local ent = self.Icon.Entity
+	local mdlGot = ( ent ~= nil and IsValid( ent ) ) and tostring( ent:GetModel() ) or ""
+	if ( ent == nil or not IsValid( ent ) or string.find( string.lower( mdlGot ), "error", 1, true ) ~= nil ) then
+		print( "[SpawnIcon] no clientside model for '" .. mdl .. "' - text fallback" )
+		self.m_bModelFailed = true
+		return
+	end
+
+	-- DModelPanel path: fit the camera to the model's bounds, the way
+	-- GMod's thumbnail camera frames every model no matter its size (a
+	-- strider and a can must both fill the cell).  Guarded: one model with
+	-- odd bounds or a missing vector binding must not error every Think.
+	pcall( function()
+		if ( self.Icon.SetCamPos ) then
 			local mins, maxs = ent:OBBMins(), ent:OBBMaxs()
 			local center = ( mins + maxs ) * 0.5
 			local radius = math.max( maxs.x - mins.x, maxs.y - mins.y, maxs.z - mins.z ) * 0.5
@@ -233,13 +338,7 @@ function PANEL:SetModel( mdl, iSkin, BodyGroups )
 		-- bounds differ from the modelinfo defaults framed the head only
 		-- (2026-09-17 screenshot).  RefitCamera is the binding for FitCameraToModel.
 		if ( self.Icon.RefitCamera ) then self.Icon:RefitCamera() end
-	end
-
-	if ( iSkin && iSkin > 0 ) then
-		self:SetTooltip( string.format( "%s (Skin %i)", mdl, iSkin + 1 ) )
-	else
-		self:SetTooltip( string.format( "%s", mdl ) )
-	end
+	end )
 end
 
 function PANEL:RebuildSpawnIcon()

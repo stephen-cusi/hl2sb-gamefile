@@ -171,6 +171,11 @@ function PANEL:PostDrawModel( ent )
 end
 
 function PANEL:Paint( w, h )
+	-- HL2SB (perf): SpawnIcon sets this when the cell is scrolled off the
+	-- screen -- the live 3D render is the one expensive thing a thumbnail
+	-- does per frame, so an off-screen cell skips it entirely.
+	if ( self.m_bCulled ) then return end
+
 	w = w or self:GetWide()
 	h = h or self:GetTall()
 
@@ -199,25 +204,16 @@ function PANEL:Paint( w, h )
 
 	render.PushView3D( self.vCamPos, ang, self.fFOV, x, y, w, h, 5, self.FarZ )
 
-	render.SuppressEngineLighting( true )
+	-- HL2SB: the hand-rolled light rig (ambient 50 + two white directionals via
+	-- render.SetLight) produced near-black thumbnails for most models -- the
+	-- SetLight direction mapping does not match what this engine expects.  The
+	-- map's own lighting does: place the lighting origin at the model and let
+	-- the engine light it, which is also what the world will look like.
 	render.SetLightingOrigin( self.Entity:GetPos() )
-
-	local amb = self.colAmbientLight or Color( 50, 50, 50 )
-	render.ResetAmbientLightCube( amb.r / 255, amb.g / 255, amb.b / 255 )
 
 	local col = self.colColor or color_white
 	render.SetColorModulation( col.r / 255, col.g / 255, col.b / 255 )
 	render.SetBlend( ( self:GetAlpha() / 255 ) * ( col.a / 255 ) )
-
-	for i = 0, 6 do
-		local lightCol = self.DirectionalLight[ i ]
-
-		if ( lightCol ) then
-			local dir = FaceDirection( i )
-
-			render.SetLight( lightCol.r, lightCol.g, lightCol.b, 255, dir, i )
-		end
-	end
 
 	self:DrawModel()
 
@@ -236,8 +232,7 @@ function PANEL:Paint( w, h )
 	-- reflections): no argument clears it again.
 	if ( render.BindLocalCubemap ) then render.BindLocalCubemap() end
 
-	render.SuppressEngineLighting( false )
-	render.PopView3D()
+		render.PopView3D()
 
 	if ( render.SetScissorRectangle ) then
 		render.SetScissorRectangle( 0, 0, 0, 0, false )

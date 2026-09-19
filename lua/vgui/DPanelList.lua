@@ -143,17 +143,42 @@ function PANEL:RemoveItem( pnl, bDontDelete )
 end
 
 --- Wiki: "Hides all child panels, and optionally deletes them."
-function PANEL:Clear( remove )
+---
+--- ⚠️ GMod semantics: the items leave the list EITHER WAY.  This port used to
+--- keep them in m_tItems when `remove` was falsy, so a caller doing Clear()
+--- followed by AddItem() -- the spawn menu, every tab/category/search switch --
+--- STACKED a fresh invisible copy of the whole list every time.  After ten
+--- switches the grid walked ~10x its panels per frame; that is the "big page
+--- lag" (2026-09-19 video).  Items are always table.remove()d now; only the
+--- panel deletion is optional.
+function PANEL:Clear( bDontDelete )
 	for i = #self.m_tItems, 1, -1 do
 		local item = self.m_tItems[ i ]
 
 		if ( IsValid( item ) ) then
 			item:SetVisible( false )
 
-			if ( remove ) then item:Remove() end
+			if ( not bDontDelete ) then item:Remove() end
 		end
 
-		if ( remove ) then table.remove( self.m_tItems, i ) end
+		table.remove( self.m_tItems, i )
+	end
+
+	self:Rebuild()
+end
+
+--- HL2SB: detach every item WITHOUT destroying the panels -- the spawn menu
+--- keeps a per-tab cell cache and re-docks cached panels (SetVisible(true) +
+--- AddItem) instead of re-probing icons and re-creating models on every
+--- category / search switch.  Detached panels stay parented to the canvas,
+--- just hidden and out of the layout.
+function PANEL:DetachAll()
+	for i = #self.m_tItems, 1, -1 do
+		local item = self.m_tItems[ i ]
+
+		if ( IsValid( item ) ) then item:SetVisible( false ) end
+
+		table.remove( self.m_tItems, i )
 	end
 
 	self:Rebuild()
