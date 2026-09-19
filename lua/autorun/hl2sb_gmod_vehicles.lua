@@ -15,7 +15,7 @@
     CFourWheelVehiclePhysics::Initialize dereferencing the null body vphysics handed
     back.  The real vehicles are (class + model + vehicle script) triples - exactly
     what GMod registers here - and the menu now drops any vehicle entry without a
-    usable model (see the filter in lua/autorun/client/hl2sb_spawnmenu.lua).
+    usable model (see the filter in lua/autorun/client/hl2sb_spawnmenu_gmod.lua).
 
     Difference from GMod's file, deliberate: GMod's "Jeep" is `prop_vehicle_jeep_old`,
     a class GMod's engine adds.  This engine's HL2 jeep is `prop_vehicle_jeep`

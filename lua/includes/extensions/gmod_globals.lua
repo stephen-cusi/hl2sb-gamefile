@@ -393,12 +393,18 @@ if ( RunConsoleCommand == nil ) then
 			end
 		end
 
-		if ( strArgs ~= "" ) then
-			local cv = ( GetConVar_Internal ~= nil ) and GetConVar_Internal( name ) or nil
+		local cv = ( GetConVar_Internal ~= nil ) and GetConVar_Internal( name ) or nil
 
-			if ( cv ~= nil and cv.SetString ~= nil ) then
-				cv:SetString( strArgs )
-			end
+		if ( cv ~= nil and cv.SetString ~= nil and strArgs ~= "" ) then
+			cv:SetString( strArgs )
+			return
+		end
+
+		-- Engine console command ("jpeg", "noclip", "retry", ...): neither a
+		-- Lua concommand nor a ConVar, so hand the whole line to the engine.
+		-- gmod_camera fires "jpeg" on every snapshot without this.
+		if ( HL2SB_EngineCommand ~= nil ) then
+			HL2SB_EngineCommand( ( strArgs ~= "" ) and ( name .. " " .. strArgs ) or name )
 		end
 	end
 end

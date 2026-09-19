@@ -46,6 +46,6 @@
 		"attackername"			"string"	// killer entity classname
 		"victimclass"			"string"	// killed entity classname
 		"weapon"				"string"	// weapon name used to kill (prefixes stripped)
-		"weaponname"			"string"	// full weapon class name (e.g. weapon_nyangun)
+		"weaponname"			"string"	// full weapon class name (e.g. weapon_medkit)
 	}
 }
