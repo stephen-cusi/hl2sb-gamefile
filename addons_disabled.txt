@@ -2,4 +2,5 @@
 # Changes apply immediately when they are made outside a map,
 # otherwise on the next start.
 example_addon
+miku
 windgrin_npc
