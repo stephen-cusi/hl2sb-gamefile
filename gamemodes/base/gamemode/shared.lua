@@ -54,6 +54,50 @@ end
 function GM:PhysgunDrop( ply, ent )
 end
 
+-------------------------------------------------------------------------------
+-- 重力枪四个 gamemode 钩子（引擎 CWeaponPhysCannon 在抓取/弹射/释放时调用，
+-- 服务端 realm）。语义对齐 GMod wiki：
+--
+--   GM:GravGunPickupAllowed( ply, ent ) -> false = 拒绝抓取，nil/true = 按引擎
+--       规则（质量上限 physcannon_maxmass、距离 physcannon_tracelength 等）
+--   GM:GravGunPunt( ply, ent )          -> false = 否决弹射（物体保持被抓住）
+--   GM:GravGunOnPickedUp / OnDropped    -> 通知；OnDropped 对手动放下、
+--       超距脱手、弹射发射都会触发（GMod 同款）
+--
+-- GMod 的沙盒 gamemode 用它们转发 ENTITY:GravGun* 实体方法，这里保持同款：
+-- 实体表上定义了对应方法就把决定权交给它。
+-------------------------------------------------------------------------------
+function GM:GravGunPickupAllowed( ply, ent )
+	-- 玩家不能被重力枪抓（GMod 同款默认）
+	if ( ent ~= nil and ent.IsPlayer ~= nil and ent:IsPlayer() ) then return false end
+
+	if ( ent ~= nil and isfunction( ent.GravGunPickupAllowed ) ) then
+		return ent:GravGunPickupAllowed( ply )
+	end
+
+	return true
+end
+
+function GM:GravGunPunt( ply, ent )
+	if ( ent ~= nil and isfunction( ent.GravGunPunt ) ) then
+		return ent:GravGunPunt( ply )
+	end
+
+	return true
+end
+
+function GM:GravGunOnPickedUp( ply, ent )
+	if ( ent ~= nil and isfunction( ent.GravGunOnPickedUp ) ) then
+		ent:GravGunOnPickedUp( ply )
+	end
+end
+
+function GM:GravGunOnDropped( ply, ent )
+	if ( ent ~= nil and isfunction( ent.GravGunOnDropped ) ) then
+		ent:GravGunOnDropped( ply )
+	end
+end
+
 function GM:GetGameDescription()
 	return self.Name
 end
