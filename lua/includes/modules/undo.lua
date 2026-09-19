@@ -89,34 +89,39 @@ end
 local function UndoValid( ent )
 	if ( ent == nil ) then return false end
 
-	-- HL2SB: a REAL validity test.
+	-- HL2SB: a REAL validity test (GMod gates this with IsEntity()).
 	--
 	-- This used to end with an unconditional "return true", so the function
 	-- accepted everything that was not nil and Do_Undo() happily called
-	-- entity:Remove() on entities that had already been removed.  The undone
-	-- entry is deliberately kept in the table (the "playerUndos[ undoIndex ] =
-	-- nil" below is commented out), so pressing undo twice removed the same dead
-	-- entity twice.  That is the use-after-free behind
+	-- entity:Remove() on entities that had already been removed.  That is the
+	-- use-after-free behind
 	--   dumps/crash_20260913_234437_1_accessviolation.mdmp
 	-- (EXECUTE access violation on recycled heap memory, reached from the
 	-- physics collision solver, which still held the entity as its game data).
 	--
-	-- Entity:IsValid() is the exact test and must be preferred over the global:
-	-- the Lua entity object stores a CBaseHandle (lbaseentity_shared.cpp:65,
-	-- lua_pushentity), and CBaseEntity_IsValid (ib. :2328) resolves it through the
-	-- engine's handle table -- true for a live entity, false for one that has been
-	-- removed, for every entity class.  The GLOBAL IsValid() is the one this
-	-- fork's shim could not be trusted for (it reported false for live players),
-	-- which is exactly why the old body was papered over with "return true".
-	if ( isfunction( ent.IsValid ) ) then
-		local ok, res = pcall( ent.IsValid, ent )
-		if ( ok ) then return res == true end
+	-- Values that are not entity-like at all are now rejected BEFORE the field
+	-- read: the NULL-entity method shim hands back plain booleans
+	-- (ent:GetOwnerEntity() on a dead entity answers false), and indexing a
+	-- boolean raised
+	--   undo.lua:111: attempt to index a boolean value (local 'ent')
+	-- which aborted Do_Undo() before it removed anything AND left the poisoned
+	-- entry on the stack forever -- every later press of undo died on the same
+	-- entry (measured 2026-09-19, six "undo failed" lines, zero removals).
+	if ( isbool( ent ) or isnumber( ent ) or isstring( ent ) or isfunction( ent ) ) then
 		return false
 	end
 
-	-- Nothing to test with: accept, so a non-entity value can never silently
-	-- empty the undo stack (the behaviour this function had before).
-	return true
+	-- A removed entity resolves to the NULL sentinel, which answers
+	-- `ent.IsValid` with a boolean false (not a function); a broken entity
+	-- table can raise through its own __index (the SCP-096 lesson in
+	-- luamanager.h).  So even the field READ is protected.  Either failure
+	-- means: not a live entity.
+	local okRead, isCallable = pcall( function() return isfunction( ent.IsValid ) end )
+	if ( !okRead or !isCallable ) then return false end
+
+	local okCall, res = pcall( ent.IsValid, ent )
+	if ( okCall ) then return res == true end
+	return false
 end
 
 -- undo.Create("Wheel")
@@ -608,10 +613,23 @@ local function IsCarriedByPlayer( ent )
 
 	local owner = nil
 
-	if ( ent.GetOwnerEntity ) then owner = ent:GetOwnerEntity() end
-	if ( !UndoValid( owner ) and ent.GetOwner ) then owner = ent:GetOwner() end
+	-- HL2SB: a dead/NULL entity answers every method with a shim that returns
+	-- a plain false, so these two can hand back a BOOLEAN -- never feed that
+	-- into UndoValid or the global IsValid unchecked (UndoValid indexes
+	-- ent.IsValid, which is exactly the undo.lua:111 boolean crash).
+	local okA, resA = pcall( function()
+		if ( isfunction( ent.GetOwnerEntity ) ) then return ent:GetOwnerEntity() end
+	end )
+	if ( okA and resA ~= nil ) then owner = resA end
 
-	if ( IsValid( owner ) and owner.GetClass and owner:GetClass() == "player" ) then
+	if ( !UndoValid( owner ) ) then
+		local okB, resB = pcall( function()
+			if ( isfunction( ent.GetOwner ) ) then return ent:GetOwner() end
+		end )
+		if ( okB and resB ~= nil ) then owner = resB end
+	end
+
+	if ( UndoValid( owner ) and isfunction( owner.GetClass ) and owner:GetClass() == "player" ) then
 		return true
 	end
 
@@ -828,7 +846,6 @@ local function CC_UndoLast_Body( pl, command, args )
 
 	local count = Do_Undo( last )
 	UndoDebug( "undo: Do_Undo returned count=", count )
-		local count = Do_Undo( last )
 
 	net.Start( "Undo_Undone" )
 		net.WriteInt( lastk, 16 )
@@ -892,6 +909,28 @@ CC_UndoLast = function( pl, command, args )
 
 	if ( !ok ) then
 		print( "[HL2SB] undo failed (caught instead of crashing): " .. tostring( err ) .. "\n" )
+
+		-- HL2SB: name WHAT sat in the stack when it failed.  A bare line number
+		-- ("...111: attempt to index a boolean value") says a boolean reached
+		-- UndoValid but not WHERE it came from; dumping every entry's field
+		-- types turns the next report into an answer instead of a guess.
+		pcall( function()
+			local index = pl:UniqueID()
+			local stack = PlayerUndo[ index ]
+			if ( !istable( stack ) ) then return end
+
+			for k, v in pairs( stack ) do
+				local entTypes = {}
+				if ( istable( v.Entities ) ) then
+					for entIdx, ent in pairs( v.Entities ) do
+						entTypes[ #entTypes + 1 ] = tostring( entIdx ) .. "=" .. type( ent )
+					end
+				end
+				print( "[HL2SB] undo stack[" .. tostring( k ) .. "] name=" .. tostring( v.Name )
+					.. " owner=" .. type( v.Owner )
+					.. " entities={ " .. table.concat( entTypes, " " ) .. " }\n" )
+			end
+		end )
 	end
 end
 concommand.Add( "undo",			CC_UndoLast, nil, "", { FCVAR_DONTRECORD } )
