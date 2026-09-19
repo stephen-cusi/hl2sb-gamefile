@@ -71,6 +71,16 @@ local function FromRegistries( class )
 		local npcs = list.Get( "NPC" )
 
 		if ( npcs ~= nil ) then
+			-- HL2SB: exact identity first -- an entry REGISTERED under this
+			-- class as its spawn name (the stock set the spawn menu registers)
+			-- owns the name.  A reskin pack that reuses the class
+			-- (gi_hutao_* -> npc_combine_s) must not steal it; those are only
+			-- consulted when no exact entry exists.
+			local exact = npcs[ class ]
+			if ( exact ~= nil and exact.Name ~= nil and exact.Name ~= "" ) then
+				return exact.Name
+			end
+
 			for _, t in pairs( npcs ) do
 				if ( t ~= nil and t.Class == class and t.Name ~= nil and t.Name ~= "" ) then
 					return t.Name

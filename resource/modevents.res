@@ -34,6 +34,7 @@
 		"attackername"	"string"	 	// attacker class name who killed
 		"weapon"	"string" 	// weapon name killed used 
 		"weaponname"	"string" 	// weapon class name killed used 
+		"attackerdisplay"	"string" 	// hl2sb: killer entity's display name (targetname), empty when unset
 	}
 
 	"entity_killed"				// a non-player entity (mostly NPC) was killed
@@ -47,5 +48,7 @@
 		"victimclass"			"string"	// killed entity classname
 		"weapon"				"string"	// weapon name used to kill (prefixes stripped)
 		"weaponname"			"string"	// full weapon class name (e.g. weapon_medkit)
+		"victimname"			"string"	// hl2sb: killed entity's display name (targetname), empty when unset
+		"attackerdisplay"		"string"	// hl2sb: killer entity's display name (targetname), empty when unset
 	}
 }
