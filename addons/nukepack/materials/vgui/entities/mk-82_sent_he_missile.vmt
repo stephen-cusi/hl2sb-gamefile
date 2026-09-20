@@ -1,0 +1,8 @@
+"UnlitGeneric" 
+{ 
+	"$basetexture"		"vgui/entities/mk-82_sent_he_missile" 
+	"$vertexcolor" 		1 
+	"$vertexalpha" 		1 
+	"$nolod" 			1 
+} 
+

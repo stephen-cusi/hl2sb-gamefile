@@ -1,0 +1,13 @@
+VertexLitGeneric
+{
+	"$basetexture" "tex/qiandai_se/hair"
+    $lightwarptexture  "tex/qiandai_se/lightwarp_anime_skin"
+	$phong 1
+	$phongboost	0.02			
+	$phongexponent 12		
+
+	$phongfresnelranges			1 .1 .1
+
+	$nodecal 				1
+	$nocull					1
+}

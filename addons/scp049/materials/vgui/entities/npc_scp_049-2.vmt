@@ -1,0 +1,7 @@
+"UnlitGeneric"
+{
+	"$basetexture" "vgui/entities/scp_049zombie"
+	"$ignorez" 1
+	"$vertexcolor" 1
+	"$vertexalpha" 1
+}
