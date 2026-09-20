@@ -561,10 +561,9 @@ end
 -- The result is also mirrored onto the global BaseClass so the
 -- BaseClass:Initialize( self ) pattern keeps resolving.
 -- ===========================================================================
-rawset( _G, "DEFINE_BASE" .. "_CLASS", function( name )
-	BaseClass = baseclass.Get( name )
-	return BaseClass
-end )
+-- (2026-09-20 晚) 定义已移到引擎 C++ 侧（lsrcinit.cpp，编译期拼名）：
+-- Lua 侧 rawset(_G,...) 在当前加载管线里写不进可见的全局表，
+-- 探针实测 DEFINE_BASECLASS=nil。这里不再重复定义。
 
 -- HL2SB GMod compat: Msg( ... ) -- GMod's console print (wiki: Global.Msg).
 -- print() already reaches the console + hl2sb_lua.log on this engine, and some
@@ -595,4 +594,4 @@ end
 
 -- HL2SB diagnostic: proves this file ran to the end (the 2026-09-20 syntax
 -- error in the DEFINE_BASECLASS block silently killed every global here).
-print( "[HL2SB] gmod_globals loaded: DEFINE_BASECLASS=" .. type( DEFINE_BASECLASS ) .. " Angle=" .. type( Angle ) )
+print( "[HL2SB] gmod_globals loaded: DEFINE_BASECLASS=" .. type( rawget( _G, "DEFINE_BASE" .. "_CLASS" ) ) .. " Angle=" .. type( Angle ) )
