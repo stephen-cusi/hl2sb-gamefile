@@ -453,6 +453,15 @@ function PANEL:OnVScroll( iOffset )
 end
 
 function PANEL:Paint( w, h )
+	-- ⚠️ DScrollPanel:Paint is what SHIFTS THE CANVAS by the scroll offset
+	-- (m_pCanvas:SetPos( 0, -m_iPos )).  This override used to return before reaching
+	-- it whenever the background was off - which Init sets - so on every DPanelList
+	-- (the player model selector's Model grid and its Bodygroups page are both ones)
+	-- the wheel and the scrollbar grip updated m_iPos while the content stood still:
+	-- the "a menu page cannot be scrolled down" report (2026-09-20).  Run the base
+	-- Paint unconditionally; only the SKIN background stays optional.
+	BaseClass.Paint( self, w, h )
+
 	if ( not self.m_bDrawBackground ) then return end
 
 	derma.SkinHook( "Paint", "Panel", self, w or self:GetWide(), h or self:GetTall() )
