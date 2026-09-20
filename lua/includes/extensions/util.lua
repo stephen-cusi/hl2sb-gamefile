@@ -70,7 +70,14 @@ end
 	Name: tobool( in )
 	Desc: Turn variable into bool
 -----------------------------------------------------------]]
-util.tobool = tobool
+-- HL2SB: the SERVER loads extensions/ BEFORE includes/init.lua, so the global
+-- tobool does not exist yet at this point and `util.tobool = tobool` stored nil
+-- (sent_nuke's Initialize then died on "attempt to call a nil value (field
+-- 'tobool')").  Fall back to the same definition includes/util.lua carries.
+util.tobool = tobool or function( val )
+	if ( val == nil or val == false or val == 0 or val == "0" or val == "false" ) then return false end
+	return true
+end
 
 
 --[[---------------------------------------------------------

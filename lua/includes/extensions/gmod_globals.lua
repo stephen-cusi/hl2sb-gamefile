@@ -45,38 +45,23 @@ if ( Sound == nil ) then
 	end
 end
 
-ACT_INVALID			= -1
-ACT_VM_DRAW			= 171
-ACT_VM_HOLSTER		= 172
-ACT_VM_IDLE			= 173
-ACT_VM_FIDGET		= 174
-ACT_VM_THROW			= 178	-- HL2SB: was missing; the cod_c4 SWEP's throw animation needs it
-ACT_VM_PRIMARYATTACK	= 180
-ACT_VM_SECONDARYATTACK	= 181
-ACT_VM_RELOAD		= 182
-ACT_VM_DRYFIRE		= 185
+-- ===========================================================================
+-- HL2SB: the ACT_* globals used to be hand-copied here from the Valve SDK
+-- numbering (ACT_HL2MP_IDLE = 988 ...).  That was WRONG for this engine: models
+-- resolve activities BY NAME at load (animation.cpp:151,
+-- ActivityList_IndexForName) against THIS engine's list, whose values differ
+-- (ACT_HL2MP_IDLE is 975 here, not 988).  The engine now publishes every
+-- registered activity as a flat global with its own true value
+-- (REGISTER_SHARED_ACTIVITY in activitylist.h, ~1975 entries incl. the zombie
+-- swim/gesture families scp049 needs), so this block must NOT re-shadow them.
+-- ===========================================================================
 
-ACT_HL2MP_IDLE		= 988
-ACT_HL2MP_RUN		= 989
-ACT_HL2MP_IDLE_CROUCH	= 990
-ACT_HL2MP_WALK_CROUCH	= 991
-ACT_HL2MP_GESTURE_RANGE_ATTACK	= 992
-ACT_HL2MP_GESTURE_RELOAD	= 993
-ACT_HL2MP_JUMP		= 994
-
-ACT_HL2MP_IDLE_PISTOL	= 995
-ACT_HL2MP_RUN_PISTOL	= 996
-ACT_HL2MP_IDLE_CROUCH_PISTOL	= 997
-ACT_HL2MP_WALK_CROUCH_PISTOL	= 998
-ACT_HL2MP_GESTURE_RANGE_ATTACK_PISTOL	= 999
-ACT_HL2MP_GESTURE_RELOAD_PISTOL	= 1000
-ACT_HL2MP_JUMP_PISTOL	= 1001
-ACT_RANGE_ATTACK1	= 16
-ACT_RANGE_ATTACK_PISTOL	= 288
-
-ACT_MP_STAND_PRIMARY	= 1119
-ACT_MP_RELOAD_STAND	= 1100
-ACT_MP_STAND_SECONDARY	= 1184
+-- HL2SB: small GMod enum gaps the enum libs do not cover.  Values are this
+-- engine's own (public/soundflags.h, shareddefs.h, public/const.h).
+CHAN_VOICE		= CHAN_VOICE or 2
+HITGROUP_HEAD		= HITGROUP_HEAD or 1
+COLLISION_GROUP_IN_VEHICLE	= COLLISION_GROUP_IN_VEHICLE or 10
+COLLISION_GROUP_DEBRIS		= COLLISION_GROUP_DEBRIS or 1
 
 PLAYER_IDLE	= 0
 PLAYER_WALK	= 1
@@ -560,4 +545,32 @@ if ( _G.game ~= nil and game.GetWorld == nil and _G.ents ~= nil and ents.FindByC
 		return nil
 	end
 
+end
+
+-- ===========================================================================
+-- HL2SB GMod compat: DEFINE_BASECLASS( name )  (both realms)
+--
+-- The loader's GLua rewrite pass replaces the literal identifier
+-- DEFINE_BASECLASS (calls AND definitions) with
+-- `local BaseClass = baseclass.Get` before the file is parsed, so a plain
+-- `function DEFINE_BASECLASS( name )` definition becomes `function local ...`
+-- -- a syntax error that killed THIS WHOLE FILE on 2026-09-20, taking
+-- Angle/CurTime/every global here down with it (util.lua then failed with
+-- "attempt to call a nil value (global 'Angle')" and every SENT broke).
+-- Assemble the name at runtime so the rewriter never sees the token.
+-- The result is also mirrored onto the global BaseClass so the
+-- BaseClass:Initialize( self ) pattern keeps resolving.
+-- ===========================================================================
+rawset( _G, "DEFINE_BASE" .. "_CLASS", function( name )
+	BaseClass = baseclass.Get( name )
+	return BaseClass
+end )
+
+-- HL2SB GMod compat: Msg( ... ) -- GMod's console print (wiki: Global.Msg).
+-- print() already reaches the console + hl2sb_lua.log on this engine, and some
+-- GMod self-check scripts call Msg unconditionally.
+if ( Msg == nil ) then
+	function Msg( ... )
+		print( ... )
+	end
 end
