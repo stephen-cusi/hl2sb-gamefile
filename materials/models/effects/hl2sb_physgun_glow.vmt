@@ -1,0 +1,12 @@
+"UnlitGeneric"
+{
+	// HL2SB GMod compat: forced onto the physgun-held entity as an additive
+	// self-shell (one unlit additive pass under the normal pass) - the GMod
+	// style soft glow all around the held prop.
+	"$baseTexture"	"models/debug/debugwhite"
+	"$model"		"1"
+	"$additive"		"1"
+	"$nocull"		"1"
+	"$no_fullbright" "1"
+	"$color"		"[0.5 0.75 1]"
+}
