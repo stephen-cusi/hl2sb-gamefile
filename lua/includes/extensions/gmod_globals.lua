@@ -574,3 +574,25 @@ if ( Msg == nil ) then
 		print( ... )
 	end
 end
+
+-- HL2SB GMod compat: MsgN / Warning / ErrorNoHalt (wiki: Global.MsgN etc.) --
+-- the menu realm probes for these at startup ("MISSING MsgN, Warning, ...").
+if ( MsgN == nil ) then
+	function MsgN( ... )
+		print( ... )
+	end
+end
+if ( Warning == nil ) then
+	function Warning( ... )
+		print( ... )
+	end
+end
+if ( ErrorNoHalt == nil ) then
+	function ErrorNoHalt( ... )
+		print( ... )
+	end
+end
+
+-- HL2SB diagnostic: proves this file ran to the end (the 2026-09-20 syntax
+-- error in the DEFINE_BASECLASS block silently killed every global here).
+print( "[HL2SB] gmod_globals loaded: DEFINE_BASECLASS=" .. type( DEFINE_BASECLASS ) .. " Angle=" .. type( Angle ) )
