@@ -398,6 +398,11 @@ local function CollectVehicles()
 					key        = "v:" .. tostring( spawnname ),
 					model      = data.Model,
 					script     = ( isstring( kv.vehiclescript ) ) and kv.vehiclescript or "",
+					-- the registry's other KeyValues ride along (gm_spawnvehicle
+					-- forwards them as trailing name/value pairs); the seats list
+					-- already carries `limitview = "0"` here, and addons can add
+					-- their own
+					keyvalues  = kv,
 					cat        = "vehicle",
 					spawnname  = tostring( spawnname ),
 					iconOverride = ( isstring( data.IconOverride ) ) and data.IconOverride or nil,
@@ -524,6 +529,13 @@ local function SpawnEntry( e )
 			.. ( ( e.model and e.model ~= "" ) and ( " " .. e.model ) or ' ""' )
 			.. ( ( e.script and e.script ~= "" ) and ( " " .. e.script ) or ' ""' )
 			.. " " .. Q( e.name )
+		-- slots 5.. are the registry KeyValues as name/value pairs, same
+		-- convention as gm_spawnnpc above
+		if ( istable( e.keyvalues ) ) then
+			for k, v in pairs( e.keyvalues ) do
+				line = line .. " " .. Q( tostring( k ) ) .. " " .. Q( tostring( v ) )
+			end
+		end
 	elseif ( e.model ~= nil and e.model ~= "" ) then
 		line = "gm_spawn " .. e.class .. " " .. e.model .. " " .. Q( e.name )
 	else
