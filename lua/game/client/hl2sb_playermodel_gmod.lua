@@ -651,9 +651,17 @@ end
 local ActiveWindow = nil
 
 local function OpenPlayerEditor()
+	-- The old C++ selector was bound to a hold command (+context_menu); this window
+	-- is a toggle instead: a second press closes it (GMod closes it with the frame's
+	-- X / Escape, but a keybind needs a way back out).
 	if ( IsValid( ActiveWindow ) ) then
-		ActiveWindow:SetVisible( true )
-		ActiveWindow:MakePopup()
+		if ( ActiveWindow:IsVisible() ) then
+			ActiveWindow:Close()
+		else
+			ActiveWindow:SetVisible( true )
+			ActiveWindow:MakePopup()
+		end
+
 		return ActiveWindow
 	end
 
