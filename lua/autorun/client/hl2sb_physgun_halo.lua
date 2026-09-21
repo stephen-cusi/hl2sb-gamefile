@@ -17,10 +17,21 @@
 
 local PhysgunHalos = {}
 
+-- HL2SB diagnostic one-shots (2026-09-22): the four links are
+--   1) DrawPhysgunBeam captures the target (engine -> this file)
+--   2) PreDrawHalos feeds halo.Add (this file -> halo library)
+--   3) PostDrawEffects fires (engine -> halo.lua)
+--   4) the shell pass draws (halo.lua)
+-- Whichever "[HL2SB halo]" line is MISSING on your console marks the break.
+
+local bDbgCapture, bDbgFeed = false, false
+
 hook.Add( "DrawPhysgunBeam", "HL2SB_PhysgunHaloCapture", function( ply, weapon, bOn, target, boneid, pos )
 
-	local cvarHalo = GetConVar( "physgun_halo" )
-	if ( cvarHalo != nil and cvarHalo:GetInt() == 0 ) then return end
+	if ( !bDbgCapture ) then
+		bDbgCapture = true
+		Msg( "[HL2SB halo] link1 capture: target=" .. tostring( target ) .. " (nil = the weapon gave no held entity)\n" )
+	end
 
 	if ( IsValid( target ) ) then
 		PhysgunHalos[ ply ] = target
@@ -32,7 +43,15 @@ end )
 
 hook.Add( "PreDrawHalos", "HL2SB_AddPhysgunHalos", function()
 
-	if ( PhysgunHalos == nil or next( PhysgunHalos ) == nil ) then return end
+	local nCount = 0
+	for _ in pairs( PhysgunHalos ) do nCount = nCount + 1 end
+
+	if ( !bDbgFeed and nCount > 0 ) then
+		bDbgFeed = true
+		Msg( "[HL2SB halo] link2 feed: " .. nCount .. " target(s) -> halo.Add\n" )
+	end
+
+	if ( nCount == 0 ) then return end
 
 	for k, v in pairs( PhysgunHalos ) do
 

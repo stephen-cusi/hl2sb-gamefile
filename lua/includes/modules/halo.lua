@@ -24,6 +24,7 @@ local matHalo	= Material( "models/effects/hl2sb_physgun_glow" )
 local List		= {}
 local RenderEnt = NULL
 local modelFlags = bit.bor( STUDIO_RENDER, STUDIO_SKIP_DECALS or 0 )
+local bDbgAlive, bDbgFeed2 = false, false
 
 function Add( entities, color, blurx, blury, passes, add, ignorez )
 
@@ -186,9 +187,20 @@ end
 
 hook.Add( "PostDrawEffects", "RenderHalos", function()
 
+	-- HL2SB diagnostic one-shot: is the engine even firing this hook?
+	if ( !bDbgAlive ) then
+		bDbgAlive = true
+		Msg( "[HL2SB halo] link3 PostDrawEffects alive\n" )
+	end
+
 	hook.Run( "PreDrawHalos" )
 
 	if ( #List == 0 ) then return end
+
+	if ( !bDbgFeed2 ) then
+		bDbgFeed2 = true
+		Msg( "[HL2SB halo] link4 render: " .. #List .. " halo entry(ies)\n" )
+	end
 
 	for k, v in ipairs( List ) do
 
