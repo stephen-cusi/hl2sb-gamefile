@@ -154,6 +154,13 @@ function Get( name, retval )
 
 		if ( !base ) then
 			Msg( "ERROR: Trying to derive weapon " .. tostring( name ) .. " from non existant SWEP " .. tostring( retval.Base ) .. "!\n" )
+			-- HL2SB (2026-09-21): same as scripted_ents.lua - report the missing
+			-- SWEP base to the error collector so the viewer shows the breakage.
+			if ( hl2sb_reportluaerror != nil ) then
+				pcall( hl2sb_reportluaerror,
+					"SWEP '" .. tostring( name ) .. "': base class '" .. tostring( retval.Base ) .. "' does not exist - the weapon will not work",
+					"registered via weapons.lua Get()" )
+			end
 		else
 			retval = TableInherit( retval, base )
 		end

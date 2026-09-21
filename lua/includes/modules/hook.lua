@@ -12,6 +12,27 @@ local pcall = pcall
 -- 5.1 alias as well, but keep this defensive so hook.lua works on either runtime.
 local unpack = unpack or table.unpack
 
+-- HL2SB (2026-09-21): failed callbacks go to the process error collector
+-- (luamanager.cpp) so the main-menu error viewer can group and count them;
+-- the console Warning below stays exactly as it was.  The binding is optional:
+-- an engine without it must not break the hook chain.
+local ReportError = hl2sb_reportluaerror
+local traceback = debug and debug.traceback or nil
+
+local function ReportHookError( strMessage )
+  if ( ReportError == nil ) then
+    print( "[HL2SB] hook error NOT reported: hl2sb_reportluaerror is nil (realm binding missing)" )
+    return
+  end
+  local sTrace = strMessage
+  if ( traceback ~= nil ) then
+    local ok, sTb = pcall( traceback, strMessage, 2 )
+    if ( ok and type( sTb ) == "string" ) then sTrace = sTb end
+  end
+  local okReport, errReport = pcall( ReportError, strMessage, sTrace )
+  print( "[HL2SB] hook error -> collector (reported=" .. tostring( okReport ) .. " err=" .. tostring( errReport ) .. "): " .. tostring( strMessage ) )
+end
+
 -- HL2SB: re-execution guard -- read this before touching anything below.
 --
 -- luasrc_dofolder() loads each file in lua/includes/modules as a PLAIN FILE, so
@@ -66,6 +87,7 @@ local function CallBody( strEventName, tGamemode, ... )
         tReturns = { pcall( v, ... ) }
         if ( tReturns[ 1 ] == false ) then
           Warning( "Hook '" .. tostring( k ) .. "' (" .. tostring( strEventName ) .. ") Failed: " .. tostring( tReturns[ 2 ] ) .. "\n" )
+          ReportHookError( tReturns[ 2 ] )
           tHooks[ k ] = nil
         elseif ( tReturns[ 2 ] ~= nil ) then
           return unpack( tReturns, 2 )
@@ -81,6 +103,7 @@ local function CallBody( strEventName, tGamemode, ... )
       tReturns = { pcall( fn, tGamemode, ... ) }
       if ( tReturns[ 1 ] == false ) then
         Warning( "ERROR: GAMEMODE: '" .. tostring( strEventName ) .. "' Failed: " .. tostring( tReturns[ 2 ] ) .. "\n" )
+        ReportHookError( tReturns[ 2 ] )
         tGamemode[ strEventName ] = nil
         return nil
       end
@@ -136,6 +159,7 @@ function call( strEventName, tGamemode, ... )
 
   if ( tRet[ 1 ] == false ) then
     Warning( "ERROR: HOOK: '" .. tostring( strEventName ) .. "' Failed: " .. tostring( tRet[ 2 ] ) .. "\n" )
+    ReportHookError( tRet[ 2 ] )
     return nil
   end
 
@@ -188,6 +212,7 @@ function Run( strEventName, ... )
         tReturns = { pcall( v, ... ) }
         if ( tReturns[ 1 ] == false ) then
           Warning( "Hook '" .. tostring( k ) .. "' (" .. tostring( strEventName ) .. ") Failed: " .. tostring( tReturns[ 2 ] ) .. "\n" )
+          ReportHookError( tReturns[ 2 ] )
           tHooks[ k ] = nil
         elseif ( tReturns[ 2 ] ~= nil ) then
           return unpack( tReturns, 2 )
