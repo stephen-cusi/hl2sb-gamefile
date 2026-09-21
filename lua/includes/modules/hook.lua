@@ -8,6 +8,13 @@ local pairs = pairs
 local Warning = dbg.Warning
 local tostring = tostring
 local pcall = pcall
+-- HL2SB (2026-09-22): `module( "hook" )` below REPLACES this file's globals
+-- with the module table, so any standard global not captured here reads as
+-- nil inside every function defined after it.  ReportHookError used `type`
+-- uncaptured -- 4600+ "attempt to call a nil value (global 'type')" errors
+-- per session, and the secondary failure turned ordinary hook errors into
+-- unprotected panics (the sent_ball crash).
+local type = type
 -- HL2SB: Lua 5.4 moved unpack() into the table library.  The engine installs the
 -- 5.1 alias as well, but keep this defensive so hook.lua works on either runtime.
 local unpack = unpack or table.unpack
@@ -20,8 +27,13 @@ local ReportError = hl2sb_reportluaerror
 local traceback = debug and debug.traceback or nil
 
 local function ReportHookError( strMessage )
+  -- HL2SB (2026-09-22): print is NOT guaranteed in every state this runs in --
+  -- the per-frame PostDrawErrors report path used to raise "attempt to call a
+  -- nil value (global 'print')" here, flooding the log and hiding the REAL
+  -- hook error.  Fall back to Msg, then to silence.
+  local Write = print or Msg
   if ( ReportError == nil ) then
-    print( "[HL2SB] hook error NOT reported: hl2sb_reportluaerror is nil (realm binding missing)" )
+    Write( "[HL2SB] hook error NOT reported: hl2sb_reportluaerror is nil (realm binding missing)" )
     return
   end
   local sTrace = strMessage
@@ -30,7 +42,7 @@ local function ReportHookError( strMessage )
     if ( ok and type( sTb ) == "string" ) then sTrace = sTb end
   end
   local okReport, errReport = pcall( ReportError, strMessage, sTrace )
-  print( "[HL2SB] hook error -> collector (reported=" .. tostring( okReport ) .. " err=" .. tostring( errReport ) .. "): " .. tostring( strMessage ) )
+  Write( "[HL2SB] hook error -> collector (reported=" .. tostring( okReport ) .. " err=" .. tostring( errReport ) .. "): " .. tostring( strMessage ) )
 end
 
 -- HL2SB: re-execution guard -- read this before touching anything below.
