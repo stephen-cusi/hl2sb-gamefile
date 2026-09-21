@@ -77,30 +77,11 @@ function render.SetColorMaterialIgnoreZ()
 	render.SetMaterial( matColorIgnoreZ )
 end
 
-local mat_BlurX			= Material( "pp/blurx" )
-local mat_BlurY			= Material( "pp/blury" )
-local tex_Bloom1		= render.GetBloomTex1()
-
-function render.BlurRenderTarget( rt, sizex, sizey, passes )
-
-	mat_BlurX:SetTexture( "$basetexture", rt )
-	mat_BlurY:SetTexture( "$basetexture", tex_Bloom1 )
-	mat_BlurX:SetFloat( "$size", sizex )
-	mat_BlurY:SetFloat( "$size", sizey )
-
-	for i=1, passes+1 do
-
-		render.SetRenderTarget( tex_Bloom1 )
-		render.SetMaterial( mat_BlurX )
-		render.DrawScreenQuad()
-
-		render.SetRenderTarget( rt )
-		render.SetMaterial( mat_BlurY )
-		render.DrawScreenQuad()
-
-	end
-
-end
+-- HL2SB: render.BlurRenderTarget is a C binding (lrender.cpp) -- a
+-- downsample-upsample chain on real render targets.  The upstream Lua version
+-- drives pp/blurx + pp/blury, screenspace blur pixel-shader materials this
+-- engine branch does not ship, so leaving the Lua version here would replace
+-- the real blur with an unblurred copy drawn from an error material.
 
 local camera2DTable = { type = "2D" }
 function cam.Start2D()
