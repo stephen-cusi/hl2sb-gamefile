@@ -102,7 +102,10 @@ local function RenderRT( entry )
 
 	local rt_Scene = render.GetRenderTarget()
 
-	render.CopyRenderTargetToTexture( rt_Store )
+	-- HL2SB: the engine-proven frame copy (CopyRenderTargetToTextureEx with
+	-- the view rect, same as the engine's freeze frame).  The plain
+	-- CopyRenderTargetToTexture came back BLACK in this DX9 layer.
+	render.CopyFrameToTexture( rt_Store )
 
 	-- halo_debug 1: show what the RT copy actually captured, then stop.
 	local cvarDbg = GetConVar( "halo_debug" )
@@ -162,7 +165,7 @@ local function RenderRT( entry )
 		render.SetStencilEnable( false )
 	cam.End3D()
 
-	render.CopyRenderTargetToTexture( rt_Blur )
+	render.CopyFrameToTexture( rt_Blur )
 	render.BlurRenderTarget( rt_Blur, entry.BlurX, entry.BlurY, 1 )
 
 	render.SetRenderTarget( rt_Scene )
