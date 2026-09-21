@@ -63,15 +63,20 @@
 	}
 	"11"
 	{
+		"label" "#HL2SB_MainMenu_LuaErrors"
+		"command" "engine OpenLuaErrorsDialog"
+	}
+	"12"
+	{
 		"label" "#GameUI_GameMenu_Content"
 		"command" "engine OpenContentDialog"
 	}
-	"12"
+	"13"
 	{
 		"label" "#HL2SB_MainMenu_Addons"
 		"command" "engine OpenAddonsDialog"
 	}
-	"13"
+	"14"
 	{
 		"label" "#GameUI_GameMenu_Quit"
 		"command" "Quit"
