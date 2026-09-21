@@ -145,7 +145,32 @@ hook.Add( "PostDrawEffects", "RenderHalos", function()
 	if ( #List == 0 ) then return end
 
 	for k, v in ipairs( List ) do
-		Render( v )
+
+		-- HL2SB (2026-09-22): the black-screen fuse.  A single failure inside
+		-- Render() used to abort the pass BETWEEN render.Clear (screen wiped)
+		-- and the scene restore -- leaving the screen black for as long as the
+		-- beam was held, with the error drowned in the per-frame noise.  Now:
+		-- any error force-restores the render target and stencil state and
+		-- surfaces the real message instead.
+		local rt_Scene = render.GetRenderTarget()
+
+		local ok, err = pcall( Render, v )
+
+		if ( !ok ) then
+
+			render.SetRenderTarget( rt_Scene )
+			render.SetStencilEnable( false )
+			render.SetStencilTestMask( 0 )
+			render.SetStencilWriteMask( 0 )
+			render.SetStencilReferenceValue( 0 )
+
+			local Write = ErrorNoHalt or Msg or print
+			if ( Write != nil ) then
+				Write( "[HL2SB halo] render failed: " .. tostring( err ) )
+			end
+
+		end
+
 	end
 
 	List = {}
