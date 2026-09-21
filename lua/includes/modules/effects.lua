@@ -3,6 +3,12 @@ local pairs = pairs
 local ipairs = ipairs
 local string = string
 local table = table
+-- HL2SB: effects.TracerSound needs these; module() below replaces the chunk
+-- environment with the module table, so globals must be captured as upvalues
+-- before it runs.
+local util = util
+local EffectData = EffectData
+local Msg = Msg
 
 --[[---------------------------------------------------------
    Name: effects
@@ -73,5 +79,29 @@ function GetList()
 	end
 
 	return result
+
+end
+
+--[[---------------------------------------------------------
+   Name: TracerSound( startPos, endPos, tracertype, soundOverride )
+   Desc: Imitates the "near miss" tracer sound.
+         tracertype: 1 = normal bullet, 2 = gunship, 4 = strider, 8 = underwater
+         (shareddefs.h's TRACER_TYPE_*, passed through EffectData flags).
+         soundOverride is accepted for GMod signature compatibility but NOT
+         supported: this engine's TracerSound callback (fx_tracer.cpp) picks
+         its own sounds.
+-----------------------------------------------------------]]
+function TracerSound( startPos, endPos, tracertype, soundOverride )
+
+	local data = EffectData()
+	data:SetStart( startPos )
+	data:SetOrigin( endPos )
+	data:SetFlags( tracertype or 1 )
+
+	util.Effect( "TracerSound", data )
+
+	if ( soundOverride != nil ) then
+		Msg( "effects.TracerSound: soundOverride is not supported by this engine\n" )
+	end
 
 end
