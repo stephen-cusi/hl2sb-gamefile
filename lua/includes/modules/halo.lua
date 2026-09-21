@@ -220,7 +220,10 @@ hook.Add( "PostDrawEffects", "RenderHalos", function()
 
 		if ( !ok ) then
 
-			render.SetRenderTarget( rt_Scene )
+			-- rt_Scene is nil when the current target is the backbuffer.
+			if ( rt_Scene != nil ) then
+				render.SetRenderTarget( rt_Scene )
+			end
 			render.SetStencilEnable( false )
 			render.SetStencilTestMask( 0 )
 			render.SetStencilWriteMask( 0 )

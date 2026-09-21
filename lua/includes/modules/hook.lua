@@ -27,13 +27,10 @@ local ReportError = hl2sb_reportluaerror
 local traceback = debug and debug.traceback or nil
 
 local function ReportHookError( strMessage )
-  -- HL2SB (2026-09-22): print is NOT guaranteed in every state this runs in --
-  -- the per-frame PostDrawErrors report path used to raise "attempt to call a
-  -- nil value (global 'print')" here, flooding the log and hiding the REAL
-  -- hook error.  Fall back to Msg, then to silence.
-  local Write = print or Msg
+  -- HL2SB (2026-09-22): the ONLY reliable channel is the C collector -- some
+  -- realms/states have neither print nor Msg, and any fallback here raised a
+  -- SECOND error that swallowed the real one and flooded the logs.
   if ( ReportError == nil ) then
-    Write( "[HL2SB] hook error NOT reported: hl2sb_reportluaerror is nil (realm binding missing)" )
     return
   end
   local sTrace = strMessage
@@ -41,8 +38,7 @@ local function ReportHookError( strMessage )
     local ok, sTb = pcall( traceback, strMessage, 2 )
     if ( ok and type( sTb ) == "string" ) then sTrace = sTb end
   end
-  local okReport, errReport = pcall( ReportError, strMessage, sTrace )
-  Write( "[HL2SB] hook error -> collector (reported=" .. tostring( okReport ) .. " err=" .. tostring( errReport ) .. "): " .. tostring( strMessage ) )
+  pcall( ReportError, strMessage, sTrace )
 end
 
 -- HL2SB: re-execution guard -- read this before touching anything below.
