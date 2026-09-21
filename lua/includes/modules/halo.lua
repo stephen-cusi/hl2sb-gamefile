@@ -51,6 +51,12 @@ end
 
 local function RenderSafe( entry )
 
+	-- HL2SB (2026-09-22): the silhouette MUST be drawn inside a 3D camera.
+	-- PostDrawEffects runs after the engine cleaned up the main 3D view, so
+	-- without cam.Start3D the matrices are stale/identity and the shell draws
+	-- off-screen -- the "chain works but nothing glows" symptom.
+	cam.Start3D()
+
 	render.SuppressEngineLighting( true )
 
 	local entryColor = entry.Color
@@ -75,6 +81,8 @@ local function RenderSafe( entry )
 	render.SetBlend( 1 )
 	render.SetColorModulation( 1, 1, 1 )
 	render.SuppressEngineLighting( false )
+
+	cam.End3D()
 
 	RenderEnt = NULL
 
