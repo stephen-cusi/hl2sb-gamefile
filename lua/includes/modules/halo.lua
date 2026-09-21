@@ -1,33 +1,43 @@
 
 module( "halo", package.seeall )
 
-local mat_Copy		= Material( "pp/copy" )
-local mat_Add		= Material( "pp/add" )
-local mat_Sub		= Material( "pp/sub" )
-local rt_Store		= render.GetScreenEffectTexture( 0 )
-local rt_Blur		= render.GetScreenEffectTexture( 1 )
+-- HL2SB (2026-09-22): SAFE halo renderer.
+--
+-- Upstream GMod renders halos through a stencil + screen-copy + blur pipeline
+-- (pp/copy, pp/add, render.BlurRenderTarget ...).  This engine branch cannot
+-- support that faithfully yet:
+--   * there are no screenspace blur pixel shaders, so the blur is a
+--     downsample-upsample approximation;
+--   * copying the BACKBUFFER into a render target does not survive this
+--     DX9 layer (the copy comes back black/garbage), which black-screened the
+--     whole frame for as long as the beam was held.
+--
+-- So halos here are drawn the way the physgun's held-entity glow already
+-- works: an additive flat material forced over the entity's own DrawModel
+-- (render.ModelMaterialOverride + render.SetColorModulation/SetBlend).
+-- No render targets, no copies, no clears -- nothing that CAN black the
+-- screen.  The visual is a crisp colored glow rather than a blurred ring;
+-- the RT pipeline can return behind halo_use_rt once the DX9 copy path is
+-- proven, so the upstream renderer is kept below behind that flag.
 
-local List = {}
+local matHalo	= Material( "models/effects/hl2sb_physgun_glow" )
+local List		= {}
 local RenderEnt = NULL
--- TODO: Remove "or 0" after some update
--- There's no point in filling the real value of STUDIO_SKIP_DECALS as the current client doesn't support it anyway
 local modelFlags = bit.bor( STUDIO_RENDER, STUDIO_SKIP_DECALS or 0 )
 
 function Add( entities, color, blurx, blury, passes, add, ignorez )
 
 	if ( table.IsEmpty( entities ) ) then return end
-	if ( add == nil ) then add = true end
-	if ( ignorez == nil ) then ignorez = false end
 
 	local t =
 	{
-		Ents = entities,
-		Color = color,
-		BlurX = blurx or 2,
-		BlurY = blury or 2,
-		DrawPasses = passes or 1,
-		Additive = add,
-		IgnoreZ = ignorez
+		Ents		= entities,
+		Color		= color,
+		BlurX		= blurx or 2,
+		BlurY		= blury or 2,
+		DrawPasses	= passes or 1,
+		Additive	= ( add == nil ) and true or add,
+		IgnoreZ		= ignorez
 	}
 
 	table.insert( List, t )
@@ -38,25 +48,60 @@ function RenderedEntity()
 	return RenderEnt
 end
 
-function Render( entry )
+local function RenderSafe( entry )
+
+	render.SuppressEngineLighting( true )
+
+	local entryColor = entry.Color
+	render.SetColorModulation( ( entryColor.r or 255 ) / 255, ( entryColor.g or 255 ) / 255, ( entryColor.b or 255 ) / 255 )
+	render.SetBlend( ( ( entryColor.a or 255 ) / 255 ) * 0.85 )
+
+	render.ModelMaterialOverride( matHalo )
+
+	for k, v in pairs( entry.Ents ) do
+		-- HL2SB: GetNoDraw is not bound in this engine -- duck-type it.
+		local bNoDraw = false
+		if ( IsValid( v ) and type( v.GetNoDraw ) == "function" ) then
+			bNoDraw = v:GetNoDraw() and true or false
+		end
+		if ( IsValid( v ) and !bNoDraw ) then
+			RenderEnt = v
+			v:DrawModel( modelFlags )
+		end
+	end
+
+	render.ModelMaterialOverride( nil )
+	render.SetBlend( 1 )
+	render.SetColorModulation( 1, 1, 1 )
+	render.SuppressEngineLighting( false )
+
+	RenderEnt = NULL
+
+end
+
+-- Upstream stencil/blur renderer, kept for halo_use_rt 1.  Do not enable
+-- until the backbuffer->RT copy is proven in this DX9 layer (see the black
+-- screen of 2026-09-22).
+local mat_Copy		= Material( "pp/copy" )
+local mat_Add		= Material( "pp/add" )
+local mat_Sub		= Material( "pp/sub" )
+local rt_Store		= render.GetScreenEffectTexture( 0 )
+local rt_Blur		= render.GetScreenEffectTexture( 1 )
+
+local function RenderRT( entry )
 
 	local rt_Scene = render.GetRenderTarget()
 
-	-- Store a copy of the original scene
 	render.CopyRenderTargetToTexture( rt_Store )
 
-	-- Clear our scene so that additive/subtractive rendering with it will work later
 	if ( entry.Additive ) then
 		render.Clear( 0, 0, 0, 255, false, true )
 	else
 		render.Clear( 255, 255, 255, 255, false, true )
 	end
 
-	-- For certain materials this is necessary to not have the entire screen go pitch black
-	-- For example the glass doors in Episode 2 GMan sequence
 	render.UpdateRefractTexture()
 
-	-- Render colored props to the scene and set their pixels high
 	cam.Start3D()
 		render.SetStencilEnable( true )
 			render.SuppressEngineLighting( true )
@@ -83,8 +128,6 @@ function Render( entry )
 
 				render.SetStencilCompareFunction( STENCIL_EQUAL )
 				render.SetStencilPassOperation( STENCIL_KEEP )
-				-- render.SetStencilFailOperation( STENCIL_KEEP )
-				-- render.SetStencilZFailOperation( STENCIL_KEEP )
 
 					cam.Start2D()
 						local entryColor = entry.Color
@@ -97,11 +140,9 @@ function Render( entry )
 		render.SetStencilEnable( false )
 	cam.End3D()
 
-	-- Store a blurred version of the colored props in an RT
 	render.CopyRenderTargetToTexture( rt_Blur )
 	render.BlurRenderTarget( rt_Blur, entry.BlurX, entry.BlurY, 1 )
 
-	-- Restore the original scene
 	render.SetRenderTarget( rt_Scene )
 	mat_Copy:SetTexture( "$basetexture", rt_Store )
 	mat_Copy:SetString( "$color", "1 1 1" )
@@ -109,13 +150,9 @@ function Render( entry )
 	render.SetMaterial( mat_Copy )
 	render.DrawScreenQuad()
 
-	-- Draw back our blured colored props additively/subtractively, ignoring the high bits
 	render.SetStencilEnable( true )
 
 		render.SetStencilCompareFunction( STENCIL_NOTEQUAL )
-		-- render.SetStencilPassOperation( STENCIL_KEEP )
-		-- render.SetStencilFailOperation( STENCIL_KEEP )
-		-- render.SetStencilZFailOperation( STENCIL_KEEP )
 
 		if ( entry.Additive ) then
 			mat_Add:SetTexture( "$basetexture", rt_Blur )
@@ -131,11 +168,20 @@ function Render( entry )
 
 	render.SetStencilEnable( false )
 
-	-- Return original values
 	render.SetStencilTestMask( 0 )
 	render.SetStencilWriteMask( 0 )
 	render.SetStencilReferenceValue( 0 )
 
+end
+
+local cvarUseRT
+
+local function Render( entry )
+	cvarUseRT = cvarUseRT or GetConVar( "halo_use_rt" )
+	if ( cvarUseRT != nil and cvarUseRT:GetInt() == 1 ) then
+		return RenderRT( entry )
+	end
+	return RenderSafe( entry )
 end
 
 hook.Add( "PostDrawEffects", "RenderHalos", function()
@@ -146,12 +192,8 @@ hook.Add( "PostDrawEffects", "RenderHalos", function()
 
 	for k, v in ipairs( List ) do
 
-		-- HL2SB (2026-09-22): the black-screen fuse.  A single failure inside
-		-- Render() used to abort the pass BETWEEN render.Clear (screen wiped)
-		-- and the scene restore -- leaving the screen black for as long as the
-		-- beam was held, with the error drowned in the per-frame noise.  Now:
-		-- any error force-restores the render target and stencil state and
-		-- surfaces the real message instead.
+		-- The fuse: a failure inside Render must never leave the frame
+		-- half-rendered (that is the black screen of 2026-09-22).
 		local rt_Scene = render.GetRenderTarget()
 
 		local ok, err = pcall( Render, v )
@@ -163,6 +205,7 @@ hook.Add( "PostDrawEffects", "RenderHalos", function()
 			render.SetStencilTestMask( 0 )
 			render.SetStencilWriteMask( 0 )
 			render.SetStencilReferenceValue( 0 )
+			render.ModelMaterialOverride( nil )
 
 			local Write = ErrorNoHalt or Msg or print
 			if ( Write != nil ) then
