@@ -17,8 +17,7 @@ module( "halo", package.seeall )
 -- (render.ModelMaterialOverride + render.SetColorModulation/SetBlend).
 -- No render targets, no copies, no clears -- nothing that CAN black the
 -- screen.  The visual is a crisp colored glow rather than a blurred ring;
--- the RT pipeline can return behind halo_use_rt once the DX9 copy path is
--- proven, so the upstream renderer is kept below behind that flag.
+-- the whole-model tint shell stays behind halo_use_safe 1 as a fallback.
 
 local matHalo	= Material( "models/effects/hl2sb_physgun_glow" )
 local List		= {}
@@ -88,9 +87,11 @@ local function RenderSafe( entry )
 
 end
 
--- Upstream stencil/blur renderer, kept for halo_use_rt 1.  Do not enable
--- until the backbuffer->RT copy is proven in this DX9 layer (see the black
--- screen of 2026-09-22).
+-- Upstream stencil/blur renderer (the ONLY way to the wiki's edge-ring look).
+-- The three black-screen causes of 2026-09-22 are fixed (dedicated screen RTs,
+-- NULL-safe GetRenderTarget, working fuse), so this is the DEFAULT again.
+-- halo_debug 1 renders ONLY the scene copy after the first RT copy: scene
+-- visible = the DX9 copy works; black = the copy is the broken step.
 local mat_Copy		= Material( "pp/copy" )
 local mat_Add		= Material( "pp/add" )
 local mat_Sub		= Material( "pp/sub" )
@@ -102,6 +103,18 @@ local function RenderRT( entry )
 	local rt_Scene = render.GetRenderTarget()
 
 	render.CopyRenderTargetToTexture( rt_Store )
+
+	-- halo_debug 1: show what the RT copy actually captured, then stop.
+	local cvarDbg = GetConVar( "halo_debug" )
+	if ( cvarDbg != nil and cvarDbg:GetInt() == 1 ) then
+		render.SetRenderTarget( rt_Scene )
+		mat_Copy:SetTexture( "$basetexture", rt_Store )
+		mat_Copy:SetString( "$color", "1 1 1" )
+		mat_Copy:SetString( "$alpha", "1" )
+		render.SetMaterial( mat_Copy )
+		render.DrawScreenQuad()
+		return
+	end
 
 	if ( entry.Additive ) then
 		render.Clear( 0, 0, 0, 255, false, true )
@@ -183,14 +196,17 @@ local function RenderRT( entry )
 
 end
 
-local cvarUseRT
+local cvarUseSafe
 
 local function Render( entry )
-	cvarUseRT = cvarUseRT or GetConVar( "halo_use_rt" )
-	if ( cvarUseRT != nil and cvarUseRT:GetInt() == 1 ) then
-		return RenderRT( entry )
+	-- HL2SB (2026-09-22): the upstream RT pipeline is the DEFAULT again (the
+	-- three black-screen causes are fixed).  halo_use_safe 1 falls back to the
+	-- whole-model tint shell if the RT path misbehaves on some setup.
+	cvarUseSafe = cvarUseSafe or GetConVar( "halo_use_safe" )
+	if ( cvarUseSafe != nil and cvarUseSafe:GetInt() == 1 ) then
+		return RenderSafe( entry )
 	end
-	return RenderSafe( entry )
+	return RenderRT( entry )
 end
 
 hook.Add( "PostDrawEffects", "RenderHalos", function()
