@@ -1,21 +1,20 @@
 HL2SB content dialog -- Games page
 self=PropertyPage: "(no name)" type(self)=panel parent=PropertyDialog: "ContentDialog"
-detector=function: 000001D0C518F180 games=3
+detector=function: 000002021FAF0B30 games=3
   game[1] folder=garrysmod name=garrysmod appId=0
   game[2] folder=hl2 name=Half-Life 2 appId=220
   game[3] folder=hl2mp name=HL2 Deathmatch appId=320
-detector: gameDir=d:\srceng\hl2sb selfName=hl2sb baseDirs=11 found=3
+detector: gameDir=d:\srceng\hl2sb selfName=hl2sb baseDirs=10 found=3
+  probe garrysmod gameinfo=1
+  probe hl2mp vpkdir gameinfo=0
   probe hl2 gameinfo=1
   probe VPKEdit-Windows-Standalone-Compatibility-msvc-Release gameinfo=0
-  probe _weapon_backup gameinfo=0
-  probe platform gameinfo=0
-  probe bin gameinfo=0
-  probe garrysmod gameinfo=1
-  probe mmod weaponpack gameinfo=0
-  probe hl2mp gameinfo=1
-  probe hl2mp vpkdir gameinfo=0
   probe Users gameinfo=0
-  base dirs: _weapon_backup,bin,garrysmod,hl2,hl2mp,hl2mp vpkdir,hl2sb,mmod weaponpack,platform,Users,VPKEdit-Windows-Standalone-Compatibility-msvc-Release
+  probe platform gameinfo=0
+  probe mmod weaponpack gameinfo=0
+  probe bin gameinfo=0
+  probe hl2mp gameinfo=1
+  base dirs: bin,garrysmod,hl2,hl2mp,hl2mp vpkdir,hl2sb,mmod weaponpack,platform,Users,VPKEdit-Windows-Standalone-Compatibility-msvc-Release
   probe cb[1] parent=Panel: "(no name)" parentSize=(64,24)
   probe cb[2] parent=Panel: "(no name)" parentSize=(64,24)
   probe cb[3] parent=Panel: "(no name)" parentSize=(64,24)

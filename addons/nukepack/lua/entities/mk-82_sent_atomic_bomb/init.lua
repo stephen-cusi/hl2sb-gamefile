@@ -57,7 +57,7 @@ end
 
 function ENT:PhysicsCollide( data, physobj )
     if ( self.isarmed == 1 ) then
-	    if data.Speed > 600 and data.DeltaTime > 0.15 then -- if it hits an object at over 600 speed
+	    if data.Speed > 60 and data.DeltaTime > 0.15 then -- if it hits an object at over 600 speed
             self:MakeNuke()
 		end
     end
@@ -130,5 +130,9 @@ self.Entity:Remove()
 end
 end
 function ENT:Use()
-    self.isarmed = 1
+    if ( self.isarmed == 1 ) then
+        self:MakeNuke()
+    else
+        self.isarmed = 1
+    end
 end	

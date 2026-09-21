@@ -501,6 +501,158 @@ if ( _G.ents ~= nil and ents.FindByClass == nil and _G.gEntList ~= nil ) then
 end
 
 -- ===========================================================================
+-- 6b. ents.GetAll / FindInSphere / FindInCone —— scp049 等 nextbot 插件的
+-- 目标搜索命脉。同样走 gEntList 的链式原语（FirstEnt/NextEnt/FindEntityInSphere）。
+-- FindInCone 按 wiki：以 WorldSpaceCenter 落在半角余弦 angle_cos 内为准。
+-- ===========================================================================
+
+if ( _G.ents ~= nil and _G.gEntList ~= nil ) then
+
+	if ( ents.GetAll == nil ) then
+		function ents.GetAll()
+			local out = {}
+			local e = gEntList.FirstEnt()
+			while ( e ~= nil and e ~= NULL ) do
+				table.insert( out, e )
+				e = gEntList.NextEnt( e )
+			end
+			return out
+		end
+	end
+
+	if ( ents.FindInSphere == nil ) then
+		function ents.FindInSphere( pos, radius )
+			local out = {}
+			local e = NULL
+			while true do
+				e = gEntList.FindEntityInSphere( e, pos, radius )
+				if ( e == nil or e == NULL ) then break end
+				table.insert( out, e )
+			end
+			return out
+		end
+	end
+
+	if ( ents.FindInCone == nil ) then
+		function ents.FindInCone( pos, dir, range, angleCos )
+			local out = {}
+			if ( dir == nil or angleCos == nil ) then return out end
+
+			-- ⚠️ GMod's 4th argument changed meaning at some point: old addons
+			-- (scp0492base passes 155) hand an ANGLE IN DEGREES, the current wiki
+			-- documents the cosine of the half-angle.  A cosine is -1..1, so any
+			-- value above 1 can only be the legacy degrees form.
+			if ( angleCos > 1 ) then
+				angleCos = math.cos( math.rad( angleCos ) )
+			end
+
+			local normal = dir:GetNormalized()
+			for _, v in ipairs( ents.FindInSphere( pos, range or 0 ) ) do
+				local ok, center = pcall( v.WorldSpaceCenter, v )
+				if ( ok and center ~= nil ) then
+					local offset = center - pos
+					-- 恰在锥顶的实体按命中处理，否则长度为 0 的向量没有方向
+					if ( offset:Length() < 1 or normal:Dot( offset:GetNormalized() ) >= angleCos ) then
+						table.insert( out, v )
+					end
+				end
+			end
+
+			-- HL2SB TEMPORARY: disambiguates which targeting path scp049-2 runs
+			-- (FindInCone only runs on nb_targetmethod 1)
+			if ( HL2SB_FindInConeDiag == nil or HL2SB_FindInConeDiag < 3 ) then
+				HL2SB_FindInConeDiag = ( HL2SB_FindInConeDiag or 0 ) + 1
+				print( "[HL2SB] ents.FindInCone: requested (method-1 targeting in use), results=" .. #out .. "\n" )
+			end
+			return out
+		end
+	end
+
+end
+
+-- ===========================================================================
+-- 6c. sound.Add —— GMod 的运行时音效脚本。addons 在 autorun 里注册
+-- "SCP049_Alert" 这类名字，之后 EmitSound / CreateSound 直接用名字。
+-- HL2SB 的引擎没有可注入的 soundscript 表，这里建一个 Lua 注册表，并把
+-- Entity:EmitSound 和全局 CreateSound 包一层：名字命中脚本时解析成随机
+-- 变体路径，同时把脚本里的 soundlevel/volume/channel 作为未显式传参时的默认值。
+-- ===========================================================================
+
+if ( _G.sound == nil ) then _G.sound = {} end
+
+local hl2sb_soundscripts = {}
+
+function sound.Add( tbl )
+	if ( not istable( tbl ) ) then return end
+	if ( tbl.name == nil or tbl.name == "" ) then return end
+
+	-- GMod 的 sound 字段可以是单串或表（随机变体）
+	local variants = {}
+	if ( istable( tbl.sound ) ) then
+		for i = 1, #tbl.sound do
+			variants[ #variants + 1 ] = tbl.sound[ i ]
+		end
+	elseif ( tbl.sound ~= nil ) then
+		variants[ #variants + 1 ] = tostring( tbl.sound )
+	end
+
+	if ( #variants == 0 ) then return end
+
+	hl2sb_soundscripts[ string.lower( tbl.name ) ] = {
+		Name = tbl.name,
+		Sounds = variants,
+		Channel = tbl.channel,
+		Volume = tonumber( tbl.volume ),
+		Level = tonumber( tbl.soundlevel ) or tonumber( tbl.level ),
+		Pitch = tonumber( tbl.pitchstart ) or tonumber( tbl.pitch ),
+	}
+end
+
+-- 名字 → 脚本；未注册返回 nil（调用方走原始路径）
+function sound.GetProperties( name )
+	if ( name == nil ) then return nil end
+	return hl2sb_soundscripts[ string.lower( tostring( name ) ) ]
+end
+
+-- EmitSound / CreateSound 的名字解析。变体在"每次发声"时随机（GMod 语义），
+-- CreateSound 是长驻通道，解析一次后固定。
+local function HL2SB_ResolveSoundScript( name, level, volume, channel, pick )
+	if ( name == nil or hl2sb_soundscripts == nil ) then return name, level, volume, channel end
+
+	local script = hl2sb_soundscripts[ string.lower( tostring( name ) ) ]
+	if ( script == nil ) then return name, level, volume, channel end
+
+	local path = name
+	if ( #script.Sounds > 0 ) then
+		path = script.Sounds[ pick and math.random( #script.Sounds ) or 1 ]
+	end
+
+	return path,
+		level or script.Level,
+		volume or script.Volume,
+		channel or script.Channel
+end
+
+-- Entity:EmitSound( name, soundLevel, pitchPercent, volume, channel, ... )
+local ENTITY_META = FindMetaTable( "Entity" )
+if ( ENTITY_META ~= nil and ENTITY_META.EmitSound ~= nil and ENTITY_META.EmitSound ~= true ) then
+	local hl2sb_orig_EmitSound = ENTITY_META.EmitSound
+	ENTITY_META.EmitSound = function( self, name, soundLevel, pitchPercent, volume, channel, ... )
+		local path, lvl, vol, ch = HL2SB_ResolveSoundScript( name, soundLevel, volume, channel, true )
+		return hl2sb_orig_EmitSound( self, path, lvl, pitchPercent, vol, ch, ... )
+	end
+end
+
+-- 全局 CreateSound( ent, name ) —— CSoundPatch 长驻通道
+if ( _G.CreateSound ~= nil ) then
+	local hl2sb_orig_CreateSound = CreateSound
+	CreateSound = function( ent, name, ... )
+		local path = HL2SB_ResolveSoundScript( name, nil, nil, nil, false )
+		return hl2sb_orig_CreateSound( ent, path, ... )
+	end
+end
+
+-- ===========================================================================
 -- 8. AccessorFunc / RunString —— GMod 常用全局
 -- ===========================================================================
 

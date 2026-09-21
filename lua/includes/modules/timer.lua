@@ -10,9 +10,25 @@
 --   Same surface as GMod: Create / Remove / Exists / Simple / Start / Stop /
 --   Pause / UnPause / Adjust / TimeLeft / RepsLeft / Persistence.
 --
+--   HL2SB (2026-09-21): the engine now ships a REAL C++ timer library
+--   (game/shared/lua/ltimer.cpp, pumped from CHL2MPRules::Think / the scripted
+--   viewport paint).  It registers the global "timer" table during openlibs,
+--   so if that is present this file returns without loading -- the old Lua
+--   implementation stays only as a fallback for trees without the C++ side.
+--   (The Lua version also had a reps bug: timer.Create(..., 0, ...) --
+--   GMod's infinite repeat -- fired exactly once and deleted itself.)
+--
 --===========================================================================--
 
+if ( _G.timer ~= nil and type( _G.timer.Create ) == "function" and _G.timer.IsEngine ~= nil ) then
+	return
+end
+
 module( "timer", package.seeall )
+
+-- Stamp AFTER module() so it lands inside this module's namespace; the guard
+-- above reads it through _G.timer.
+IsEngine = false
 
 local timers = {}
 
@@ -198,4 +214,25 @@ if ( _G.hook ~= nil ) then
 		-- Client has no gamemode Think; HudViewportPaint runs every frame.
 		hook.add( "HudViewportPaint", "hl2sb_timer", Tick )
 	end
+end
+
+-------------------------------------------------------------------------------
+-- Purpose: Dumps all known timers to the console (HL2SB extension, used by
+--          the lua_dumptimers_cl / _sv / _menu console commands).
+-------------------------------------------------------------------------------
+function Dump()
+	local count = 0
+	for id, t in pairs( timers ) do
+		count = count + 1
+		local state = "stopped"
+		if ( t.running and not t.paused ) then
+			state = "running"
+		elseif ( t.paused ) then
+			state = "paused"
+		end
+		print( string.format( "  %-40s %-8s delay=%.2f reps=%d left=%.2f",
+			tostring( id ), state, t.delay or 0, t.reps or 0,
+			math.max( 0, ( t.next or 0 ) - Now() ) ) )
+	end
+	print( "[timer] " .. count .. " timer(s) known in this realm" )
 end

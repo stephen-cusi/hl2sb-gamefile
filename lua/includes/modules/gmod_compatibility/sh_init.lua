@@ -1726,6 +1726,19 @@ else
 	end
 end
 
+-- HL2SB: GMod's DEFINE_BASECLASS is a PREPROCESSOR keyword -- the loader
+-- textually replaces it with `local BaseClass = baseclass.Get`.  There is no
+-- preprocessing here, so addons that ship the literal call
+-- (lua/entities/sent_ball.lua:4) died on load with
+-- "attempt to call a nil value (global 'DEFINE_BASECLASS')".  This shim answers
+-- the same table; it also mirrors the result onto the global BaseClass so the
+-- `BaseClass:Initialize( self )` calls that GMod's expansion made a file-local
+-- keep resolving (the last DEFINE wins, which is what a global fallback can do).
+function DEFINE_BASECLASS( name )
+	BaseClass = baseclass.Get( name )
+	return BaseClass
+end
+
 function baseclassGetCompatibility(name)
 	if (name:sub(1, 9) == "gamemode_") then
 		name = name:sub(10)

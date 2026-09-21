@@ -163,6 +163,12 @@ function table.CopyFromTo( from, to )
 end
 
 function table.Merge( dest, source, forceOverride )
+  -- HL2SB GMod parity (2026-09-21): GMod's table.Merge returns dest untouched
+  -- for a non-table source.  effects.Create() ends with
+  --     table.Merge( NewEffect, EffectList[ "base" ] )
+  -- and EffectList[ "base" ] is nil unless someone registers a "base" effect,
+  -- so without the guard every Lua effect spawn died on pairs(nil) there.
+  if ( not istable( source ) ) then return dest end
   for k, v in pairs( source ) do
     if ( not forceOverride and istable( v ) and istable( dest[ k ] ) ) then
       table.Merge( dest[ k ], v )

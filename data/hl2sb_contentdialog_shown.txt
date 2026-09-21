@@ -1,6 +1,6 @@
 HL2SB content dialog -- Games page shown
   sheet=Panel: "Sheet" pos=(8,27) size=(444,315) visible=true resized=false
-  dialog=Panel: "ContentDialog" pos=(730,350) size=(460,380) visible=true
+  dialog=Panel: "ContentDialog" pos=(730,450) size=(460,380) visible=true
   page=PropertyPage: "(no name)" pos=(0,0) size=(440,170) visible=true resized=false
   hint=Label: "Label" pos=(20,118) size=(400,32) visible=true
   probeTop=Label: "Label" pos=(20,2) size=(200,16) visible=true

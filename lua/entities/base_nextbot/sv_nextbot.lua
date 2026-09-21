@@ -140,6 +140,30 @@ end
 	Name: NextBot:PlaySequenceAndWait
 	Desc: Plays a sequence and yields until it has finished.
 -----------------------------------------------------------]]
+-- HL2SB: GMod's own base (sv_nextbot.lua:357) feeds the sequence NAME straight
+-- into self:SetSequence( name ) and uses the return as the length -- GMod's
+-- NextBot layer accepts a name and answers the duration.  This engine's
+-- Entity:SetSequence binding only takes the numeric id (and lives on the
+-- CBaseAnimating metatable, not reachable as _R.CBaseEntity.SetSequence), so
+-- this override is the name->id translation GMod's layer provides, applied
+-- through ResetSequence -- same sequence, always restarted, which is what a
+-- PlaySequenceAndWait caller wants anyway.  Without it scp049's
+-- PlaySequenceAndWait( "pickup" ) died with "bad argument #1 to 'SetSequence'
+-- (number expected, got string)" and the zombie never spawned.
+function ENT:SetSequence( name )
+
+	local id = name
+	if ( isstring( name ) ) then
+		id = self:LookupSequence( name )
+		if ( id == nil or id < 0 ) then return 0 end
+	end
+
+	self:ResetSequence( id )
+
+	return self:SequenceDuration( id )
+
+end
+
 function ENT:PlaySequenceAndWait( name, speed )
 	local length = self:SetSequence( name )
 

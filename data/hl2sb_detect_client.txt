@@ -4,14 +4,14 @@ selfName=hl2sb
 baseDirs=10
 found=3
 probe hl2mp gameinfo=1
-probe VPKEdit-Windows-Standalone-Compatibility-msvc-Release gameinfo=0
-probe mmod weaponpack gameinfo=0
-probe bin gameinfo=0
-probe garrysmod gameinfo=1
 probe Users gameinfo=0
-probe platform gameinfo=0
-probe hl2 gameinfo=1
+probe bin gameinfo=0
+probe mmod weaponpack gameinfo=0
+probe garrysmod gameinfo=1
 probe hl2mp vpkdir gameinfo=0
+probe hl2 gameinfo=1
+probe VPKEdit-Windows-Standalone-Compatibility-msvc-Release gameinfo=0
+probe platform gameinfo=0
 base dirs: bin,garrysmod,hl2,hl2mp,hl2mp vpkdir,hl2sb,mmod weaponpack,platform,Users,VPKEdit-Windows-Standalone-Compatibility-msvc-Release
   garrysmod / garrysmod / 0
   hl2 / Half-Life 2 / 220
