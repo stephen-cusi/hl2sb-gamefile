@@ -3,4 +3,6 @@
 # otherwise on the next start.
 example_addon
 miku
+minecraft
+qiandai
 windgrin_npc

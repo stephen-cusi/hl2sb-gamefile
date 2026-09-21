@@ -130,5 +130,9 @@ self.Entity:Remove()
 end
 end
 function ENT:Use()
-    self.isarmed = 1
+    if ( self.isarmed == 1 ) then
+        self:MakeNuke()
+    else
+        self.isarmed = 1
+    end
 end	
