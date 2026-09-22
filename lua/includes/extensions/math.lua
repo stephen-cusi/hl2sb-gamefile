@@ -106,10 +106,19 @@ end
 if ( math.random ~= nil and math.__hl2sb_random_patched ~= true ) then
   local originalRandom = math.random
 
+  -- HL2SB (2026-09-22): Lua 5.4's math.random REJECTS float bounds ("number
+  -- has no integer representation"); GMod's 5.1 runtime silently truncated
+  -- them, and real scripts pass floats freely (cf_beast rolls
+  -- math.random(-dmg*0.25, 0)).  Floor both bounds like 5.1 did.
   math.random = function( mn, mx )
     if ( mn == nil ) then return originalRandom() end
-    if ( mx == nil ) then mx, mn = mn, 1 end
-    if ( mx < mn ) then return originalRandom( mx, mn ) end
+    if ( mx == nil ) then
+      return originalRandom( 1, math.floor( mn ) )
+    end
+    mn, mx = math.floor( mn ), math.floor( mx )
+    if ( mx < mn ) then
+      mn, mx = mx, mn
+    end
     return originalRandom( mn, mx )
   end
 

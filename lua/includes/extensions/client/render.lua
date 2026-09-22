@@ -121,6 +121,24 @@ function cam.Start3D( pos, ang, fov, x, y, w, h, znear, zfar )
 
 end
 
+-- HL2SB (2026-09-22): the shim shipped Start2D/Start3D but never their
+-- closers.  halo.lua's PostDrawEffects pass calls cam.Start3D() then
+-- cam.End3D(); with End3D missing every halo frame PUSHED a 3D view onto the
+-- renderer's view stack and never popped it -- the stack leaked one level per
+-- frame, the view matrices drifted, and rendering (animations, muzzle flashes,
+-- tracers) went visibly wrong game-wide.  Both closers just fold into cam.End.
+function cam.End3D()
+
+	return cam.End()
+
+end
+
+function cam.End2D()
+
+	return cam.End()
+
+end
+
 local matFSB = Material( "pp/motionblur" )
 
 function render.DrawTextureToScreen( tex )
