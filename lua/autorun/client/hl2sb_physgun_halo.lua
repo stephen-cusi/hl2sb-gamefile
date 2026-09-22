@@ -43,26 +43,31 @@ end )
 
 hook.Add( "PreDrawHalos", "HL2SB_AddPhysgunHalos", function()
 
-	local nCount = 0
-	for _ in pairs( PhysgunHalos ) do nCount = nCount + 1 end
+	-- PERF (2026-09-23): was a full pairs() count pass, then halo.Add once PER
+	-- ENTRY with the whole table (N entries -> N identical full-table halos).
+	-- GMod calls halo.Add once per holding player with just that player's
+	-- target; do the same and only touch the table when it is non-empty.
+	local k = next( PhysgunHalos )
+	if ( k == nil ) then return end
 
-	if ( !bDbgFeed and nCount > 0 ) then
+	if ( !bDbgFeed ) then
 		bDbgFeed = true
-		Msg( "[HL2SB halo] link2 feed: " .. nCount .. " target(s) -> halo.Add\n" )
+		Msg( "[HL2SB halo] link2 feed: targets -> halo.Add\n" )
 	end
 
-	if ( nCount == 0 ) then return end
-
-	for k, v in pairs( PhysgunHalos ) do
+	while ( k ~= nil ) do
 
 		if ( IsValid( k ) ) then
 
+			local v = PhysgunHalos[ k ]
 			local size = math.random( 1, 2 )
 			local colr = k:GetWeaponColor() + Vector( ( math.random() - 0.5 ) * 0.6, ( math.random() - 0.5 ) * 0.6, ( math.random() - 0.5 ) * 0.6 )
 
-			halo.Add( PhysgunHalos, Color( colr.x * 255, colr.y * 255, colr.z * 255 ), size, size, 1, true, false )
+			halo.Add( { v }, Color( colr.x * 255, colr.y * 255, colr.z * 255 ), size, size, 1, true, false )
 
 		end
+
+		k = next( PhysgunHalos, k )
 
 	end
 

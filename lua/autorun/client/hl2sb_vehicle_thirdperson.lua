@@ -98,6 +98,21 @@ function M.ToggleThirdPerson( veh )
 	return M.SetThirdPersonMode( veh, not M.GetThirdPersonMode( veh ) )
 end
 
+-- PERF (2026-09-23): CalcVehicleView runs per frame while seated; the trace
+-- table and its filter closure used to be allocated fresh every call.  Hoist
+-- them and mutate start/endpos in place instead.
+local hullTrace = {
+	start  = Vector( 0, 0, 0 ),
+	endpos = Vector( 0, 0, 0 ),
+	mins   = Vector( -4, -4, -4 ),
+	maxs   = Vector( 4, 4, 4 ),
+	filter = function( ent )
+		local class = ent.GetClass and ent:GetClass() or ""
+		return class ~= "prop_vehicle_jeep" and class ~= "prop_vehicle_airboat"
+	end,
+}
+local lineTrace = { start = Vector( 0, 0, 0 ), endpos = Vector( 0, 0, 0 ) }
+
 -- GMod's GM:CalcVehicleView maths, kept in Lua so a gamemode can replace the camera.
 -- The engine half (OverrideView) already applies this exact camera; this is what a
 -- gamemode overriding the hook would run, and it is the reference if it ever moves to Lua.
@@ -115,18 +130,13 @@ function M.CalcVehicleView( veh, ply, view )
 	-- implementation shipped it, so fall back to a plain ray when it is missing.
 	local tr
 	if util and util.TraceHull then
-		tr = util.TraceHull( {
-			start  = view.origin,
-			endpos = vecTarget,
-			mins   = Vector( -4, -4, -4 ),
-			maxs   = Vector( 4, 4, 4 ),
-			filter = function( ent )
-				local class = ent.GetClass and ent:GetClass() or ""
-				return class ~= "prop_vehicle_jeep" and class ~= "prop_vehicle_airboat"
-			end,
-		} )
+		hullTrace.start.x, hullTrace.start.y, hullTrace.start.z = view.origin.x, view.origin.y, view.origin.z
+		hullTrace.endpos.x, hullTrace.endpos.y, hullTrace.endpos.z = vecTarget.x, vecTarget.y, vecTarget.z
+		tr = util.TraceHull( hullTrace )
 	elseif util and util.TraceLine then
-		tr = util.TraceLine( { start = view.origin, endpos = vecTarget } )
+		lineTrace.start.x, lineTrace.start.y, lineTrace.start.z = view.origin.x, view.origin.y, view.origin.z
+		lineTrace.endpos.x, lineTrace.endpos.y, lineTrace.endpos.z = vecTarget.x, vecTarget.y, vecTarget.z
+		tr = util.TraceLine( lineTrace )
 	end
 
 	if tr and tr.HitPos then

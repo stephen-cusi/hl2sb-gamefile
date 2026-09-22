@@ -70,11 +70,27 @@ if ( surface.SetTexture == nil ) then
 	surface.SetTexture = surface.DrawSetTexture
 end
 
+surface.__textureNames = surface.__textureNames or {}
+
 if ( surface.GetTextureID == nil ) then
 	function surface.GetTextureID( path )
 		local id = surface.CreateNewTextureID()
+		path = tostring( path )
 		-- DrawSetTextureFile( id, path, hardwareFilter, forceReload )
-		surface.DrawSetTextureFile( id, tostring( path ), 1, false )
+		surface.DrawSetTextureFile( id, path, 1, false )
+		surface.__textureNames[id] = path
+		return id
+	end
+else
+	-- Wrap whatever already provides GetTextureID so the weapon-selection HUD
+	-- can resolve the classic NUMBER form of SWEP.WepSelectIcon
+	-- (SWEP.WepSelectIcon = surface.GetTextureID("killicon/x")) back to a
+	-- material name.  C++ reads this table in
+	-- weapon_hl2mpbase_scriptedweapon.cpp GetWepSelectIcon().
+	local _GetTextureID = surface.GetTextureID
+	function surface.GetTextureID( path )
+		local id = _GetTextureID( path )
+		surface.__textureNames[id] = tostring( path )
 		return id
 	end
 end
@@ -166,8 +182,17 @@ local function TextureSize( texid )
 end
 
 if ( Material == nil ) then
+	-- PERF (2026-09-23): GMod caches Material() by path.  Without a cache, every
+	-- call from an ENT:Draw / HUDPaint (the usual addon idiom) built a fresh
+	-- table + closures per entity per frame -- pure GC churn on the render path.
+	local matCache = {}
+
 	function Material( path )
-		local mat = { __path = tostring( path ) }
+		path = tostring( path )
+		local cached = matCache[ path ]
+		if ( cached ) then return cached end
+
+		local mat = { __path = path }
 
 		function mat:GetName() return self.__path end
 		function mat:IsError() return false end
@@ -232,6 +257,7 @@ if ( Material == nil ) then
 			}
 		end
 
+		matCache[ path ] = mat
 		return mat
 	end
 end
