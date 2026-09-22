@@ -1076,4 +1076,13 @@ if ( concommand and concommand.Add ) then
 	concommand.Add( "-smenu", function() Close() end, nil, "Close the spawn menu (release)." )
 end
 
+-- The Options -> Keyboard page binds "+menu" / "-menu" (engine ConCommands in
+-- cdll_client_int.cpp), which fire the GMod hooks instead of touching this
+-- menu directly.  Listen to them so a rebound key (e.g. G) opens the menu too,
+-- not just the legacy Q = +smenu binding left in config.cfg.
+if ( hook and hook.Add ) then
+	hook.Add( "OnSpawnMenuOpen", "hl2sb_spawnmenu_open", function() Open() end )
+	hook.Add( "OnSpawnMenuClose", "hl2sb_spawnmenu_close", function() Close() end )
+end
+
 print( TAG .. "v3 loaded: registry content, category sidebar, SpawnIcon grid (Q = +smenu)" )
