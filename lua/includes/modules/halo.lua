@@ -199,17 +199,20 @@ local function RenderRT( entry )
 
 end
 
-local cvarUseSafe
+local cvarUseRT
 
 local function Render( entry )
-	-- HL2SB (2026-09-22): the upstream RT pipeline is the DEFAULT again (the
-	-- three black-screen causes are fixed).  halo_use_safe 1 falls back to the
-	-- whole-model tint shell if the RT path misbehaves on some setup.
-	cvarUseSafe = cvarUseSafe or GetConVar( "halo_use_safe" )
-	if ( cvarUseSafe != nil and cvarUseSafe:GetInt() == 1 ) then
-		return RenderSafe( entry )
+	-- HL2SB (2026-09-22, FINAL): the upstream RT pipeline is OFF by default.
+	-- Without in-engine visual debugging it cannot be made reliable here, and
+	-- every failed attempt cost the user a black screen.  The default is the
+	-- safe whole-model tint (RenderSafe) which is proven to render.  The RT
+	-- pipeline (blur edge-ring, the true wiki look) stays available for
+	-- offline debugging via halo_use_rt 1.
+	cvarUseRT = cvarUseRT or GetConVar( "halo_use_rt" )
+	if ( cvarUseRT != nil and cvarUseRT:GetInt() == 1 ) then
+		return RenderRT( entry )
 	end
-	return RenderRT( entry )
+	return RenderSafe( entry )
 end
 
 hook.Add( "PostDrawEffects", "RenderHalos", function()
