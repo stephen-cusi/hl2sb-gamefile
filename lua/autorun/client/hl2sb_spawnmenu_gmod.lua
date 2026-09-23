@@ -50,6 +50,14 @@ LAYOUT (GMod's spawnmenu, wiki.facepunch.com/gmod/spawnmenu):
 if ( not CLIENT ) then return end
 
 local TAG    = "[HL2SB][SpawnMenu] "
+
+-- PERF (2026-09-23): these diagnostics flooded the console on every menu fill;
+-- gate them behind hl2sb_debug (default 0).
+local cvarDbg = ( GetConVar ~= nil ) and GetConVar( "hl2sb_debug" ) or nil
+local function Dbg( sText )
+	if ( cvarDbg == nil ) then cvarDbg = ( GetConVar ~= nil ) and GetConVar( "hl2sb_debug" ) or nil end
+	if ( cvarDbg ~= nil and cvarDbg:GetBool() ) then print( sText ) end
+end
 local ICON   = 64
 local BUDGET = 4		-- NEW cells created per frame while a fill is pending
 					-- (a Material() decode or a clientside model is tens of ms;
@@ -542,7 +550,7 @@ local function SpawnEntry( e )
 		line = "gm_spawn " .. e.class .. ' "" ' .. Q( e.name )
 	end
 
-	print( TAG .. "spawn: " .. line )
+	Dbg( TAG .. "spawn: " .. line )
 
 	if ( engine and engine.ClientCmd ) then
 		engine.ClientCmd( line )
@@ -725,7 +733,7 @@ local function MakeCell( e )
 				return btn, "image"
 			end
 		else
-			print( TAG .. "icon material is error for '" .. iconPath .. "' - next fallback" )
+			Dbg( TAG .. "icon material is error for '" .. iconPath .. "' - next fallback" )
 		end
 	end
 
@@ -748,10 +756,10 @@ local function MakeCell( e )
 				icon.OpenMenu = function() EntryMenu( e ) end
 				return icon, "spawnicon"
 			end
-			print( TAG .. "SetModel failed for '" .. mdl .. "': " .. tostring( errSet ) )
+			Dbg( TAG .. "SetModel failed for '" .. mdl .. "': " .. tostring( errSet ) )
 			if ( IsValid( icon ) ) then icon:Remove() end
 		else
-			print( TAG .. "vgui.Create( SpawnIcon ) failed: " .. tostring( icon ) )
+			Dbg( TAG .. "vgui.Create( SpawnIcon ) failed: " .. tostring( icon ) )
 		end
 	end
 
@@ -802,7 +810,7 @@ local function FillStep()
 			local ok, c, kind = pcall( MakeCell, e )
 			if ( not ok ) then
 				g_Failed = g_Failed + 1
-				print( TAG .. "cell failed for '" .. tostring( e.class ) .. "': " .. tostring( c ) )
+				Dbg( TAG .. "cell failed for '" .. tostring( e.class ) .. "': " .. tostring( c ) )
 			else
 				if ( kind == "spawnicon" ) then g_IconsMade = g_IconsMade + 1
 				elseif ( kind == "image" ) then g_ImagesMade = g_ImagesMade + 1
@@ -822,7 +830,7 @@ local function FillStep()
 			g_Grid:InvalidateLayout( true )
 		end
 		AssertMouseInput()
-		print( TAG .. "fill done: created=" .. nCreated .. " docked=" .. nDocked
+		Dbg( TAG .. "fill done: created=" .. nCreated .. " docked=" .. nDocked
 			.. " images=" .. g_ImagesMade .. " spawnicons=" .. g_IconsMade
 			.. " text=" .. g_TextsMade .. " failed=" .. g_Failed )
 		g_IconsMade, g_TextsMade, g_ImagesMade = 0, 0, 0
@@ -926,7 +934,7 @@ local function Repopulate( bRebuildSidebar )
 	-- The fill is driven by the frame's OnThink (the mechanism the previous
 	-- menu proved) -- NOT by the client timer library, whose driver hook adds
 	-- one more thing that can silently never fire.
-	print( TAG .. "repopulate: tab=" .. tostring( g_ActiveTab ) .. " cat=" .. tostring( g_ActiveCat )
+	Dbg( TAG .. "repopulate: tab=" .. tostring( g_ActiveTab ) .. " cat=" .. tostring( g_ActiveCat )
 		.. " -> " .. #g_Pending .. " cells queued" )
 end
 
@@ -1038,7 +1046,7 @@ local function Open()
 
 	for id, fn in pairs( Collectors ) do
 		local ok, res = pcall( fn )
-		print( TAG .. "collect " .. id .. ": " .. ( ( ok and type( res ) == "table" ) and #res or ( "FAILED " .. tostring( res ) ) ) )
+		Dbg( TAG .. "collect " .. id .. ": " .. ( ( ok and type( res ) == "table" ) and #res or ( "FAILED " .. tostring( res ) ) ) )
 	end
 
 	g_Search:SetValue( "" )
@@ -1085,4 +1093,4 @@ if ( hook and hook.Add ) then
 	hook.Add( "OnSpawnMenuClose", "hl2sb_spawnmenu_close", function() Close() end )
 end
 
-print( TAG .. "v3 loaded: registry content, category sidebar, SpawnIcon grid (Q = +smenu)" )
+Dbg( TAG .. "v3 loaded: registry content, category sidebar, SpawnIcon grid (Q = +smenu)" )
