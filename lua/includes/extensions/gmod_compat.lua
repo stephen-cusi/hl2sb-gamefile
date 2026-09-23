@@ -169,6 +169,88 @@ function SetGlobalBool( key, value )
 end
 
 -- ===========================================================================
+-- 2.1 跨端复制（2026-09-24）
+--     上面的表原本“服务端和客户端各存各的”（见本节开头注释）。GMod 的
+--     SetGlobal* 是跨 realm 的 —— nukepack 的 cl_init 读
+--     GetGlobalInt("nuke_yield") 在客户端永远拿到 0：Yield=0 使它把所有爆炸
+--     音效预标记成“已播放”、把客户端 Think 停摆 999 秒，核弹全程静默。
+--     修复：服务端每次 Set* 后用 net 广播；玩家进服 1 秒后补发全量快照。
+-- ===========================================================================
+local NET_GVAR = "HL2SB_GVar"
+
+local function GVarType( v )
+	local tv = type( v )
+	if tv == "number" then
+		if v == math_floor( v ) then return "i" end
+		return "f"
+	elseif tv == "boolean" then return "b" end
+	return "s"
+end
+
+local function GVarCoerce( typ, s )
+	if typ == "i" then return math_floor( tonumber( s ) or 0 )
+	elseif typ == "f" then return tonumber( s ) or 0
+	elseif typ == "b" then return s == "1"
+	end
+	return s
+end
+
+if SERVER then
+	if util and util.AddNetworkString then
+		util.AddNetworkString( NET_GVAR )
+	end
+
+	local function broadcast( key )
+		local v = tGlobals[ key ]
+		if v == nil then return end
+		net.Start( NET_GVAR )
+			net.WriteString( tostring( key ) )
+			net.WriteString( GVarType( v ) )
+			net.WriteString( tostring( v ) )
+		net.Broadcast()
+	end
+
+	-- 迟到的玩家：进服 1 秒后补发全量快照
+	hook.add( "PlayerInitialSpawn", "HL2SB_GVarSnapshot", function( ply )
+		timer.Simple( 1, function()
+			if not IsValid( ply ) then return end
+			for k in pairs( tGlobals ) do
+				local v = tGlobals[ k ]
+				net.Start( NET_GVAR )
+					net.WriteString( tostring( k ) )
+					net.WriteString( GVarType( v ) )
+					net.WriteString( tostring( v ) )
+				net.Send( ply )
+			end
+		end )
+	end )
+
+	-- 包一层：服务端存完即广播（跨端语义只属于服务端写入，GMod 同）
+	local _SetVar, _SetInt, _SetFloat, _SetString, _SetBool =
+		SetGlobalVar, SetGlobalInt, SetGlobalFloat, SetGlobalString, SetGlobalBool
+
+	SetGlobalVar   = function( k, v ) local r = _SetVar( k, v ); broadcast( k ); return r end
+	SetGlobalInt   = function( k, v ) local r = _SetInt( k, v ); broadcast( k ); return r end
+	SetGlobalFloat = function( k, v ) local r = _SetFloat( k, v ); broadcast( k ); return r end
+	SetGlobalString= function( k, v ) local r = _SetString( k, v ); broadcast( k ); return r end
+	SetGlobalBool  = function( k, v ) local r = _SetBool( k, v ); broadcast( k ); return r end
+end
+
+if CLIENT then
+	-- net.Receive 是追加式注册：文件重载会挂两个接收器（undo.lua 的教训），
+	-- 用标记防重。
+	if not _G.__HL2SB_GVAR_RECV then
+		_G.__HL2SB_GVAR_RECV = true
+		net.Receive( NET_GVAR, function()
+			local key = net.ReadString()
+			local typ = net.ReadString()
+			local val = net.ReadString()
+			tGlobals[ key ] = GVarCoerce( typ, val )
+		end )
+	end
+end
+
+-- ===========================================================================
 -- 3. 全局 game 表
 --    GMod 的 game 是 C++ 绑定的表；HL2SB 没有，用现有绑定拼一个等价的。
 -- ===========================================================================
