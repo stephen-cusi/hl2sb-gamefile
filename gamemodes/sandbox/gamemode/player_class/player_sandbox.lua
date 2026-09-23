@@ -16,7 +16,14 @@ local PLAYER = {}
 PLAYER.DuckSpeed     = 0.1
 PLAYER.UnDuckSpeed   = 0.1
 
-PLAYER.TauntCam      = TauntCamera()
+-- HL2SB 没有 GMod 的 TauntCamera 全局（嘲讽镜头），没有就置 nil——
+-- 下面的 ShouldDrawLocal/CreateMove/CalcView 本来就做了 nil 保护。
+-- 之前直接 TauntCamera() 会让整个类文件加载失败（class=nil 的根因之一）。
+if ( TauntCamera ~= nil ) then
+	PLAYER.TauntCam = TauntCamera()
+else
+	PLAYER.TauntCam = nil
+end
 
 PLAYER.SlowWalkSpeed = 100
 PLAYER.WalkSpeed     = 200
@@ -32,6 +39,11 @@ end
 function PLAYER:Loadout()
 	-- 不 StripWeapons：GMod 也注释掉了，说会破坏现有 mod
 	self.Player:RemoveAllAmmo()
+
+	-- GMod 玩家天生有 suit（引擎保证，走 HEV 电力/手电/冲刺）。
+	-- HL2SB 的等价物就是 EquipSuit：幂等、无拾取 HUD，替代 C++
+	-- GiveAllItems 里被 Lua 桥拦掉的那次 EquipSuit。
+	self.Player:EquipSuit()
 
 	if ( cvars.Bool( "sbox_weapons", true ) ) then
 		self.Player:GiveAmmo( 256, "Pistol",     true )

@@ -5,6 +5,26 @@
 --===========================================================================--
 
 include( "shared.lua" )
+include( "player_class/player_deathmatch.lua" )
+
+-- 引擎的 LUA_BASE_GAMEMODE 是 "deathmatch"（luamanager.h:40），gamemodes/base/
+-- 这层从来没有被加载过——里面的通用出生链（GM:PlayerSpawn -> PlayerLoadout
+-- -> RunClass）和 player_default 类因此全是死代码（2026-09-24 实锤：
+-- [loadout-diag] class=nil、gamemode.get("base")==nil）。在这里 include 进来，
+-- GM 函数落进当前 GM 表，deathmatch 作为 base 继续被 sandbox 等继承。
+-- ⚠️ 不要写 "../../base/..."：LuaNormalizeDots 会把它归一成
+-- "gamemodes/deathmatchbase/..."（实测 2026-09-24）。走 include 的第三条
+-- 根路径回退（原样相对 MOD 路径）能直接命中。
+include( "gamemodes/base/gamemode/init.lua" )
+
+-- base 层的通用出生链。设类之后走这一个：OnPlayerSpawn -> RunClass("Spawn")
+-- -> PlayerLoadout -> PlayerSetModel。sandbox 等子 gamemode 设完自己的类也
+-- 要走这个原函数，不能走 deathmatch 的 GM:PlayerSpawn（那会把类改回
+-- player_deathmatch）。
+local PlayerSpawnChain = GM.PlayerSpawn
+-- 暴露给子 gamemode：sandbox 设完 player_sandbox 类后走这个，而不是走
+-- deathmatch 的 GM:PlayerSpawn（会把类改回 player_deathmatch）。
+GM.PlayerSpawnChain = PlayerSpawnChain
 
 local PLAYER_SOUNDS_CITIZEN = 0
 local PLAYER_SOUNDS_COMBINESOLDIER = 1
@@ -64,36 +84,21 @@ end
 function GM:FShouldSwitchWeapon( pPlayer, pWeapon )
 end
 
+-- 与 sandbox/base 的桥一致：出生装备唯一入口是 PLAYER:Loadout()
+-- （player_class/player_deathmatch.lua），这里绝不能再发一套。
+-- 默认武器切换由 Loadout 末尾的 SwitchToDefaultWeapon()（cl_defaultweapon）
+-- 承担。return false = 拦住 C++ 的 GiveAllItems 兜底。
 function GM:GiveDefaultItems( pPlayer )
-	pPlayer:EquipSuit();
-
-	_R.CBasePlayer.GiveAmmo( pPlayer, 255,	"Pistol");
-	_R.CBasePlayer.GiveAmmo( pPlayer, 45,	"SMG1");
-	_R.CBasePlayer.GiveAmmo( pPlayer, 1,	"grenade" );
-	_R.CBasePlayer.GiveAmmo( pPlayer, 6,	"Buckshot");
-	_R.CBasePlayer.GiveAmmo( pPlayer, 6,	"357" );
-
-	local mt = pPlayer:GetPlayerModelType();
-	if ( mt == 2 or mt == 1 ) then
-		pPlayer:GiveNamedItem( "weapon_stunstick" );
-	else
-		pPlayer:GiveNamedItem( "weapon_crowbar" );
-	end
-
-	pPlayer:GiveNamedItem( "weapon_pistol" );
-	pPlayer:GiveNamedItem( "weapon_smg1" );
-	pPlayer:GiveNamedItem( "weapon_frag" );
-	pPlayer:GiveNamedItem( "weapon_physcannon" );
-
-	local szDefaultWeaponName = engine.GetClientConVarValue( engine.IndexOfEdict( pPlayer ), "cl_defaultweapon" );
-	local pDefaultWeapon = pPlayer:Weapon_OwnsThisType( szDefaultWeaponName );
-
-	if ( ToBaseEntity( pDefaultWeapon ) ~= NULL ) then
-		pPlayer:Weapon_Switch( pDefaultWeapon );
-	else
-		pPlayer:Weapon_Switch( pPlayer:Weapon_OwnsThisType( "weapon_physcannon" ) );
-	end
 	return false
+end
+
+-- 出生先把玩家设成 player_deathmatch 类，再走 base 层的通用出生链。
+function GM:PlayerSpawn( pPlayer, transition )
+	player_manager.SetPlayerClass( pPlayer, "player_deathmatch" )
+
+	if ( PlayerSpawnChain ~= nil ) then
+		return PlayerSpawnChain( self, pPlayer, transition )
+	end
 end
 function GM:Host_Say( pPlayer, p, teamonly )
 end
