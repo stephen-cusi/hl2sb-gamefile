@@ -27,7 +27,8 @@ function EFFECT:Init( data )
 	-- eject to the weapon's right and slightly up, gravity takes it from there
 	local vel = ang:Right() * ( 40 + math.random( 0, 30 ) ) + ang:Up() * ( 20 + math.random( 0, 20 ) )
 
-	local p = emitter:Add( "sprites/light_glow02_add", pos )
+	-- light_glow02_add is not in this install (ERROR); stock HL2 sprite.
+	local p = emitter:Add( "sprites/orangeflare1", pos )
 	if ( p ) then
 		p:SetVelocity( vel )
 		p:SetDieTime( 0.8 )

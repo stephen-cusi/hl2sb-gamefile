@@ -4,7 +4,11 @@
 -- beam from the muzzle to the impact point.  Without it CF-style weapons
 -- fired with no visible bullet at all.
 
-local matBeam = Material( "effects/bluelaser1" )
+-- 2026-09-23: was "effects/bluelaser1" - a literal BLUE LASER texture, which
+-- read as a stray blue line at the muzzle (user report).  GMod's own
+-- materials/effects/tool_tracer (verified in garrysmod_dir.vpk) is the
+-- correct tracer look; the warm vertex color tints it.
+local matBeam = Material( "effects/tool_tracer" )
 
 local LIFETIME = 0.07
 
