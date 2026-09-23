@@ -307,6 +307,32 @@ function SWEP:SetHoldType( t )
 end
 
 --[[---------------------------------------------------------
+	Name: SWEP:GetHoldType
+	Desc: GMod Weapon:GetHoldType() -- returns the current hold type.
+		  (2026-09-23: SetHoldType already stored the string; this adds
+		  the getter GMod SWEPs expect.)
+-----------------------------------------------------------]]
+function SWEP:GetHoldType()
+	return self.HoldType or "normal"
+end
+
+--[[---------------------------------------------------------
+	Name: SWEP:SetLastShootTime / SWEP:LastShootTime
+	Desc: GMod Weapon:SetLastShootTime( time = CurTime() ) /
+		  Weapon:LastShootTime().  Engine-side it is set when the weapon
+		  fires a bullet; here the Lua base records it in the default
+		  PrimaryAttack/SecondaryAttack below.  Not networked, same as
+		  GMod.
+-----------------------------------------------------------]]
+function SWEP:SetLastShootTime( t )
+	self.m_tLastShoot = t or CurTime()
+end
+
+function SWEP:LastShootTime()
+	return self.m_tLastShoot or 0
+end
+
+--[[---------------------------------------------------------
 	Name: SWEP:Initialize
 -----------------------------------------------------------]]
 function SWEP:Initialize()
@@ -329,6 +355,7 @@ function SWEP:PrimaryAttack()
 	if ( IsValid( owner ) and not owner:IsNPC() ) then
 		owner:ViewPunch( Angle( -( self.Primary.Recoil or 1 ), 0, 0 ) )
 	end
+	self:SetLastShootTime()
 end
 
 --[[---------------------------------------------------------
@@ -345,6 +372,7 @@ function SWEP:SecondaryAttack()
 	if ( IsValid( owner ) and not owner:IsNPC() ) then
 		owner:ViewPunch( Angle( -( self.Secondary.Recoil or 10 ), 0, 0 ) )
 	end
+	self:SetLastShootTime()
 end
 
 --[[---------------------------------------------------------

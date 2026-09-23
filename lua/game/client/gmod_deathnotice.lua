@@ -158,6 +158,27 @@ local ICON_FONT = surface.CreateFont()
 surface.SetFontGlyphSet( ICON_FONT, ICON_FONT_NAME, ICON_TALL, 0, 0, 0,
                          FONTFLAG_ANTIALIAS + FONTFLAG_ADDITIVE )
 
+-- HL2SB: 统一两类图标的高度。材质类图标（killicon.Add 注册的图片）在
+-- killicon.lua 里被等高化到 fh = 图标框 * 0.75 = **48px**，而字体类图标保留了
+-- GMod 的历史行为、按 hl2mp.ttf 字形的实际 ink 渲染（64px 字号下 ink 只有
+-- ~35px，见 killicon.lua 里那句 "backwards compability" BUG 注释）——同一
+-- 条击杀播报里就出现"引擎武器图标小、插件武器图标大"。这里把字形字号自动
+-- 放大到 ink ≈ 48px，两类图标在播报里就一样高了（对 GMod 的有意偏离）。
+do
+	local FRAME = math.Round( ICON_TALL * 0.75 )
+	-- font.lua 的 surface.GetTextSize 直接收 fontcontainer（自动解包 .font），
+	-- 不要绕 surface.SetFont —— 那是给方案字体名用的，喂句柄会炸掉整个文件。
+	local _, inkH = surface.GetTextSize( ICON_FONT, "/" )   -- SMG 字形，代表性 ink
+	if ( inkH and inkH > 0 and inkH < FRAME ) then
+		local scaled = math.floor( ICON_TALL * FRAME / inkH + 0.5 )
+		local hBigger = surface.CreateFont()
+		surface.SetFontGlyphSet( hBigger, ICON_FONT_NAME,
+			math.min( scaled, ICON_TALL * 3 ), 0, 0, 0,
+			FONTFLAG_ANTIALIAS + FONTFLAG_ADDITIVE )
+		if ( hBigger ) then ICON_FONT = hBigger end
+	end
+end
+
 local hud_deathnotice_time = CreateConVar( "hud_deathnotice_time", "6", FCVAR_NONE, "Amount of time to show death notice (kill feed) for" )
 local cl_drawhud = GetConVar( "cl_drawhud" )
 

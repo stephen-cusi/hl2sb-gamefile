@@ -1,23 +1,21 @@
 
 module( "halo", package.seeall )
 
--- HL2SB (2026-09-22): SAFE halo renderer.
+-- HL2SB (2026-09-23): the halo renderer.
 --
--- Upstream GMod renders halos through a stencil + screen-copy + blur pipeline
--- (pp/copy, pp/add, render.BlurRenderTarget ...).  This engine branch cannot
--- support that faithfully yet:
---   * there are no screenspace blur pixel shaders, so the blur is a
---     downsample-upsample approximation;
---   * copying the BACKBUFFER into a render target does not survive this
---     DX9 layer (the copy comes back black/garbage), which black-screened the
---     whole frame for as long as the beam was held.
+-- DEFAULT (2026-09-23): the upstream stencil + screen-copy + blur pipeline
+-- (RenderRT below), ported verbatim from Facepunch/garrysmod
+-- lua/includes/modules/halo.lua and re-verified against it line by line.
+-- Fork adaptations, forced by this DX9 layer, all verified 2026-09-22/23:
+--   * the frame copies use the engine-proven render.CopyFrameToTexture
+--     (the plain CopyRenderTargetToTexture came back black here);
+--   * every Render call runs under a pcall fuse so a mid-pipeline failure
+--     can never leave the frame half-rendered (the 2026-09-22 black screen);
+--   * halo_debug 1 freezes on the RT-copy diagnostic frame.
 --
--- So halos here are drawn the way the physgun's held-entity glow already
--- works: an additive flat material forced over the entity's own DrawModel
--- (render.ModelMaterialOverride + render.SetColorModulation/SetBlend).
--- No render targets, no copies, no clears -- nothing that CAN black the
--- screen.  The visual is a crisp colored glow rather than a blurred ring;
--- the whole-model tint shell stays behind halo_use_safe 1 as a fallback.
+-- The old safe whole-model tint (RenderSafe) survives as the explicit
+-- fallback behind `halo_use_rt 0`.  That look wraps the entity in ONE flat
+-- color -- it is NOT the wiki edge-ring and must not be the default.
 
 local matHalo	= Material( "models/effects/hl2sb_physgun_glow" )
 local List		= {}
@@ -87,9 +85,10 @@ local function RenderSafe( entry )
 
 end
 
--- Upstream stencil/blur renderer (the ONLY way to the wiki's edge-ring look).
--- The three black-screen causes of 2026-09-22 are fixed (dedicated screen RTs,
--- NULL-safe GetRenderTarget, working fuse), so this is the DEFAULT again.
+-- Upstream stencil/blur renderer (the ONLY way to the wiki's edge-ring look),
+-- ported verbatim from Facepunch/garrysmod modules/halo.lua with the
+-- CopyFrameToTexture adaptation.  This is the DEFAULT renderer since
+-- 2026-09-23; `halo_use_rt 0` falls back to RenderSafe.
 -- halo_debug 1 renders ONLY the scene copy after the first RT copy: scene
 -- visible = the DX9 copy works; black = the copy is the broken step.
 local mat_Copy		= Material( "pp/copy" )
@@ -201,18 +200,18 @@ end
 
 local cvarUseRT
 
-local function Render( entry )
-	-- HL2SB (2026-09-22, FINAL): the upstream RT pipeline is OFF by default.
-	-- Without in-engine visual debugging it cannot be made reliable here, and
-	-- every failed attempt cost the user a black screen.  The default is the
-	-- safe whole-model tint (RenderSafe) which is proven to render.  The RT
-	-- pipeline (blur edge-ring, the true wiki look) stays available for
-	-- offline debugging via halo_use_rt 1.
+function Render( entry )
+	-- HL2SB (2026-09-23): default is the UPSTREAM RT edge-ring pipeline
+	-- (verified verbatim against Facepunch/garrysmod modules/halo.lua), which
+	-- is what the whole halo library exists for.  The safe whole-model tint
+	-- (RenderSafe) is the explicit fallback behind `halo_use_rt 0` -- that is
+	-- the "whole object wrapped in one flat color" look, NOT the wiki look.
+	-- halo_debug 1 still freezes on the RT-copy diagnostic frame.
 	cvarUseRT = cvarUseRT or GetConVar( "halo_use_rt" )
-	if ( cvarUseRT != nil and cvarUseRT:GetInt() == 1 ) then
-		return RenderRT( entry )
+	if ( cvarUseRT != nil and cvarUseRT:GetInt() == 0 ) then
+		return RenderSafe( entry )
 	end
-	return RenderSafe( entry )
+	return RenderRT( entry )
 end
 
 hook.Add( "PostDrawEffects", "RenderHalos", function()
