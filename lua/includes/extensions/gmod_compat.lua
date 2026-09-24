@@ -850,3 +850,126 @@ if ( engine ~= nil and engine.ActiveGamemode == nil ) then
 	end
 end
 
+
+-- ===========================================================================
+-- HL2SB GMod compat (2026-09-24): combustible-lemon addon round.
+--
+-- Gaps surfaced by addons/combustible_lemon (and confirmed against the wiki):
+--   1. seven enum globals (CHAN_ITEM, GMOD_CHANNEL_*, COLLISION_GROUP_WEAPON
+--      /WORLD, MAT_*)            -> plain constants below.
+--   2. Entity:NearestPoint       -> pure-Lua OBB nearest point.
+--   3. DynamicLight / sound.PlayFile (IGModAudioChannel) -> documented stubs.
+--      This fork binds no dlight renderer and no BASS audio channel; the stubs
+--      keep addons that touch them error-free.  Player:StripWeapon and
+--      DamageInfo:IsDamageType / Entity:GetMaterialType / Player:KeyDownLast
+--      needed real bindings and were done engine-side the same day.
+--
+-- NOTE: unlike sh_init.lua (which sits behind the never-loaded
+-- gmod_compatibility/ folder pass), everything in THIS file actually loads --
+-- the lemon's StripWeapon error was exactly a shim defined in the wrong file.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- 1. Enum globals (values from the GMod wiki; COLLISION_GROUP_WEAPON == 11
+--    also matches this engine's Collision_Group_t in public/const.h).
+-- ---------------------------------------------------------------------------
+CHAN_REPLACE  = CHAN_REPLACE  or -1
+CHAN_AUTO     = CHAN_AUTO     or 0
+CHAN_WEAPON   = CHAN_WEAPON   or 1
+CHAN_VOICE    = CHAN_VOICE    or 2
+CHAN_ITEM     = CHAN_ITEM     or 3
+CHAN_BODY     = CHAN_BODY     or 4
+CHAN_STREAM   = CHAN_STREAM   or 5
+CHAN_VOICE2   = CHAN_VOICE2   or 7
+
+GMOD_CHANNEL_STOPPED = GMOD_CHANNEL_STOPPED or 0
+GMOD_CHANNEL_PLAYING = GMOD_CHANNEL_PLAYING or 1
+GMOD_CHANNEL_PAUSED  = GMOD_CHANNEL_PAUSED  or 2
+GMOD_CHANNEL_STALLED = GMOD_CHANNEL_STALLED or 3
+
+COLLISION_GROUP_WEAPON = COLLISION_GROUP_WEAPON or 11
+COLLISION_GROUP_WORLD  = COLLISION_GROUP_WORLD  or 20
+
+-- GMod's MAT_ globals carry the raw gamematerial byte ('A'=65 .. 'Y'=89),
+-- which is exactly what Entity:GetMaterialType() returns on this fork.
+MAT_ANTLION     = MAT_ANTLION     or 65
+MAT_BLOODYFLESH = MAT_BLOODYFLESH or 66
+MAT_CONCRETE    = MAT_CONCRETE    or 67
+MAT_DIRT        = MAT_DIRT        or 68
+MAT_EGGSHELL    = MAT_EGGSHELL    or 69
+MAT_FLESH       = MAT_FLESH       or 70
+MAT_GRATE       = MAT_GRATE       or 71
+MAT_ALIENFLESH  = MAT_ALIENFLESH  or 72
+MAT_CLIP        = MAT_CLIP        or 73
+MAT_SNOW        = MAT_SNOW        or 74
+MAT_PLASTIC     = MAT_PLASTIC     or 76
+MAT_METAL       = MAT_METAL       or 77
+MAT_SAND        = MAT_SAND        or 78
+MAT_FOLIAGE     = MAT_FOLIAGE     or 79
+MAT_COMPUTER    = MAT_COMPUTER    or 80
+MAT_SLOSH       = MAT_SLOSH       or 83
+MAT_TILE        = MAT_TILE        or 84
+MAT_GRASS       = MAT_GRASS       or 85
+MAT_VENT        = MAT_VENT        or 86
+MAT_WOOD        = MAT_WOOD        or 87
+MAT_DEFAULT     = MAT_DEFAULT     or 88
+MAT_GLASS       = MAT_GLASS       or 89
+MAT_WARPSHIELD  = MAT_WARPSHIELD  or 90
+
+-- ---------------------------------------------------------------------------
+-- 2. Entity:NearestPoint( point ) -- nearest point inside this entity's OBB
+--    (GMod engine binding, used e.g. by the sandbox ragdoll-flush snippet).
+--    Pure-Lua approximation: transform into local space via the entity's
+--    angles, clamp onto OBBMins/OBBMaxs, transform back.
+-- ---------------------------------------------------------------------------
+do
+	local ENTITY_META = FindMetaTable( "Entity" )
+
+	if ( ENTITY_META ~= nil and ENTITY_META.NearestPoint == nil ) then
+		function ENTITY_META:NearestPoint( point )
+			local pos  = self:GetPos()
+			local ang  = self:GetAngles()
+			local fwd  = ang:Forward()
+			local right = ang:Right()
+			local up   = ang:Up()
+
+			local d = point - pos
+			local x = d:Dot( fwd )
+			local y = d:Dot( right )
+			local z = d:Dot( up )
+
+			local mins, maxs = self:OBBMins(), self:OBBMaxs()
+			x = math.Clamp( x, mins.x, maxs.x )
+			y = math.Clamp( y, mins.y, maxs.y )
+			z = math.Clamp( z, mins.z, maxs.z )
+
+			return pos + fwd * x + right * y + up * z
+		end
+	elseif ( ENTITY_META == nil ) then
+		Msg( "[HL2SB] gmod_compat: FindMetaTable( \"Entity\" ) was nil -- NearestPoint NOT installed\n" )
+	end
+end
+
+-- ---------------------------------------------------------------------------
+-- 3. Client stubs: DynamicLight( index ) and sound.PlayFile.
+--    No dlight renderer and no IGModAudioChannel binding exist in this fork.
+--    DynamicLight returns a dummy table so field writes stay harmless;
+--    PlayFile reports a channel error so addons skip their VO gracefully
+--    (combustible_lemon checks `if soundChannel ~= nil` before storing it).
+-- ---------------------------------------------------------------------------
+if ( CLIENT ) then
+	DynamicLight = function( index, elight )
+		return { index = index, elight = elight == true }
+	end
+
+	sound = sound or {}
+	if ( sound.PlayFile == nil ) then
+		sound.PlayFile = function( path, flags, callback )
+			if ( isfunction( callback ) ) then
+				-- GMod callback signature: ( channel, errorId, errorName )
+				callback( nil, 0, "hl2sb: no IGModAudioChannel binding" )
+			end
+		end
+	end
+end
+

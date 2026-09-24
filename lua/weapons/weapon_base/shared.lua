@@ -541,6 +541,23 @@ function SWEP:Ammo2()
 end
 
 --[[---------------------------------------------------------
+	Name: SWEP:KeyDown / SWEP:KeyDownLast
+	Desc: GMod SWEP base forwards these to the owning player
+	      (Player:KeyDown / Player:KeyDownLast, IN_* masks).
+-----------------------------------------------------------]]
+function SWEP:KeyDown( inKey )
+	local owner = self:GetOwner()
+	if ( not owner or not owner.KeyDown ) then return false end
+	return owner:KeyDown( inKey )
+end
+
+function SWEP:KeyDownLast( inKey )
+	local owner = self:GetOwner()
+	if ( not owner or not owner.KeyDownLast ) then return false end
+	return owner:KeyDownLast( inKey )
+end
+
+--[[---------------------------------------------------------
 	Name: SWEP:DoImpactEffect
 -----------------------------------------------------------]]
 function SWEP:DoImpactEffect( tr, nDamageType )

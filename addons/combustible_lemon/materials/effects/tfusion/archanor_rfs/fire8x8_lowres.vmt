@@ -1,0 +1,11 @@
+"Spritecard"
+{
+	"$basetexture" "effects/tfusion/archanor_rfs/fire8x8_lowres"
+	"$surfaceprop" "default"
+	"$vertexcolor" "1"
+	"$vertexalpha" "1"
+	
+	"$additive" "1"
+	"$depthblend" "0"
+	"$depthblendscale" "25"
+}

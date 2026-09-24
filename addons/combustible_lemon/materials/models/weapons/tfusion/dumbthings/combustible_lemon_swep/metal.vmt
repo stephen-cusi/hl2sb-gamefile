@@ -1,0 +1,16 @@
+"VertexLitGeneric"
+{
+	"$basetexture" "models/weapons/tfusion/dumbthings/combustible_lemon_swep/metal_d.vtf"
+	"$bumpmap" "models/weapons/tfusion/dumbthings/combustible_lemon_swep/metal_n.vtf"
+	
+	"$phong" "1"
+	"$phongboost" "17"
+	"$phongexponenttexture" "models/weapons/tfusion/dumbthings/combustible_lemon_swep/metal_s.vtf"
+	"$phongfresnelranges" "[0.05 0.15 1.0]"
+	"$phongalbedotint" "1"
+	
+	"$rimlight" "1"
+	"$rimlightboost" "10"
+	"$rimlightexponent" "1.4"
+	"$rimmask" "1"
+}

@@ -1,0 +1,18 @@
+"VertexLitGeneric"
+{
+	"$basetexture" "models/items/tfusion/dumbthings/combustible_lemon_swep/bag_d.vtf"
+	"$bumpmap" "models/items/tfusion/dumbthings/combustible_lemon_swep/bag_n.vtf"
+	
+	"$nocull" "1"
+	"$alphatest" "1"
+	"$allowalphatocoverage" "1"
+	
+	"$phong" "1"
+	"$phongboost" "10"
+	"$phongexponent" "7"
+	"$phongfresnelranges" "[0.1 0.3 0.9]"
+	
+	"$rimlight" "1"
+	"$rimlightboost" "4"
+	"$rimlightexponent" "10"
+}

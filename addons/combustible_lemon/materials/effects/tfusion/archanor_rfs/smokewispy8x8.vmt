@@ -1,0 +1,11 @@
+"Spritecard"
+{
+	"$basetexture" "effects/tfusion/archanor_rfs/smokewispy8x8"
+	"$surfaceprop" "default"
+	"$vertexcolor" "1"
+	"$vertexalpha" "1"
+	
+	"$translucent" "1"
+	"$depthblend" "0"
+	"$depthblendscale" "25"
+}

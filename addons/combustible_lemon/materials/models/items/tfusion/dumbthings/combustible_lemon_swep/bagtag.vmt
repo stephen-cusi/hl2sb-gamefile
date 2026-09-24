@@ -1,0 +1,16 @@
+"VertexLitGeneric"
+{
+	"$basetexture" "models/items/tfusion/dumbthings/combustible_lemon_swep/tag_d.vtf"
+	"$bumpmap" "models/items/tfusion/dumbthings/combustible_lemon_swep/normalflat.vtf"
+	
+	"$nocull" "1"
+	
+	"$phong" "1"
+	"$phongboost" "5"
+	"$phongexponent" "3"
+	"$phongfresnelranges" "[0.05 0.25 0.9]"
+	
+	"$rimlight" "1"
+	"$rimlightboost" "2"
+	"$rimlightexponent" "4"
+}

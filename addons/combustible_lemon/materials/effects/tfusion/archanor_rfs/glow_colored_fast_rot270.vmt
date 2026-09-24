@@ -1,0 +1,9 @@
+"UnlitGeneric"
+{
+	"$basetexture" "effects/tfusion/archanor_rfs/glow_colored_fast_rot270"
+	"$surfaceprop" "default"
+	"$vertexcolor" "1"
+	"$vertexalpha" "1"
+	
+	"$additive" "1"
+}
