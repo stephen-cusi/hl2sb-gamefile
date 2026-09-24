@@ -1,70 +1,46 @@
--- HL2SB CS_MuzzleFlash (2026-09-23, v3): the CS-style muzzle flash for
--- util.Effect( "CS_MuzzleFlash", fx ) (cf_beast fires it from event 21).
+-- HL2SB CS_MuzzleFlash: the CS-style muzzle flash for util.Effect(
+-- "CS_MuzzleFlash", fx ) (cf_beast fires it from event 21; weapon_base
+-- reaches the engine-native callback only when no Lua template exists).
 --
 -- History: v1 particle version drew nothing (CLuaParticle pipeline does not
 -- render here); the engine-native callback (fx_cs_muzzleflash.cpp) drew a
--- BLACK SQUARE (its SimpleParticle path alpha-blends the sprite instead of
--- additively blending it, so the texture's black background showed); v2 glow
--- quads drew but looked unlike a real flash; v3's CreateMaterial produced a
--- checkerboard (the sh_init shim's Materials.Create silently swallowed the
--- GMod 3-arg form and left the material textureless).  v4 uses the stock
--- sprites/muzzleflash4 VMT directly - the engine precaches it at load
--- (fx_cs_muzzleflash.cpp CLIENTEFFECT_MATERIAL), it is a stock additive
--- sprite, and render.SetMaterial(Material(path)) is the chain the nyan
--- effect is verified on.
-
--- v7 (2026-09-23): the engine-side SetMaterialVarFlag force was confirmed
--- ineffective BY THE LOG (flag reported set, black square stayed) - whether a
--- material blends additively is decided inside ITS OWN shader, and this
--- material's shader never checks MATERIAL_VAR_ADDITIVE.  Also CreateMaterial
--- eagerly resolves $basetexture and errored ("mat=___error") on a wrong path.
+-- BLACK BLOCK because HL2's sprites/muzzleflash4.vmt ships without
+-- $additive (alpha-blended black background) - that VMT now has a loose
+-- additive override in hl2sb/materials/sprites/; v3/v7 CreateMaterial
+-- shells never materialised either: engine.log logged
+-- "create=true ... iserror=true" every load, so Material("hl2sb_csflash")
+-- handed back the engine ERROR material and the quads drew it - the dark
+-- block at the muzzle on 2026-09-24.
 --
--- v7 graft instead - every API below is production-proven in this fork (halo:
--- mat_Copy:SetTexture("$basetexture", rt_Store)):
---   1. CreateMaterial makes a TEXTURELESS UnlitGeneric shell with $additive 1
---      (no $basetexture key -> nothing to mis-resolve); its shader DOES honour
---      the additive flag.
---   2. The stock effects/muzzleflash4 material resolves its own texture fine
---      (its art has been visible all along), so read the ITexture object off it
---      and graft it onto the shell.
--- Fallback if anything fails: plain light_glow02_add (runtime-proven additive)
--- so the flash is never invisible again.  Lua template priority keeps the
--- engine's native callback (the black-square renderer) out of the picture.
-
-local matCore = Material( "sprites/light_glow02_add" )
-local matFlash = matCore
-do
-	local okCreate = pcall( CreateMaterial, "hl2sb_csflash", "UnlitGeneric", {
-		[ "$additive" ] = "1",
-		[ "$vertexalpha" ] = "1",
-		[ "$translucent" ] = "1",
-	} )
-	if ( okCreate ) then
-		local m = Material( "hl2sb_csflash" )
-		if ( m ~= nil and m.SetTexture ~= nil ) then
-			matFlash = m
+-- v8 draws the stock CS flash sprite directly: every candidate is a
+-- mounted UnlitGeneric+$additive material (black background adds out to
+-- nothing), the first that resolves wins, and the warm light_glow02_add
+-- core below doubles as last-resort flash.
+local function firstGoodMaterial( paths )
+	for _, path in ipairs( paths ) do
+		local ok, m = pcall( Material, path )
+		if ( ok and m ~= nil and m.IsError ~= nil ) then
+			local okE, isErr = pcall( m.IsError, m )
+			if ( okE and not isErr ) then
+				return m, path
+			end
 		end
 	end
-
-	local graft = false
-	local src = Material( "effects/muzzleflash4" )
-	-- Only graft onto OUR shell - mutating the shared light_glow02_add (the
-	-- fallback) would corrupt every other effect that uses it.
-	if ( matFlash ~= matCore and matFlash ~= src and src ~= nil and src.GetTexture ~= nil and matFlash.SetTexture ~= nil ) then
-		local okGet, tex = pcall( src.GetTexture, src, "$basetexture" )
-		if ( okGet and tex ~= nil ) then
-			graft = select( 1, pcall( matFlash.SetTexture, matFlash, "$basetexture", tex ) )
-		end
-	end
-
-	local iserr = "?"
-	if ( matFlash ~= nil and matFlash.IsError ~= nil ) then
-		local okE, v = pcall( matFlash.IsError, matFlash )
-		if ( okE ) then iserr = tostring( v ) end
-	end
-	print( string.format( "[HL2SB] CS_MuzzleFlash v7 create=%s graft=%s iserror=%s fallback=%s",
-		tostring( okCreate ), tostring( graft ), iserr, tostring( matFlash == matCore ) ) )
+	return nil, nil
 end
+
+local matFlash, matFlashPath = firstGoodMaterial( {
+	"sprites/muzzleflash_cs",	-- CS:S original (loose copy + GMod fallbacks)
+	"effects/muzzleflash4",		-- HL2's own copy, identical flags/art
+} )
+local matCore, matCorePath = firstGoodMaterial( {
+	"sprites/light_glow02_add",	-- runtime-proven additive glow
+} )
+if ( matFlash == nil ) then matFlash = matCore end
+if ( matCore == nil ) then matCore = matFlash end
+
+print( string.format( "[HL2SB] CS_MuzzleFlash v8 flash=%s core=%s",
+	tostring( matFlashPath or "nil" ), tostring( matCorePath or "nil" ) ) )
 
 local LIFE = 0.06
 
@@ -107,7 +83,7 @@ end
 function EFFECT:Render()
 
 	local pos = self.Pos
-	if ( pos == nil ) then return end
+	if ( pos == nil or matFlash == nil ) then return end
 
 	local frac = math.Clamp( ( ( self.DieTime or 0 ) - CurTime() ) / LIFE, 0, 1 )
 	local scale = self.Scale or 1
@@ -127,8 +103,8 @@ function EFFECT:Render()
 
 	-- Three stars like the engine callback (sizes 3/6/9 * scale), alpha
 	-- 80->30 matching GMod's particle version, shrink *0.8, random roll.
-	-- Alphas are FLOORED to integers - lua_color_field uses lua_tointeger and
-	-- Lua 5.4 reads any non-integer float back as 0 (the invisible flash bug).
+	-- Alphas are FLOORED to integers - lua_color_field reads floats and a
+	-- non-integer alpha must stay an integer end to end.
 	for i = 0, 2 do
 		local w = ( 3 + 3 * i ) * scale * ( 1 - 0.2 * frac )
 		local col = Color( 255, 255, 255, math.floor( 30 + 50 * frac + 0.5 ) )
@@ -139,10 +115,12 @@ function EFFECT:Render()
 
 	-- Warm bright core: stands in for the orange dynamic light GMod's engine
 	-- callback adds (no Lua API for TE_DynamicLight here).  Proven additive.
-	render.SetMaterial( matCore )
-	local cw = 4.5 * scale * ( 1 - 0.3 * frac )
-	local ca = math.floor( 220 * frac + 0.5 )
-	render.DrawQuadEasy( pos, normal, cw, cw, Color( 255, 210, 130, ca ) )
-	render.DrawQuadEasy( pos, -normal, cw, cw, Color( 255, 210, 130, ca ) )
+	if ( matCore ~= nil ) then
+		render.SetMaterial( matCore )
+		local cw = 4.5 * scale * ( 1 - 0.3 * frac )
+		local ca = math.floor( 220 * frac + 0.5 )
+		render.DrawQuadEasy( pos, normal, cw, cw, Color( 255, 210, 130, ca ) )
+		render.DrawQuadEasy( pos, -normal, cw, cw, Color( 255, 210, 130, ca ) )
+	end
 
 end
