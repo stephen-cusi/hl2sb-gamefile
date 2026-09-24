@@ -109,12 +109,27 @@ local function CollectValid( entry )
 
 	local targets = {}
 	for k, v in pairs( entry.Ents ) do
+		if ( !IsValid( v ) ) then continue end
+
 		-- HL2SB: GetNoDraw is not bound in this engine -- duck-type it.
 		local bNoDraw = false
-		if ( IsValid( v ) and type( v.GetNoDraw ) == "function" ) then
+		if ( type( v.GetNoDraw ) == "function" ) then
 			bNoDraw = v:GetNoDraw() and true or false
 		end
-		if ( IsValid( v ) and !bNoDraw ) then
+
+		-- HL2SB (2026-09-24): brush models (gm_construct's grabbable
+		-- func_reflective_glass mirror) and sprites have no studio header --
+		-- drawing them crashed the studio path (23:19 dump).  The
+		-- Entity:DrawModel binding no-ops non-studio models now; skip them
+		-- here as well so the ring passes stay cheap.
+		if ( type( v.GetModel ) == "function" ) then
+			local ok, sMdl = pcall( v.GetModel, v )
+			if ( ok && type( sMdl ) == "string" && sMdl != "" && string.sub( sMdl, -4 ) != ".mdl" ) then
+				continue
+			end
+		end
+
+		if ( !bNoDraw ) then
 			targets[ #targets + 1 ] = v
 		end
 	end
