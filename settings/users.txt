@@ -1,0 +1,15 @@
+// HL2SB 用户组配置（GMod 兼容）—— 本引擎为 non-Steam，条目按"玩家名"匹配
+// （ID 列只为兼容 GMod 的 users.txt 形状，写什么都行）。
+// 去掉注释即可生效；组名常用 "superadmin" / "admin"。
+// 监听服务器主机在不配置任何条目时默认就是 superadmin。
+//
+//"Users"
+//{
+//	"superadmin"
+//	{
+//		"某玩家名"	"STEAM_0:0:0"
+//	}
+//	"admin"
+//	{
+//	}
+//}
