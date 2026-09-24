@@ -1,7 +1,6 @@
-"UnlitGeneric"
+"Modulate"
 {
+	"$ignorez" "1"
+	"$writez" "0"
 	"$basetexture" "_rt_FullFrameFB"
-	"$ignorez" 1
-	"$translucent" 1
-	"$alpha" 0.35
 }

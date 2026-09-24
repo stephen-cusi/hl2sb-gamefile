@@ -1,0 +1,14 @@
+"UnlitGeneric"
+{
+	// HL2SB (2026-09-24): the halo RIM pass material (halo_render 2).  The
+	// entity is re-drawn 8 times with front faces culled and a sub-degree
+	// view rotation; the scene depth buffer leaves only the silhouette ring.
+	// Unlike hl2sb_physgun_glow this must NOT set $nocull -- the rim needs
+	// the engine to actually cull the front faces.  $color stays white so
+	// render.SetColorModulation() drives the tint.
+	"$baseTexture"	"models/debug/debugwhite"
+	"$model"		"1"
+	"$additive"		"1"
+	"$no_fullbright" "1"
+	"$color"		"[1 1 1]"
+}
