@@ -5,6 +5,9 @@
 --===========================================================================--
 
 local pairs = pairs
+-- HL2SB (2026-09-24): ipairs needed by the snapshot iteration in call()/Run()
+-- - same module-env rule as `pairs` above (the 2026-09-22 `type` incident).
+local ipairs = ipairs
 local Warning = dbg.Warning
 local tostring = tostring
 local pcall = pcall
@@ -86,7 +89,18 @@ end
 local function CallBody( strEventName, tGamemode, ... )
   local tHooks = tHooks[ strEventName ]
   if ( tHooks ~= nil ) then
+    -- Snapshot the id->fn list before iterating: hooks may add/remove entries
+    -- while they run (First Person Body's cl_body.Load removes itself from
+    -- Think the moment LocalPlayer() is valid, failed hooks are removed right
+    -- here), and Lua raises "invalid key to 'next'" when pairs() walks a table
+    -- whose keys vanish mid-iteration.  GMod's own hook library iterates a
+    -- copy the same way.
+    local tSnapshot = {}
     for k, v in pairs( tHooks ) do
+      tSnapshot[ #tSnapshot + 1 ] = { k, v }
+    end
+    for _, tEntry in ipairs( tSnapshot ) do
+      local k, v = tEntry[ 1 ], tEntry[ 2 ]
       if ( v == nil ) then
         Warning( "Hook '" .. tostring( k ) .. "' (" .. tostring( strEventName ) .. ") tried to call a nil function!\n" )
         tHooks[ k ] = nil
@@ -96,7 +110,10 @@ local function CallBody( strEventName, tGamemode, ... )
         if ( tReturns[ 1 ] == false ) then
           Warning( "Hook '" .. tostring( k ) .. "' (" .. tostring( strEventName ) .. ") Failed: " .. tostring( tReturns[ 2 ] ) .. "\n" )
           ReportHookError( tReturns[ 2 ] )
-          tHooks[ k ] = nil
+          -- HL2SB (2026-09-25): keep erroring hooks - GMod re-reports the same
+          -- error every frame instead of removing them.  Removal here turned
+          -- ONE transient spawn-time failure (First Person Body's first Think,
+          -- empty LocalPlayer model) into permanent silent hook death.
         elseif ( tReturns[ 2 ] ~= nil ) then
           return unpack( tReturns, 2 )
         end
@@ -211,7 +228,18 @@ end
 function Run( strEventName, ... )
   local tHooks = tHooks[ strEventName ]
   if ( tHooks ~= nil ) then
+    -- Snapshot the id->fn list before iterating: hooks may add/remove entries
+    -- while they run (First Person Body's cl_body.Load removes itself from
+    -- Think the moment LocalPlayer() is valid, failed hooks are removed right
+    -- here), and Lua raises "invalid key to 'next'" when pairs() walks a table
+    -- whose keys vanish mid-iteration.  GMod's own hook library iterates a
+    -- copy the same way.
+    local tSnapshot = {}
     for k, v in pairs( tHooks ) do
+      tSnapshot[ #tSnapshot + 1 ] = { k, v }
+    end
+    for _, tEntry in ipairs( tSnapshot ) do
+      local k, v = tEntry[ 1 ], tEntry[ 2 ]
       if ( v == nil ) then
         Warning( "Hook '" .. tostring( k ) .. "' (" .. tostring( strEventName ) .. ") tried to call a nil function!\n" )
         tHooks[ k ] = nil
@@ -221,7 +249,7 @@ function Run( strEventName, ... )
         if ( tReturns[ 1 ] == false ) then
           Warning( "Hook '" .. tostring( k ) .. "' (" .. tostring( strEventName ) .. ") Failed: " .. tostring( tReturns[ 2 ] ) .. "\n" )
           ReportHookError( tReturns[ 2 ] )
-          tHooks[ k ] = nil
+          -- HL2SB (2026-09-25): keep erroring hooks (GMod parity), see call().
         elseif ( tReturns[ 2 ] ~= nil ) then
           return unpack( tReturns, 2 )
         end

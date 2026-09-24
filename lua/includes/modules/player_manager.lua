@@ -232,7 +232,12 @@ function RunClass( ply, func, ... )
 	-- 就是它。少了这一行，所有 PLAYER:* 方法里的 self.Player 都是 nil。
 	tab.Player = ply
 
-	return fn( tab, ply, ... )
+	-- HL2SB (2026-09-25): GMod's RunClass calls class方法 WITHOUT the player
+	-- argument - self is the class table and the player rides on tab.Player.
+	-- Passing ply here shifted every argument: PLAYER:StartMove(move) received
+	-- the PLAYER ENTITY as `move`, so move:GetButtons() died the first time
+	-- this fork actually dispatched GM:SetupMove (player_sandbox.lua:116).
+	return fn( tab, ... )
 end
 
 -------------------------------------------------------------------------------

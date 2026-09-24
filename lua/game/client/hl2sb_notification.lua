@@ -152,8 +152,7 @@ print( "[HL2SB] hl2sb_notification.lua loaded (GMod notification system)" )
 -- (ClientModeShared::Update / CHLClient::FrameStageNotify) and delete this
 -- bridge -- a framework hook belongs in the frame loop, not on a HUD paint.
 -- ===========================================================================
-hook.add( "HudViewportPaint", "hl2sb_think_bridge", function()
-	hook.Run( "Think" )
-end )
-
-print( "[HL2SB] Think hook bridge installed (client frame -> hook.Run Think)" )
+-- HL2SB (2026-09-24): the bridge below is GONE - "Think" now fires from the
+-- engine frame loop itself (ClientModeShared::Update, once per client frame,
+-- in-game only), together with "Tick".  GMod realm parity without piggybacking
+-- on a HUD paint.

@@ -204,6 +204,16 @@ local gpGlobals = gpGlobals
 CurTime  = CurTime  or function() return gpGlobals.curtime() end
 RealTime = RealTime or function() return gpGlobals.realtime() end
 FrameTime = FrameTime or function() return gpGlobals.frametime() end
+-- HL2SB GMod compat (2026-09-25): SysTime() - wiki: "highly accurate time in
+-- seconds since start up, ideal for benchmarking... updated any time the
+-- function is called" (First Person Body timestamps its shadow renders with
+-- it).  RealTime() is the engine's high-resolution wall clock, which is the
+-- same contract; it was left undefined here until now.
+SysTime = SysTime or function() return RealTime() end
+-- HL2SB GMod compat (2026-09-24): FrameNumber() - GMod global, the engine
+-- frame counter as a float (First Person Body's RenderScene hook counts
+-- frames with it).  gpGlobals.framecount is the same counter.
+FrameNumber = FrameNumber or function() return gpGlobals.framecount() end
 
 -- Screen size
 ScrW = ScrW or function()
@@ -599,3 +609,75 @@ end
 -- `if ( SERVER ) then return end` guard in addon client halves (sent_ball's
 -- ENT:Draw!) skipped, leaving entities to draw their raw shadow models.
 print( "[HL2SB] gmod_globals loaded: DEFINE_BASECLASS=" .. type( rawget( _G, "DEFINE_BASE" .. "_CLASS" ) ) .. " Angle=" .. type( Angle ) .. " SERVER=" .. tostring( SERVER ) .. " CLIENT=" .. tostring( CLIENT ) )
+
+
+
+-- HL2SB GMod compat (2026-09-24): EyePos() / EyeAngles() - GMod globals for
+-- the LOCAL PLAYER's eye position/angles (First Person Body snapshots
+-- EyeAngles() during body init and per-frame).  Engine locals only exist
+-- in-game, so fall back to zero vectors/angles on the menu or before spawn.
+if ( EyePos == nil ) then
+	function EyePos()
+		local lp = LocalPlayer()
+		if ( IsValid( lp ) ) then return lp:EyePos() end
+		return Vector( 0, 0, 0 )
+	end
+end
+if ( EyeAngles == nil ) then
+	function EyeAngles()
+		local lp = LocalPlayer()
+		if ( IsValid( lp ) ) then return lp:EyeAngles() end
+		return Angle( 0, 0, 0 )
+	end
+end
+
+-- HL2SB GMod compat (2026-09-24): meta-table chain for FindMetaTable reads.
+-- Addons capture methods straight off the bare metatable (PLAYER.Alive,
+-- ENTITY.OnGround) - a RAW table read that never triggers the userdata
+-- __index chain.  GMod carries every method on each metatable itself; this
+-- fork spreads them across Entity/Animating metas.  Give the derived
+-- metatables a meta-level __index that falls back to the Entity metatable so
+-- PLAYER.SomeEntityMethod resolves.  (Ents created from Lua keep working:
+-- only misses fall through.)
+if ( FindMetaTable ~= nil ) then
+	local entmeta = FindMetaTable( "Entity" )
+	if ( entmeta ~= nil ) then
+		for _, mtname in ipairs( { "Player", "NPC", "Vehicle", "Weapon", "NextBot" } ) do
+			local mt = FindMetaTable( mtname )
+			if ( mt ~= nil and mt ~= entmeta and getmetatable( mt ) == nil ) then
+				setmetatable( mt, { __index = entmeta } )
+			end
+		end
+
+		-- HL2SB (2026-09-25): the reverse gap - bone/flex/pose methods live on
+		-- the CBaseAnimating metatable in this fork, but addons capture them as
+		-- ENTITY.GetBoneMatrix / ENTITY.DestroyShadow (First Person Body does:
+		-- 3896 failed shadow-hook frames in one session).  Chain Entity ->
+		-- CBaseAnimating at the meta level; CBaseAnimating has no meta of its
+		-- own, so the lookup terminates there (no cycle).
+		local animmeta = FindMetaTable( "CBaseAnimating" )
+		if ( animmeta ~= nil and animmeta ~= entmeta and getmetatable( entmeta ) == nil ) then
+			setmetatable( entmeta, { __index = animmeta } )
+		end
+	end
+end
+
+-- HL2SB GMod compat (2026-09-24): ents.CreateClientProp - GMod's clientside
+-- prop_physics creator.  The engine's ClientsideModel() (gmod_compat.lua ->
+-- Entities.CreateClientEntity) gives the same thing for our purposes: a
+-- clientside C_BaseAnimating the addon can model/bone/pose.  Accepts the
+-- model string the First Person Body addon passes (GMod wants a Vector but
+-- ignores it for this addon's usage - it SetModels and SetPoses right after).
+if ( ents ~= nil and ents.CreateClientProp == nil ) then
+	function ents.CreateClientProp( positionOrModel )
+		local model = "models/error.mdl"
+		if ( isstring( positionOrModel ) ) then
+			model = positionOrModel
+		end
+		local ent = ClientsideModel( model, 0 )
+		if ( IsValid( ent ) and not isstring( positionOrModel ) ) then
+			ent:SetPos( positionOrModel )
+		end
+		return ent
+	end
+end
