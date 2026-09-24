@@ -31,6 +31,22 @@ MsgN = PrintMessageLine
 OriginalPrintMessage = PrintMessage
 PrintMessage = Players.ClientPrintToAll
 
+-- HL2SB (2026-09-24): ConsoleVariables was REFERENCED here (GetConVar_Internal
+-- and the CreateConVar override below) but defined NOWHERE in the engine or
+-- Lua -- every call died with "attempt to index a nil value (global
+-- 'ConsoleVariables')", which killed every Lua convar creation and aborted
+-- whole modules at load (halo.lua: its halo_draw/halo_debug convars, halo.Add
+-- and Render were never defined).  Bridge it onto the engine ConVar
+-- constructor (single-arg = query, fixed 2026-09-18).
+ConsoleVariables = ConsoleVariables or {}
+function ConsoleVariables.Get( name )
+	return ConVar( name )
+end
+function ConsoleVariables.Create( name, value, flags, helpText, min, max )
+	return ConVar( name, value, flags, helpText, min, max )
+end
+print( "[HL2SB] ConsoleVariables bridge installed" )
+
 function GetConVar_Internal(name)
 	local consoleVariable = ConsoleVariables.Get(name)
 

@@ -207,6 +207,13 @@ function meta:CanUseFlashlight() return self.m_bFlashlight == true end
 
 -- A function to set up player hands, so coders don't have to copy all the code everytime.
 -- Call this in PlayerSpawn hook
+-- HL2SB (2026-09-24): GetHands shim -- the fork has no gmod_hands scripted
+-- entity, and WITHOUT this method PlayerSpawn aborted on every spawn
+-- ("attempt to call a nil value (method 'GetHands')" at this line).
+function meta:GetHands()
+	return self.m_hHandsEntity
+end
+
 function meta:SetupHands( spec_ply )
 
 	local oldhands = self:GetHands()
@@ -214,10 +221,14 @@ function meta:SetupHands( spec_ply )
 		oldhands:Remove()
 	end
 
+	-- HL2SB: the gmod_hands class is not registered in this fork, so
+	-- ents.Create warns and returns NULL; both branches are IsValid-guarded,
+	-- spawning simply proceeds without a hands entity.
 	local hands = ents.Create( "gmod_hands" )
 	if ( IsValid( hands ) ) then
 		hands:DoSetup( self, spec_ply )
 		hands:Spawn()
+		self.m_hHandsEntity = hands
 	end
 
 end
