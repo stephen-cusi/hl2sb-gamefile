@@ -129,12 +129,6 @@ local function spawnIndicator(text, col, pos, vel, ttl)
 	ind.widthH  = w/2
 	ind.heightH = h/2
 	
-	-- HL2SB TEMP DIAGNOSTIC
-	local nextInsDiag = self_hdn_nextInsDiag or 0
-	if SysTime() > nextInsDiag then
-		self_hdn_nextInsDiag = SysTime() + 1
-		MsgN( string.format( "[HDN-diag] insert: text=%s curtime=%.2f", tostring( text ), CurTime() ) )
-	end
 	
 	table.insert(indicators, ind)
 	
@@ -297,12 +291,6 @@ end )
 
 -- Update indicators.
 hook.Add( "Tick", "hdn_updateInds", function()
-	-- HL2SB TEMP DIAGNOSTIC: clock health check.
-	local nextTickDiag = self_hdn_nextTickDiag or 0
-	if SysTime() > nextTickDiag then
-		self_hdn_nextTickDiag = SysTime() + 3
-		MsgN( string.format( "[HDN-diag] tick: curtime=%.2f dt=%.3f inds=%d", CurTime(), CurTime() - ( lastcurtime or 0 ), #indicators ) )
-	end
 	if not on then return end
 	if debugger.enabled then debugger.ticktimer = SysTime() end
 	
@@ -346,12 +334,6 @@ end )
 -- Render the 3D indicators.
 hook.Add( "PostDrawTranslucentRenderables", "hdn_drawInds", function()
 	
-	-- HL2SB TEMP DIAGNOSTIC (2026-09-25): report the draw-hook gates.
-	local nextDiag = self_hdn_nextDiag or 0
-	if SysTime() > nextDiag then
-		self_hdn_nextDiag = SysTime() + 3
-		MsgN( string.format( "[HDN-diag] draw gates: on=%s init=%s inds=%d cam3d2d=%s", tostring(on), tostring(initialized), #indicators, type( cam.Start3D2D ) ) )
-	end
 	if not on then return end
 	if not initialized then return end
 	if #indicators == 0 then return end
@@ -383,12 +365,6 @@ hook.Add( "PostDrawTranslucentRenderables", "hdn_drawInds", function()
 	
 	surface.SetFont("font_HDN_Inds")
 	
-	-- HL2SB TEMP DIAGNOSTIC: prove the loop body executes.
-	local nextLoopDiag = self_hdn_nextLoopDiag or 0
-	if SysTime() > nextLoopDiag then
-		self_hdn_nextLoopDiag = SysTime() + 3
-		MsgN( string.format( "[HDN-diag] loop running: inds=%d scale=%.2f", #indicators, scale ) )
-	end
 	
 	-- Render each indicator.
 	local ind

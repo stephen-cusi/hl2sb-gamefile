@@ -109,6 +109,25 @@ if ( rawget( _G, "DMG_DIRECT" ) == nil ) then DMG_DIRECT = 268435456 end
 if ( rawget( _G, "DMG_BUCKSHOT" ) == nil ) then DMG_BUCKSHOT = 536870912 end
 
 ------------------------------------------------------------------------------
+-- Entity:GetViewEntity() - GMod: the entity a player looks through (the
+-- player itself in first person).  The fork has no binding for it, and
+-- addons use it for billboard text (hitnumbers draws its damage numbers
+-- facing "the entity the local player looks through"), so a missing method
+-- killed the whole draw hook every frame.
+-- Without engine view-entity tracking the correct first-person default is
+-- the player itself, which is what every stock consumer needs.
+------------------------------------------------------------------------------
+if ( FindMetaTable ~= nil ) then
+	local ENTITY_META = FindMetaTable( "Entity" )
+	
+	if ( ENTITY_META ~= nil and ENTITY_META.GetViewEntity == nil ) then
+		function ENTITY_META:GetViewEntity()
+			return self
+		end
+	end
+end
+
+------------------------------------------------------------------------------
 -- Panel:AddControl( type, data ) - the GMod DForm spellings addons use to
 -- populate spawnmenu tool panels (spawnmenu.AddToolMenuOption callbacks).
 -- HL2SB's control panels are plain Panel userdata, so this maps the common
