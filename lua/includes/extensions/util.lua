@@ -423,3 +423,217 @@ function util.IsBinaryModuleInstalled( name )
 
 	return false
 end
+
+
+--===========================================================================--
+-- HL2SB (2026-09-25): the rest of GMod's util library, wiki-checked.
+-- C++ (lutil_shared.cpp / lcdll_util.cpp) carries the codecs, geometry,
+-- surface props and model membership; these four are GMod's own Lua-side
+-- members.  Page text is in D:\project\wiki\UTIL_*.txt.
+--===========================================================================--
+
+-- ---------------------------------------------------------------------------
+-- util.TableToKeyValues( table, rootKey ) -> Valve KV text.  GMod's own
+-- emitter writes every key quoted; nested tables become blocks.
+-- ---------------------------------------------------------------------------
+local function kvEscapeValue( v )
+	return tostring( v ):gsub( "\\", "\\\\" ):gsub( '"', '\\"' )
+end
+
+local function kvEmitTable( tab, out, indent )
+	for k, v in pairs( tab ) do
+		local key = kvEscapeValue( k )
+		if ( type( v ) == "table" ) then
+			out[ #out + 1 ] = indent .. '"' .. key .. '"\n' .. indent .. "{\n"
+			kvEmitTable( v, out, indent .. "\t" )
+			out[ #out + 1 ] = indent .. "}\n"
+		else
+			out[ #out + 1 ] = indent .. '"' .. key .. '"\t\t"' .. kvEscapeValue( v ) .. '"\n'
+		end
+	end
+end
+
+if ( util.TableToKeyValues == nil ) then
+	function util.TableToKeyValues( tab, rootKey )
+		rootKey = rootKey or "TableToKeyValues"
+		if ( type( tab ) ~= "table" ) then return "" end
+
+		local out = { '"' .. tostring( rootKey ) .. '"\n{\n' }
+		kvEmitTable( tab, out, "\t" )
+		out[ #out + 1 ] = "}\n"
+		return table.concat( out )
+	end
+end
+
+-- ---------------------------------------------------------------------------
+-- util.KeyValuesToTablePreserveOrder( keyValues, usesEscapeSequences,
+-- preserveKeyCase ) -> array of { Key = ..., Value = scalar | same-shape }.
+-- Repeated keys survive as separate entries, which is the whole point.
+-- ---------------------------------------------------------------------------
+local function kvUnescape( s )
+	if ( s == nil ) then return nil end
+	return ( s:gsub( "\\(.)", function( c )
+		if ( c == "n" ) then return "\n"
+		elseif ( c == "t" ) then return "\t"
+		elseif ( c == '"' ) then return '"'
+		elseif ( c == "\\" ) then return "\\"
+		end
+		return c
+	end ) )
+end
+
+function util.KeyValuesToTablePreserveOrder( keyValues, usesEscapeSequences, preserveKeyCase )
+	if ( type( keyValues ) ~= "string" or keyValues == "" ) then return nil end
+
+	-- tokenize: quoted strings, bare words, braces
+	local tokens = {}
+	local i = 1
+	local n = #keyValues
+	while ( i <= n ) do
+		local c = keyValues:sub( i, i )
+		if ( c == '"' ) then
+			local j = i + 1
+			local buf = {}
+			while ( j <= n ) do
+				local ch = keyValues:sub( j, j )
+				if ( ch == "\\" and j < n ) then
+					buf[ #buf + 1 ] = ch .. keyValues:sub( j + 1, j + 1 )
+					j = j + 2
+				elseif ( ch == '"' ) then
+					j = j + 1
+					break
+				else
+					buf[ #buf + 1 ] = ch
+					j = j + 1
+				end
+			end
+			tokens[ #tokens + 1 ] = { str = table.concat( buf ), quoted = true }
+			i = j
+		elseif ( c == "{" or c == "}" ) then
+			tokens[ #tokens + 1 ] = c
+			i = i + 1
+		elseif ( c == "/" and keyValues:sub( i, i + 1 ) == "//" ) then
+			local nl = keyValues:find( "\n", i, true )
+			i = nl or ( n + 1 )
+		elseif ( c:match( "%s" ) ) then
+			i = i + 1
+		else
+			local j = i
+			local buf = {}
+			while ( j <= n ) do
+				local ch = keyValues:sub( j, j )
+				if ( ch:match( "%s" ) or ch == "{" or ch == "}" ) then break end
+				buf[ #buf + 1 ] = ch
+				j = j + 1
+			end
+			tokens[ #tokens + 1 ] = { str = table.concat( buf ), quoted = false }
+			i = j
+		end
+	end
+
+	-- GMod coerces numeric strings to numbers whether or not they were
+	-- quoted (the wiki's GetModelInfo example prints quoted "1" as 1).
+	local function coerce( raw, quoted )
+		local v = tonumber( raw )
+		if ( v ~= nil ) then return v end
+		return raw
+	end
+
+	-- The first token is the root block's name; GMod discards it and parses
+	-- what follows (same treatment the plain KeyValuesToTable applies).
+	local pos = 1
+	if ( tokens[ 2 ] == "{" ) then
+		pos = 3
+	end
+	local function parseBlock()
+		local node = {}
+		while ( pos <= #tokens ) do
+			local tok = tokens[ pos ]
+			if ( tok == "}" ) then
+				pos = pos + 1
+				return node
+			elseif ( tok == "{" ) then
+				pos = pos + 1
+				parseBlock() -- stray block without a key: skip
+			else
+				local key = tok.str
+				pos = pos + 1
+				if ( tokens[ pos ] == "{" ) then
+					pos = pos + 1
+					node[ #node + 1 ] = { Key = key, Value = parseBlock() }
+				elseif ( tokens[ pos ] ~= nil and tokens[ pos ] ~= "}" ) then
+					local vTok = tokens[ pos ]
+					pos = pos + 1
+					node[ #node + 1 ] = { Key = key, Value = coerce( vTok.str, vTok.quoted ) }
+				else
+					node[ #node + 1 ] = { Key = key, Value = "" }
+				end
+			end
+		end
+		return node
+	end
+
+	local result = parseBlock()
+
+	-- pass 2: apply escape sequences / key casing once the structure is safe
+	local function normalize( node )
+		for i = 1, #node do
+			local entry = node[ i ]
+			if ( usesEscapeSequences and type( entry.Value ) == "string" ) then
+				entry.Value = kvUnescape( entry.Value )
+			end
+			if ( not preserveKeyCase ) then
+				entry.Key = string.lower( entry.Key )
+			end
+			if ( type( entry.Value ) == "table" ) then
+				normalize( entry.Value )
+			end
+		end
+	end
+	normalize( result )
+
+	return result
+end
+
+-- ---------------------------------------------------------------------------
+-- util.GetUserGroups() -> { [steamid] = groupname }, from settings/users.txt.
+-- ---------------------------------------------------------------------------
+if ( util.GetUserGroups == nil ) then
+	function util.GetUserGroups()
+		local groups = {}
+
+		local text = file.Read( "settings/users.txt", "GAME" )
+			or file.Read( "settings/users.txt", "MOD" )
+		if ( text == nil ) then return groups end
+
+		local parsed = util.KeyValuesToTable( text )
+		if ( type( parsed ) ~= "table" ) then return groups end
+
+		for groupName, members in pairs( parsed ) do
+			if ( type( members ) == "table" ) then
+				for _, sid in pairs( members ) do
+					if ( type( sid ) == "string" ) then
+						groups[ sid ] = groupName
+					end
+				end
+			elseif ( type( members ) == "string" ) then
+				groups[ members ] = groupName
+			end
+		end
+
+		return groups
+	end
+end
+
+-- ---------------------------------------------------------------------------
+-- util.TimerCycle() -> seconds since the previous call (cycle timing).
+-- ---------------------------------------------------------------------------
+if ( util.TimerCycle == nil ) then
+	local nLastCycle = SysTime and SysTime() or 0
+	function util.TimerCycle()
+		local nNow = SysTime()
+		local nDelta = nNow - nLastCycle
+		nLastCycle = nNow
+		return nDelta
+	end
+end

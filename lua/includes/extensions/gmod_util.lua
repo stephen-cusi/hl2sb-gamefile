@@ -77,15 +77,42 @@ util = util or {}
 
 -- HL2SB's `net` library carries the message name inline in the usermessage, so
 -- there is no network string table to register into.  GMod requires this call
--- before net.Start, so keep the call valid and remember the name for
--- diagnostics / for a future table-based implementation.
-util.NetworkStrings = util.NetworkStrings or {}
+-- before net.Start and its wiki contract is: registering a known name is a
+-- no-op that returns the EXISTING id, a new name returns a fresh id.  The ids
+-- back util.NetworkStringToID / util.NetworkIDToString.
+util.NetworkStrings = util.NetworkStrings or {}		-- [name] = id
+util.NetworkStringIDs = util.NetworkStringIDs or {}	-- [id] = name
 
 if ( util.AddNetworkString == nil ) then
 	function util.AddNetworkString( name )
 		name = tostring( name )
-		util.NetworkStrings[ name ] = true
-		return name
+		local nExisting = util.NetworkStrings[ name ]
+		if ( nExisting ~= nil ) then
+			return nExisting
+		end
+
+		local nID = 0
+		for _ in pairs( util.NetworkStrings ) do
+			nID = nID + 1
+		end
+		nID = nID + 1
+		util.NetworkStrings[ name ] = nID
+		util.NetworkStringIDs[ nID ] = name
+		return nID
+	end
+end
+
+-- GMod: id of a pooled network string, or 0 when it was never registered.
+if ( util.NetworkStringToID == nil ) then
+	function util.NetworkStringToID( str )
+		return util.NetworkStrings[ tostring( str ) ] or 0
+	end
+end
+
+-- GMod: the pooled string for an id, or nil.
+if ( util.NetworkIDToString == nil ) then
+	function util.NetworkIDToString( id )
+		return util.NetworkStringIDs[ tonumber( id ) or -1 ]
 	end
 end
 
