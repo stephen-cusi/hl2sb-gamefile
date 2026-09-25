@@ -47,6 +47,16 @@ TEXT_ALIGN_RIGHT  = 2
 TEXT_ALIGN_TOP    = 3
 TEXT_ALIGN_BOTTOM = 4
 
+-- HL2SB (2026-09-25): GMod publishes these as GLOBALS (wiki Enums/TEXT_ALIGN).
+-- module() above put them on the draw table only, so a GMod-verbatim file
+-- using the bare names read nil -- draw.SimpleText( ..., TEXT_ALIGN_RIGHT )
+-- silently drew left-aligned.  Mirror them onto _G.
+_G.TEXT_ALIGN_LEFT   = TEXT_ALIGN_LEFT
+_G.TEXT_ALIGN_CENTER = TEXT_ALIGN_CENTER
+_G.TEXT_ALIGN_RIGHT  = TEXT_ALIGN_RIGHT
+_G.TEXT_ALIGN_TOP    = TEXT_ALIGN_TOP
+_G.TEXT_ALIGN_BOTTOM = TEXT_ALIGN_BOTTOM
+
 -------------------------------------------------------------------------------
 -- Extract r,g,b,a from a colour.
 --

@@ -18,6 +18,14 @@ local pcall = pcall
 -- per session, and the secondary failure turned ordinary hook errors into
 -- unprotected panics (the sent_ball crash).
 local type = type
+-- HL2SB (2026-09-26): the REAL globals table, for hook.Run's gamemode fallback.
+-- module( "hook" ) below (no seeall) replaces this file's environment with the
+-- module table and there is no __index fallback, so the raw name `_G` inside
+-- the module body reads hook._G -- nil -- and every hook.Run threw
+-- "attempt to index a nil value (global '_G')" (hook.lua:267, scripted_ents
+-- registration + GM:HUDPaint's draw calls, 2026-09-26 session).  Same
+-- module-env rule as `type` above.
+local globals = _G
 -- HL2SB: Lua 5.4 moved unpack() into the table library.  The engine installs the
 -- 5.1 alias as well, but keep this defensive so hook.lua works on either runtime.
 local unpack = unpack or table.unpack
@@ -256,6 +264,28 @@ function Run( strEventName, ... )
       end
     end
   end
+
+  -- HL2SB (2026-09-25): GMod 的 hook.Run( name, ... ) 是
+  -- hook.Call( name, gmod.GetGamemode(), ... ) —— 注册钩子全部放行（且没有
+  -- 一个返回非 nil）之后，还要调用该事件的 GAMEMODE 方法。没有这段回退，
+  -- GMod base gamemode 自己的 GM:HUDPaint（cl_init.lua:83）调
+  -- hook.Run("HUDDrawPickupHistory") 永远到不了 GM:HUDDrawPickupHistory，
+  -- 拾取条就永远不画。必须用文件头捕获的 `globals`（真 _G）：module() 换掉
+  -- 了环境，裸 GAMEMODE/_G 在模块体内都是 nil（2026-09-26 的 267 行报错）。
+  local tGamemode = globals.GAMEMODE or globals._GAMEMODE
+  if ( tGamemode ~= nil ) then
+    local fn = tGamemode[ strEventName ]
+    if ( fn ~= nil ) then
+      tReturns = { pcall( fn, tGamemode, ... ) }
+      if ( tReturns[ 1 ] == false ) then
+        Warning( "ERROR: GAMEMODE: '" .. tostring( strEventName ) .. "' Failed: " .. tostring( tReturns[ 2 ] ) .. "\n" )
+        ReportHookError( tReturns[ 2 ] )
+      else
+        return unpack( tReturns, 2 )
+      end
+    end
+  end
+
   return nil
 end
 

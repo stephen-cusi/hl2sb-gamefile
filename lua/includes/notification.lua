@@ -387,6 +387,12 @@ function notification.AddLegacy( strText, iType, iLength )
 	pnl.Length = math.max( iLength or 5, 0 )
 
 	table.insert( Notices, pnl )
+
+	-- ⚠️ Deliberately SILENT: GMod's notification.AddLegacy plays nothing -- its
+	-- sounds hang off the gamemode hooks (GM:OnUndo / GM:OnCleanup play
+	-- buttons/button15.wav themselves).  A blip here double-fired under undo
+	-- with the wrong sound ("撤销音效错误", 2026-09-26).
+
 	return pnl
 end
 
