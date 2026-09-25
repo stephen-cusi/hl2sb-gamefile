@@ -247,17 +247,18 @@ end
 local function CollectEntities()
 	local byKey = {}
 
-	-- registry first: it carries names and GMod Categories
-	local reg = ( list ~= nil and list.Get ) and list.Get( "SpawnableEntities" ) or nil
-	if ( istable( reg ) ) then
-		for spawnname, data in pairs( reg ) do
-			local e, key = NewEntry( spawnname )
-			if ( e ) then
-				e.spawnname    = tostring( spawnname )
-				e.iconOverride = ( istable( data ) and isstring( data.IconOverride ) ) and data.IconOverride or nil
-				e.name     = tostring( ( istable( data ) and data.PrintName ) or spawnname )
-				e.category = ( istable( data ) and isstring( data.Category ) and data.Category ~= "" ) and data.Category or nil
-				e.model    = ( istable( data ) and isstring( data.Model ) ) and data.Model or ""
+		-- registry first: it carries names and GMod Categories
+		local reg = ( list ~= nil and list.Get ) and list.Get( "SpawnableEntities" ) or nil
+		if ( istable( reg ) ) then
+			for spawnname, data in pairs( reg ) do
+				local e, key = NewEntry( spawnname )
+				if ( e ) then
+					e.spawnname    = tostring( spawnname )
+					e.iconOverride = ( istable( data ) and isstring( data.IconOverride ) ) and data.IconOverride or nil
+					e.name     = tostring( ( istable( data ) and data.PrintName ) or spawnname )
+					e.category = ( istable( data ) and isstring( data.Category ) and data.Category ~= "" ) and data.Category or nil
+					e.model    = ( istable( data ) and isstring( data.Model ) ) and data.Model or ""
+					e.cat      = "entity"
 
 				local stored = ( scripted_ents and scripted_ents.GetStored ) and scripted_ents.GetStored( spawnname )
 				if ( stored and istable( stored.t ) ) then
@@ -689,8 +690,13 @@ end
 local function FitLabel( text, maxw )
 	text = tostring( text or "" )
 
-	local okF, hFont = pcall( surface.SetFont, "DermaDefault" )
-	if ( not okF or hFont == nil or surface.GetTextSize == nil ) then return text end
+	-- ⚠️ measure with the EXACT handle draw.SimpleText will render with
+	-- (draw.GetFont).  surface.SetFont( name ) resolves a different registry
+	-- and either nil (label silently untrimmed -> "Atomic Bomb" bleeding over
+	-- the neighbour cells, 2026-09-26 video) or a narrower metric than the
+	-- renderer uses.
+	local hFont = ( draw ~= nil and draw.GetFont ~= nil ) and draw.GetFont( "DermaDefault" ) or nil
+	if ( hFont == nil or surface.GetTextSize == nil ) then return text end
 
 	local okW, w = pcall( surface.GetTextSize, hFont, text )
 	if ( not okW or w == nil or w <= maxw ) then return text end
@@ -737,15 +743,22 @@ local function MakeCell( e )
 		end
 	end
 
-	-- 2) a live 3D thumbnail.  No file.Exists gate: the Lua file API does not
-	--    see every mounted model tree.  The MODEL LOAD itself is deferred
-	--    inside SpawnIcon (queued, one per tick, on-screen cells only -- the
-	--    load is the expensive part and a burst of them was the stutter), so
-	--    there is no entity to check here anymore: a model that fails marks
-	--    its icon and the icon's Paint degrades to the model's file name
-	--    instead of the error checkerboard.
+	-- 2) a live 3D thumbnail -- PROPS, VEHICLES and RAGDOLLS only (user rule,
+	--    2026-09-26: everything else with no shipped image shows a BLANK tile,
+	--    the way GMod's icon grid reads; entity/weapon/NPC 3D thumbnails of
+	--    view/world models looked wrong and the viewmodels were unusable).
+	--    No file.Exists gate: the Lua file API does not see every mounted
+	--    model tree.  The MODEL LOAD itself is deferred inside SpawnIcon
+	--    (queued, one per tick, on-screen cells only -- the load is the
+	--    expensive part and a burst of them was the stutter), so there is no
+	--    entity to check here anymore: a model that fails marks its icon and
+	--    the icon's Paint degrades to the model's file name instead of the
+	--    error checkerboard.
 	local mdl = e.model or ""
-	if ( mdl ~= "" ) then
+	local bRender3D = ( e.cat == nil or e.cat == "prop" or e.cat == "vehicle"
+		or ( mdl:find( "ragdoll", 1, true ) ~= nil ) )
+
+	if ( bRender3D and mdl ~= "" ) then
 		local ok, icon = pcall( vgui.Create, "SpawnIcon" )
 		if ( ok and IsValid( icon ) ) then
 			local okSet, errSet = pcall( function() icon:SetModel( mdl, 0, "" ) end )
@@ -760,6 +773,28 @@ local function MakeCell( e )
 			if ( IsValid( icon ) ) then icon:Remove() end
 		else
 			Dbg( TAG .. "vgui.Create( SpawnIcon ) failed: " .. tostring( icon ) )
+		end
+	end
+
+	-- 2b) entity / weapon / NPC with no shipped image: a BLANK tile (the same
+	--     chrome as the image cell, minus the texture) -- per the user rule
+	--     these must not fall through to a 3D model render.
+	if ( not bRender3D ) then
+		local label = FitLabel( e.name or e.class, ICON - 6 )
+		local ok, btn = pcall( vgui.Create, "DButton" )
+		if ( ok and IsValid( btn ) ) then
+			btn:SetText( "" )
+			btn.Paint = function( pnl, w, h )
+				surface.SetDrawColor( 45, 48, 52, 255 )
+				surface.DrawRect( 0, 0, w, h )
+				surface.SetDrawColor( 70, 75, 82, 255 )
+				surface.DrawOutlinedRect( 0, 0, w, h )
+				draw.SimpleText( label, "DermaDefault", w / 2, h - 8, Color( 220, 220, 220, 255 ), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
+			end
+			pcall( function() btn:SetTooltip( ( e.name or e.class ) .. "\n" .. e.class ) end )
+			btn.DoClick = function() SpawnEntry( e ) end
+			btn.DoRightClick = function() EntryMenu( e ) end
+			return btn, "blank"
 		end
 	end
 
