@@ -3,6 +3,7 @@
 # otherwise on the next start.
 example_addon
 firstpersonbody
+hitnumbers
 miku
 minecraft
 qiandai
