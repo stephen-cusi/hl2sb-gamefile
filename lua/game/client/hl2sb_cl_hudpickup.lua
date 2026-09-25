@@ -456,6 +456,15 @@ end )
 -- the engine's item_pickup game event to this hook as ( userid, item, amount );
 -- sort it into the GMod methods.
 hook.add( "HUDItemPickedUp", "gmod_cl_hudpickup", function( userid, item, amount )
+	-- HL2SB (2026-09-25): resolve the local player ONCE and bail immediately
+	-- when it is missing.  Resolving it three times (and indexing the result
+	-- while the local entity did not exist yet) is what flooded the console
+	-- with "util.lua:318: attempt to index a NULL entity" on every pickup --
+	-- the engine now answers NULL-entity reads safely, but the cheap guard
+	-- keeps this hook correct even so.
+	local ply = LocalPlayer()
+	if ( not IsValid( ply ) ) then return end
+
 	HL2SB_HUDDebug( "HUDItemPickedUp:", "userid=" .. tostring( userid ), "item=" .. tostring( item ), "amount=" .. tostring( amount ) )
 
 	-- HL2SB: the player method is UniqueID() (= GetUserID); GMod's Player:UserID()
@@ -465,7 +474,7 @@ hook.add( "HUDItemPickedUp", "gmod_cl_hudpickup", function( userid, item, amount
 	-- a server-only binding, so this line threw "attempt to call a nil value
 	-- (method 'UniqueID')" on every pickup and hook.lua then unregistered us for
 	-- the rest of the level.  Now bound in game/client/lua/lc_baseplayer.cpp.
-	if ( userid and IsValid( LocalPlayer() ) and LocalPlayer():UniqueID() != userid ) then
+	if ( userid and ply:UniqueID() != userid ) then
 		HL2SB_HUDDebug( "  -> dropped: not the local player" )
 		return
 	end
@@ -489,8 +498,8 @@ hook.add( "HUDItemPickedUp", "gmod_cl_hudpickup", function( userid, item, amount
 		-- the active weapon when it matches -- a freshly picked up weapon is
 		-- normally the one being deployed -- and fall back to the class name.
 		local wep = nil
-		if ( IsValid( LocalPlayer() ) ) then
-			local active = LocalPlayer():GetActiveWeapon()
+		if ( IsValid( ply ) ) then
+			local active = ply:GetActiveWeapon()
 			if ( IsValid( active ) and active:GetClass() == item ) then
 				wep = active
 			end
