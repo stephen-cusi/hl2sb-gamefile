@@ -4,9 +4,33 @@
 --          changes, and fonts work properly without having to manually
 --          recreate them.
 --
+-- HL2SB (2026-09-25): GMod compat rewrite.  The old version REPLACED
+-- surface.CreateFont with a zero-argument container factory, so the GMod
+-- spelling surface.CreateFont( name, fontData ) had its font data silently
+-- discarded (an INVALID font handle inside a container), and the surface.*
+-- font functions rejected plain font NAME strings:
+--
+--     cl_hitdamagenumbers.lua:127: bad argument #1 to 'GetTextSize'
+--         (font or fontcontainer expected, got string)
+--
+-- which aborted the addon's init handler and left its "initialized" flag
+-- unset forever (no damage numbers, no font measurement anywhere).
+--
+-- Now: GMod spellings pass straight through to the C bindings, which resolve
+-- font names via luaL_checkfont / the surface.CreateFont registry.  The
+-- HFontContainer is kept ONLY for the legacy bare surface.CreateFont() call
+-- style (gmod_deathnotice.lua uses it) with its OnScreenSizeChanged rebuild.
 --===========================================================================--
 
 if not _CLIENT then return end
+
+-- HL2SB (2026-09-25): install-once guard.  On listen servers the Lua loader
+-- scans the game/client folder TWICE (lua_cache pass), and a second execution
+-- would capture this file's OWN wrappers as the "C bindings" - nesting
+-- containers inside containers and killing SetFontGlyphSet with
+-- "HFont expected, got table" on every kill-feed redraw.
+if ( _HL2SB_FONT_LUA_INSTALLED ) then return end
+_HL2SB_FONT_LUA_INSTALLED = true
 
 require( "UTIL" )
 require( "surface" )
@@ -30,30 +54,16 @@ local SetFontGlyphSet = surface.SetFontGlyphSet
 
 -------------------------------------------------------------------------------
 -- _R.HFontContainer
--- Purpose: Class metatable
+-- Purpose: Class metatable (legacy bare-call style only)
 -------------------------------------------------------------------------------
 _R.HFontContainer = {
   __index = {},
   __type = "fontcontainer"
 }
 
--------------------------------------------------------------------------------
--- HFontContainerIndex
--- Purpose: Internal container index
--------------------------------------------------------------------------------
 local HFontContainerIndex = 1
-
--------------------------------------------------------------------------------
--- HFontContainers
--- Purpose: Internal containers index
--------------------------------------------------------------------------------
 local HFontContainers = {}
 
--------------------------------------------------------------------------------
--- HFontContainer()
--- Purpose: Creates a new HFontContainer
--- Output: HFontContainer
--------------------------------------------------------------------------------
 function HFontContainer()
   local t = {
     index = 0,
@@ -71,10 +81,6 @@ function HFontContainer()
   return t
 end
 
--------------------------------------------------------------------------------
--- HFontContainer:__tostring()
--- Purpose: __tostring metamethod for HFontContainer
--------------------------------------------------------------------------------
 function _R.HFontContainer:__tostring()
   return "HFontContainer: " .. self.index
 end
@@ -94,131 +100,73 @@ hook.add( "OnScreenSizeChanged", "HFontContainerManager", function()
   end
 end )
 
+-- HL2SB: unwrap a font argument.  GMod addons pass font NAME strings, the
+-- legacy Experiment code passes HFont userdata or containers - all resolve,
+-- and the C bindings accept names through luaL_checkfont anyway.
+local function unwrapFont( font )
+  local t = type( font )
+  if ( t == "table" and font.font ~= nil ) then
+    return font.font
+  end
+  return font
+end
+
 function UTIL.ComputeStringWidth( font, str )
-  local type = type( font )
-  if ( type ~= "font" and type ~= "fontcontainer" ) then
-    error( "bad argument #1 to 'ComputeStringWidth' (font or fontcontainer expected, got " .. type .. ")", 2 )
-  end
-  if ( type == "font" ) then
-    return ComputeStringWidth( font, str )
-  elseif ( type == "fontcontainer" ) then
-    return ComputeStringWidth( font.font, str )
-  end
+  return ComputeStringWidth( unwrapFont( font ), str )
 end
 
 function _R.IScheme.GetFontName( font )
-  local type = type( font )
-  if ( type ~= "font" and type ~= "fontcontainer" ) then
-    error( "bad argument #1 to 'GetFontName' (font or fontcontainer expected, got " .. type .. ")", 2 )
-  end
-  if ( type == "font" ) then
-    return GetFontName( font )
-  elseif ( type == "fontcontainer" ) then
-    return GetFontName( font.font )
-  end
+  return GetFontName( unwrapFont( font ) )
 end
 
-function surface.CreateFont()
-  local fontcontainer = HFontContainer()
-  fontcontainer.index = HFontContainerIndex
-  fontcontainer.font = CreateFont()
-  HFontContainers[ HFontContainerIndex ] = fontcontainer
-  HFontContainerIndex = HFontContainerIndex + 1
-  return fontcontainer
+function surface.CreateFont( a, b )
+  -- HL2SB (2026-09-25): ALWAYS pass through to the C binding now.  The old
+  -- container branch (bare CreateFont() -> HFontContainer table) broke every
+  -- C-captured caller: draw.lua's draw.GetFont captured the raw C
+  -- SetFontGlyphSet at load, then got our CONTAINER back from CreateFont() ->
+  -- "HFont expected, got table" 2200x/frame, and gmod_deathnotice failed to
+  -- load (kill feed gone).  A bare CreateFont() now returns a real HFont.
+  return CreateFont( a, b )
 end
 
 function surface.DrawSetTextFont( font )
-  local type = type( font )
-  if ( type ~= "font" and type ~= "fontcontainer" ) then
-    error( "bad argument #1 to 'DrawSetTextFont' (font or fontcontainer expected, got " .. type .. ")", 2 )
-  end
-  if ( type == "font" ) then
-    return DrawSetTextFont( font )
-  elseif ( type == "fontcontainer" ) then
-    return DrawSetTextFont( font.font )
-  end
+  return DrawSetTextFont( unwrapFont( font ) )
 end
 
 function surface.GetCharABCwide( font, ch )
-  local type = type( font )
-  if ( type ~= "font" and type ~= "fontcontainer" ) then
-    error( "bad argument #1 to 'GetCharABCwide' (font or fontcontainer expected, got " .. type .. ")", 2 )
-  end
-  if ( type == "font" ) then
-    return GetCharABCwide( font, ch )
-  elseif ( type == "fontcontainer" ) then
-    return GetCharABCwide( font.font, ch )
-  end
+  return GetCharABCwide( unwrapFont( font ), ch )
 end
 
 function surface.GetCharacterWidth( font, ch )
-  local type = type( font )
-  if ( type ~= "font" and type ~= "fontcontainer" ) then
-    error( "bad argument #1 to 'GetCharacterWidth' (font or fontcontainer expected, got " .. type .. ")", 2 )
-  end
-  if ( type == "font" ) then
-    return GetCharacterWidth( font, ch )
-  elseif ( type == "fontcontainer" ) then
-    return GetCharacterWidth( font.font, ch )
-  end
+  return GetCharacterWidth( unwrapFont( font ), ch )
 end
 
 function surface.GetFontAscent( font, ch )
-  local type = type( font )
-  if ( type ~= "font" and type ~= "fontcontainer" ) then
-    error( "bad argument #1 to 'GetFontAscent' (font or fontcontainer expected, got " .. type .. ")", 2 )
-  end
-  if ( type == "font" ) then
-    return GetFontAscent( font, ch )
-  elseif ( type == "fontcontainer" ) then
-    return GetFontAscent( font.font, ch )
-  end
+  return GetFontAscent( unwrapFont( font ), ch )
 end
 
 function surface.GetFontTall( font )
-  local type = type( font )
-  if ( type ~= "font" and type ~= "fontcontainer" ) then
-    error( "bad argument #1 to 'GetFontTall' (font or fontcontainer expected, got " .. type .. ")", 2 )
-  end
-  if ( type == "font" ) then
-    return GetFontTall( font )
-  elseif ( type == "fontcontainer" ) then
-    return GetFontTall( font.font )
-  end
+  return GetFontTall( unwrapFont( font ) )
 end
 
 function surface.GetTextSize( font, text )
-  local type = type( font )
-  if ( type ~= "font" and type ~= "fontcontainer" ) then
-    error( "bad argument #1 to 'GetTextSize' (font or fontcontainer expected, got " .. type .. ")", 2 )
+  -- GMod: surface.GetTextSize( text ) measures with the font last set by
+  -- surface.SetFont (single string argument); the engine binding implements
+  -- that form.  Two arguments: ( font, text ) with names/containers unwrapped.
+  if ( text == nil and type( font ) == "string" ) then
+    return GetTextSize( font )
   end
-  if ( type == "font" ) then
-    return GetTextSize( font, text )
-  elseif ( type == "fontcontainer" ) then
-    return GetTextSize( font.font, text )
-  end
+  return GetTextSize( unwrapFont( font ), text )
 end
 
 function surface.IsFontAdditive( font )
-  local type = type( font )
-  if ( type ~= "font" and type ~= "fontcontainer" ) then
-    error( "bad argument #1 to 'IsFontAdditive' (font or fontcontainer expected, got " .. type .. ")", 2 )
-  end
-  if ( type == "font" ) then
-    return IsFontAdditive( font )
-  elseif ( type == "fontcontainer" ) then
-    return IsFontAdditive( font.font )
-  end
+  return IsFontAdditive( unwrapFont( font ) )
 end
 
 function surface.SetFontGlyphSet( font, windowsFontName, tall, weight, blur, scanlines, flags, nRangeMin, nRangeMax )
-  local type = type( font )
-  if ( type ~= "font" and type ~= "fontcontainer" ) then
-    error( "bad argument #1 to 'SetFontGlyphSet' (font or fontcontainer expected, got " .. type .. ")", 2 )
-  end
-  if ( type == "font" ) then
-    return SetFontGlyphSet( font, windowsFontName, tall, weight, blur, scanlines, flags, nRangeMin, nRangeMax )
-  elseif ( type == "fontcontainer" ) then
+  local t = type( font )
+  if ( t == "table" and font.font ~= nil ) then
+    -- container: remember the glyph set so resolution changes can rebuild
     font.windowsFontName = windowsFontName
     font.tall = tall
     font.weight = weight
@@ -229,4 +177,5 @@ function surface.SetFontGlyphSet( font, windowsFontName, tall, weight, blur, sca
     font.nRangeMax = nRangeMax
     return SetFontGlyphSet( font.font, windowsFontName, tall, weight, blur, scanlines, flags, nRangeMin, nRangeMax )
   end
+  return SetFontGlyphSet( font, windowsFontName, tall, weight, blur, scanlines, flags, nRangeMin, nRangeMax )
 end
