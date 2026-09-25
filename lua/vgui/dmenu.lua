@@ -13,6 +13,11 @@ function PANEL:Init()
 	self:SetDrawBackground( false )
 	self:SetMouseInputEnabled( true )
 
+	-- GMod's marker that a panel is part of a menu; the click-away watcher walks
+	-- the parent chain for it before closing the open menus (GMod's engine raises
+	-- VGUIMousePressed -> DermaDetectMenuFocus for the same purpose).
+	self.m_bIsMenu = true
+
 	self.m_pCanvas = vgui.Create( "DPanel", self, "Content" )
 	self.m_pCanvas:SetDrawBackground( false )
 
@@ -31,24 +36,86 @@ function PANEL:Init()
 end
 
 --- GMod: menu:AddOption( text, fn ) -> the DMenuOption.
+---
+--- The callback is stored as the row's onClicked field so the class chain keeps
+--- running: OPT:DoClick below closes the menu, toggles a checkable row, fires
+--- OptionSelected and THEN calls fn( pnl ) -- the previous implementation overwrote
+--- DoClick, which killed the checkable toggle (only DoClick ran it) and dropped
+--- GMod's "the callback receives the option panel" argument.
 function PANEL:AddOption( strText, fnFunction )
 	local opt = vgui.Create( "DMenuOption", self.m_pCanvas, "Option" )
 	opt:SetText( strText )
 	opt.m_pMenu = self
 	if ( fnFunction ) then
-		opt.DoClick = function( pnl )
-			-- GMod closes the menu when an option is chosen
-			if ( IsValid( pnl.m_pMenu ) ) then
-				pnl.m_pMenu:SetVisible( false )
-			end
-			local ok, err = pcall( fnFunction )
-			if ( not ok ) then Warning( "DMenu option failed: " .. tostring( err ) .. "\n" ) end
-		end
+		opt.onClicked = fnFunction
 	end
 
 	self.m_iHeight = self.m_iHeight + OPTION_H
 	self:ReLayout()
 	return opt
+end
+
+--- GMod: menu:AddCVar( strText, convar, on, off, fn ) -> DMenuOptionCVar
+--- (gmod/vgui/dmenu.lua:49-64).  The control itself is ported, but nothing could
+--- create it before.
+function PANEL:AddCVar( strText, strConVar, strOn, strOff, fnFunction )
+	local opt = vgui.Create( "DMenuOptionCVar", self.m_pCanvas, "OptionCVar" )
+	opt:SetText( strText )
+	opt.m_pMenu = self
+	opt:SetConVar( strConVar )
+	opt:SetValueOn( strOn )
+	opt:SetValueOff( strOff )
+
+	if ( fnFunction ) then
+		opt.OnChecked = fnFunction
+	end
+
+	-- the CVar row drives itself through its checked state; route through the
+	-- same click chain (close + OptionSelected) without a user callback
+	opt.onClicked = nil
+
+	self.m_iHeight = self.m_iHeight + OPTION_H
+	self:ReLayout()
+	return opt
+end
+
+--- GMod: menu:AddSubMenu( strText [, fnFunction] ) -> submenu, option
+--- (gmod/vgui/dmenu.lua:80-92).  The submenu is a root-tracked menu (passing pnl
+--- as parentmenu keeps DermaMenu from closing the chain it belongs to).
+function PANEL:AddSubMenu( strText, fnFunction )
+	local pnl = self:AddOption( strText, fnFunction )
+
+	local submenu = DermaMenu( pnl, self )
+	pnl:SetSubMenu( submenu )
+
+	return submenu, pnl
+end
+
+--- GMod: menu:OptionSelected( pnlOption ) -- the override point fired when any
+--- row is activated (gmod/vgui/dmenu.lua:254-264).
+function PANEL:OptionSelected( pnlOption )
+	-- for override
+end
+
+--- GMod: menu:OpenSubMenu( pnl ) / CloseSubMenu() (gmod/vgui/dmenu.lua:106-134).
+--- The child menu opens flush with the row's right edge.
+function PANEL:OpenSubMenu( pnl )
+	self:CloseSubMenu()
+
+	local submenu = pnl and pnl.SubMenu
+	if ( not IsValid( submenu ) ) then return end
+
+	self.ChildSubMenu = submenu
+
+	local x, y = pnl:LocalToScreen( self:GetWide() - 2, 0 )
+	submenu:Open( x + 2, y - 2 )
+end
+
+function PANEL:CloseSubMenu()
+	if ( IsValid( self.ChildSubMenu ) ) then
+		self.ChildSubMenu:Hide()
+	end
+	self.ChildSubMenu = nil
 end
 
 --- GMod: menu:AddPanel( pnl ) -- embed any control as a menu row.
@@ -93,7 +160,8 @@ function PANEL:ReLayout()
 	self:SetSize( self.m_iWidth + 4, self.m_iHeight + 6 )
 end
 
---- GMod: menu:Open( x, y ) or menu:Open( ) at the cursor.
+--- GMod: menu:Open( x, y ) or menu:Open( ) at the cursor.  Registers for the
+--- click-away close and clamps to the screen (gmod/vgui/dmenu.lua:196-220).
 function PANEL:Open( x, y )
 	if ( not x ) then
 		if ( gui and gui.MouseX and gui.MouseY ) then
@@ -106,6 +174,23 @@ function PANEL:Open( x, y )
 	self:SetPos( x, y )
 	self:SetVisible( true )
 	self:MakePopup()
+
+	if ( RegisterDermaMenuForClose ~= nil ) then
+		RegisterDermaMenuForClose( self )
+	end
+
+	-- GMod nudges an overhanging menu back on screen: bottom and right edges.
+	local w, h = self:GetSize()
+	if ( ScrW and ScrH ) then
+		if ( x + w > ScrW() - 4 ) then x = math.max( 4, ScrW() - w - 4 ) end
+		if ( y + h > ScrH() - 4 ) then y = math.max( 4, ScrH() - h - 4 ) end
+		self:SetPos( x, y )
+	end
+end
+
+--- GMod: menu:Hide( ) -- invisible but kept for re-Open (gmod/vgui/dmenu.lua:94).
+function PANEL:Hide()
+	self:SetVisible( false )
 end
 
 function PANEL:Delete()
@@ -131,23 +216,85 @@ function OPT:Init()
 	self.m_bHover = false
 end
 
-function OPT:OnCursorEntered() self.m_bHover = true end
+function OPT:OnCursorEntered()
+	self.m_bHover = true
+
+	-- GMod: hovering a row with a submenu opens it and closes the sibling
+	-- submenus (dmenuoption.lua:42-51).
+	if ( self.SubMenu and self.SubMenu:IsVisible() ~= true ) then
+		local menu = self.m_pMenu
+		if ( IsValid( menu ) and menu.OpenSubMenu ) then
+			menu:OpenSubMenu( self )
+		end
+	end
+end
 function OPT:OnCursorExited() self.m_bHover = false end
 
+--- GMod: DMenuOption:GetMenu() / SetMenu( menu ) -- the row's owning menu
+--- (dmenuoption.lua:4); the fork kept only the raw m_pMenu field before, so
+--- opt:GetMenu() nil-errored.
+function OPT:GetMenu()
+	return self.m_pMenu
+end
+
+function OPT:SetMenu( menu )
+	self.m_pMenu = menu
+end
+
+--- GMod: DMenuOption:SetSubMenu( menu ) -- remembers the child menu and marks the
+--- row so OpenSubMenu/arrow painting pick it up (dmenuoption.lua:17-40).
+function OPT:SetSubMenu( menu )
+	self.SubMenu = menu
+end
+
+--- GMod: DMenuOption:AddSubMenu( strText [, fnFunction] ) -- a submenu OF the
+--- submenu, chaining through the row's own menu.
+function OPT:AddSubMenu( strText, fnFunction )
+	local menu = self.m_pMenu
+	if ( not IsValid( menu ) or not menu.AddSubMenu ) then return end
+
+	local submenu, pnl = menu:AddSubMenu( strText, fnFunction )
+	self:SetSubMenu( submenu )
+	return submenu, pnl
+end
+
+--- GMod: clicking a row runs DoClickInternal (toggle a checkable) THEN the
+--- user's DoClick, and the engine runs both stages; this fork has a single
+--- stage, so the whole chain lives here: close the menu chain, toggle the
+--- checkable state, fire the menu's OptionSelected, then the user callback
+--- (which receives the option panel, like GMod's pnl.DoClick = fn).
 function OPT:DoClick()
 	local menu = self.m_pMenu
-	if ( IsValid( menu ) ) then
-		menu:SetVisible( false )
+
+	-- a row that only opens a submenu does not close its own menu
+	if ( self.SubMenu ~= nil and self.onClicked == nil ) then
+		if ( IsValid( menu ) and menu.OpenSubMenu ) then
+			menu:OpenSubMenu( self )
+		end
+		return
 	end
 
-	-- GMod toggles a checkable option as part of the click
-	-- (dmenuoption.lua:96 DoClickInternal); the fork's row keeps its own
-	-- onClicked field and gains the same toggle here.
 	if ( self:GetIsCheckable() ) then
 		self:ToggleCheck()
 	end
 
-	if ( self.onClicked ) then self:onClicked() end
+	if ( IsValid( menu ) and menu.OptionSelected ) then
+		local ok, err = pcall( menu.OptionSelected, menu, self )
+		if ( not ok ) then Warning( "DMenu OptionSelected failed: " .. tostring( err ) .. "\n" ) end
+	end
+
+	if ( self.onClicked ) then
+		local ok, err = pcall( self.onClicked, self )
+		if ( not ok ) then Warning( "DMenu option failed: " .. tostring( err ) .. "\n" ) end
+	end
+
+	-- GMod closes the whole menu chain when an option is activated
+	-- (dmenuoption.lua:75-86 releases -> CloseDermaMenus).
+	if ( CloseDermaMenus ~= nil ) then
+		CloseDermaMenus()
+	else
+		if ( IsValid( menu ) ) then menu:SetVisible( false ) end
+	end
 end
 
 --[[ The checked-state subsystem, ported from GMod's lua/vgui/dmenuoption.lua
@@ -254,6 +401,17 @@ function OPT:Paint( w, h )
 		surface.DrawFilledRect( cx - 4, cy - 1, cx - 2, cy + 1 )
 		surface.DrawFilledRect( cx - 2, cy - 2, cx, cy + 2 )
 		surface.DrawFilledRect( cx - 1, cy - 5, cx + 1, cy - 1 )
+	end
+
+	-- GMod: a row with a submenu draws the little right-arrow where the tick
+	-- would be (SubMenuArrow, dmenuoption.lua:17-40).
+	if ( self.SubMenu ~= nil ) then
+		local cy = math.floor( h * 0.5 )
+		surface.DrawSetColor( 160, 166, 175, 255 )
+		for i = 0, 3 do
+			surface.DrawFilledRect( w - 11 + i, cy - i, w - 9 + i, cy - i + 1 )
+			surface.DrawFilledRect( w - 11 + i, cy + i, w - 9 + i, cy + i + 1 )
+		end
 	end
 end
 

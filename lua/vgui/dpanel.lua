@@ -102,4 +102,11 @@ function PANEL:Paint( w, h )
 	derma.SkinHook( "Paint", "Panel", self, w, h )
 end
 
+--- GMod: DPanel:SetIsMenu( b ) / GetIsMenu() (dpanel.lua:6) -- marks a popup
+--- panel as a menu; the click-away menu watcher reads this flag.
+AccessorFunc( PANEL, "m_bIsMenu", "IsMenu", FORCE_BOOL )
+
+--- GMod: DPanel:SetTabbingDisabled( b ) / GetTabbingDisabled() (dpanel.lua:7).
+AccessorFunc( PANEL, "m_bTabbingDisabled", "TabbingDisabled", FORCE_BOOL )
+
 derma.DefineControl( "DPanel", "HL2SB base container panel", PANEL, "Panel" )

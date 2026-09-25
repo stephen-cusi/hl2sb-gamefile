@@ -61,13 +61,68 @@ function DermaMenu( parentmenu, parent )
 	local menu = vgui.Create( "DMenu", parent )
 	if ( not menu ) then return end
 
-	-- close the previously-open menus first (GMod behaviour)
-	CloseDermaMenus()
+	-- GMod closes the open menus only when this is a ROOT menu; a submenu must
+	-- not kill its own parent chain (gmod/derma/derma_menus.lua:12).
+	if ( not parentmenu ) then
+		CloseDermaMenus()
+	end
 	RegisterDermaMenuForClose( menu )
 
+	-- Fork delta vs GMod: GMod returns an UNOPENED menu for the caller to
+	-- position, but three in-tree callers (dragdrop.lua:49, DTab, DColorCube)
+	-- rely on the menu appearing on its own, so the auto-open stays.
 	menu:Open()
 	return menu
 end
+
+--[[---------------------------------------------------------------------------
+	Click-away plumbing.  GMod's engine raises the gamemode hook
+	VGUIMousePressed( panel, mousecode ), and lua/derma/derma_menus.lua's
+	DermaDetectMenuFocus closes every registered menu when the press landed
+	outside a menu; lua/vgui/dtextentry.lua's TextEntryLoseFocus drops the
+	keyboard the same way.  This engine has no such dispatch, so the same two
+	rules run off an input poll: on the press EDGE (not while held), walk the
+	hovered panel's parent chain -- no menu ancestor closes the menus, no text
+	entry ancestor surrenders keyboard focus.
+-----------------------------------------------------------------------------]]
+local bWasMouseDown = false
+
+hook.Add( "Think", "HL2SB_DermaClickAway", function()
+	local ml = input.IsMouseDown( MOUSE_LEFT )
+	local mr = input.IsMouseDown( MOUSE_RIGHT )
+	local down = ml or mr
+
+	if ( down and not bWasMouseDown and vgui.GetHoveredPanel ~= nil ) then
+		local hovered = vgui.GetHoveredPanel()
+
+		-- GMod's VGUIMousePressed only fires when the press landed on VGUI; a
+		-- pure gameplay click (no panel under the cursor) must not touch the
+		-- keyboard focus of whatever engine panel may hold it.
+		if ( IsValid( hovered ) ) then
+			local inMenu = false
+			local focused = ( vgui.GetKeyboardFocus ~= nil ) and vgui.GetKeyboardFocus() or nil
+			local inFocused = false
+
+			local pnl = hovered
+			while ( IsValid( pnl ) ) do
+				if ( pnl.m_bIsMenu ) then inMenu = true end
+				if ( focused ~= nil and pnl == focused ) then inFocused = true end
+				pnl = ( pnl.GetParent ~= nil ) and pnl:GetParent() or nil
+			end
+
+			if ( not inMenu and CloseDermaMenus ~= nil ) then
+				CloseDermaMenus()
+			end
+
+			-- a text entry keeps the keyboard only while the press is inside it
+			if ( focused ~= nil and not inFocused and focused.KillFocus ~= nil ) then
+				focused:KillFocus()
+			end
+		end
+	end
+
+	bWasMouseDown = down
+end )
 
 --[[---------------------------------------------------------------------------
 	Shared modal-frame builder for the dialog helpers.  A DFrame centred on
@@ -194,26 +249,31 @@ end
 
 --[[---------------------------------------------------------------------------
 	Derma_DrawBackgroundBlur - GMod renders a blurred render-target behind the
-	panel.  We have no blur RT path here, so this draws a dimming overlay instead
-	(the visual intent - focus the dialog - holds; the blur is a documented gap).
+	panel.  We have no blur RT path here, and the previous implementation created
+	a new fullscreen panel ON EVERY CALL that was never removed -- a per-frame
+	panel leak plus a permanent dim once called.  GMod's own helper is called
+	from Paint every frame (gmod/derma/derma_utils.lua:12-42), so this now only
+	DRAWS the dim: no panels, nothing to leak.  DFrame:SetBackgroundBlur drives
+	it through the frame's Paint.
 -----------------------------------------------------------------------------]]
 function Derma_DrawBackgroundBlur( panel, startTime )
-	if ( IsValid( panel.m_hBlurPanel ) ) then return end
-
-	local overlay = vgui.Create( "DPanel" )
-	overlay:SetSize( ScrW(), ScrH() )
-	overlay:SetPos( 0, 0 )
-	overlay:SetMouseInputEnabled( false )
-	overlay.Paint = function( self, w, h )
-		surface.SetDrawColor( 0, 0, 0, 180 )
-		surface.DrawRect( 0, 0, w, h )
-	end
-	if ( IsValid( panel ) ) then panel.m_hBlurPanel = overlay end
+	surface.DrawSetColor( 0, 0, 0, 180 )
+	surface.DrawFilledRect( 0, 0, ScrW(), ScrH() )
 end
 
 --[[---------------------------------------------------------------------------
 	Derma_Anim - the tiny animation helper GMod's skins use for fades.
-	Anim:Run() advances and calls func( anim, key, data, progress ).
+
+	GMod's contract (gmod/derma/derma_animation.lua) is func( panel, anim,
+	delta, data ) with the panel FIRST -- a method like
+	`PANEL:AnimSlide( anim, delta, data )` binds self to the panel.  The
+	previous call here passed ( anim, name, panel, progress, data ), which made
+	DTree_Node's AnimSlide run with self = the animation TABLE and anim = the
+	NAME STRING -- node expansion died on "attempt to index a string value".
+
+	Like GMod, an anim is inert until Start() (Running), and Run() ticks it;
+	Active() answers Running.  The old Finished-at-creation made Active() true
+	and Run() crash on "Start == nil" for every anim that was never started.
 -----------------------------------------------------------------------------]]
 local DermaAnimation = {}
 DermaAnimation.__index = DermaAnimation
@@ -221,19 +281,22 @@ DermaAnimation.__index = DermaAnimation
 function DermaAnimation:SetData( data ) self.Data = data end
 function DermaAnimation:Start( length, data )
 	self.Length = length or 1
-	self.Start = CurTime()
-	self.Finished = false
+	self.Start = SysTime()
+	self.Running = true
 	self:SetData( data )
 end
-function DermaAnimation:Stop() self.Finished = true end
-function DermaAnimation:Active() return self.Finished == false end
+function DermaAnimation:Stop() self.Running = false end
+function DermaAnimation:Active() return self.Running == true end
 function DermaAnimation:Run()
-	if ( not self:Active() ) then return end
-	local elapsed = CurTime() - self.Start
-	local progress = ( CurTime() - self.Start ) / math.max( 0.0001, self.Length )
+	if ( not self.Running ) then return end
+
+	local elapsed = SysTime() - ( self.Start or 0 )
+	local progress = elapsed / math.max( 0.0001, self.Length or 1 )
 	if ( progress < 0 ) then progress = 0 elseif ( progress > 1 ) then progress = 1 end
-	self.CallFunc( self, self.Name, self.Panel, progress, self.Data )
-	if ( progress >= 1 ) then self.Finished = true end
+
+	-- GMod's callback order: panel, anim, delta, data.
+	self.CallFunc( self.Panel, self, progress, self.Data )
+	if ( progress >= 1 ) then self.Running = false end
 end
 
 function Derma_Anim( strName, panel, func )
@@ -241,7 +304,7 @@ function Derma_Anim( strName, panel, func )
 	anim.Name = strName
 	anim.Panel = panel
 	anim.CallFunc = func
-	anim.Finished = false
+	anim.Running = false
 	return anim
 end
 

@@ -54,6 +54,72 @@ function PANEL:GetValue()
 	return self.m_flValue
 end
 
+--- GMod's DVScrollBar spellings (wiki.facepunch.com/gmod/DVScrollBar):
+--- SetScroll/GetScroll carry the same 0..1 fraction this bar stores, AddScroll
+--- nudges the value by a fraction, and SetScrollParent/GetScrollParent are the
+--- container back-reference this bar already keeps in m_pParentPanel.
+function PANEL:SetScroll( scr )
+	self:SetValue( scr )
+end
+
+function PANEL:GetScroll()
+	return self.m_flValue
+end
+
+function PANEL:AddScroll( delta )
+	local old = self.m_flValue
+	self:SetValue( self.m_flValue + delta )
+	return self.m_flValue ~= old
+end
+
+function PANEL:SetScrollParent( pnl )
+	self.m_pParentPanel = pnl
+end
+
+function PANEL:GetScrollParent()
+	return self.m_pParentPanel
+end
+
+--- GMod's DVScrollBar container contract (wiki.facepunch.com/gmod/DVScrollBar) --
+--- the spellings addon code uses on a DScrollPanel's GetVBar().  SetUp stores the
+--- viewport/content fraction this bar's grip already renders (m_flBarSize) plus the
+--- canvas size GetOffset needs; both in GMod pixels.
+function PANEL:SetUp( barsize, canvassize )
+	barsize = math.max( 1, tonumber( barsize ) or 1 )
+	canvassize = math.max( 1, tonumber( canvassize ) or 1 )
+
+	self.m_iCanvasSize = canvassize
+	self.m_flBarSize = math.Clamp( barsize / canvassize, 0.02, 1 )
+	self:SetEnabled( canvassize > barsize + 1 )
+end
+
+--- GMod: GetOffset() -- the canvas pixel offset for the current scroll fraction.
+function PANEL:GetOffset()
+	if ( self.m_bEnabled == false or self.m_iCanvasSize == nil ) then return 0 end
+
+	local scrollable = math.max( 0, self.m_iCanvasSize - ( self.m_iBarsizePixels or self.m_iCanvasSize ) )
+	return self.m_flValue * scrollable
+end
+
+--- GMod: AnimateTo( scrll, length, delay, ease ) -- tween the value through the
+--- panel animation extension (anim.Think contract, lua/includes/extensions/client/
+--- panel/animation.lua).
+function PANEL:AnimateTo( scrll, length, delay, ease )
+	if ( self.AnimTo ) then self.AnimTo:Stop() end
+
+	local anim = self:NewAnimation( length or 0, delay or 0, ease )
+	self.AnimTo = anim
+
+	anim.Think = function( anm, pnl, fraction )
+		local target = anm.TargetValue
+		if ( target == nil ) then return end
+		pnl:SetValue( anm.StartValue + ( target - anm.StartValue ) * fraction )
+	end
+
+	anim.StartValue = self.m_flValue
+	anim.TargetValue = tonumber( scrll ) or 0
+end
+
 -- OnThink, not Think - see the note in DScrollPanel.lua (scripted_controls/lPanel.cpp
 -- dispatches the per-frame hook under the OnThink name only).
 function PANEL:OnThink()

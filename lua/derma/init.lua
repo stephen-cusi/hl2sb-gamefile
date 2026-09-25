@@ -210,12 +210,23 @@ InstallConVar( "DTextEntry",
 	function( pnl, new ) pnl:SetText( new ) end,
 	{ name = "OnTextChanged", write = function( pnl ) return pnl:GetValue() end } )
 
+-- GMod binds a combo's convar through the option DATA, not the label
+-- (dcombobox.lua:247-258 matches Data first; its ChooseOption deliberately does
+-- NOT write the convar -- DForm's OnSelect writes `data or value`).  The old
+-- version here matched labels only and wrote the LABEL into the convar on every
+-- ChooseOption, so a data-driven combo ("Enabled" -> "1") stored "Enabled".
 InstallConVar( "DComboBox",
 	function( pnl, new )
 		for i = 1, #pnl.m_tOptions do
-			if ( pnl.m_tOptions[ i ].label == new ) then pnl:SelectIndex( i ) break end
+			if ( tostring( pnl.Data[ i ] ) == new ) then pnl:SelectIndex( i ) return end
+		end
+		for i = 1, #pnl.m_tOptions do
+			if ( pnl.m_tOptions[ i ].label == new ) then pnl:SelectIndex( i ) return end
 		end
 	end,
-	{ name = "ChooseOption", write = function( pnl ) return pnl:GetValue() end } )
+	{ name = "ChooseOption", write = function( pnl )
+		local id = pnl:GetSelectedID()
+		return pnl.Data[ id ] or pnl:GetValue()
+	end } )
 
 print( "[HL2SB] derma framework loaded (hl2sb core)" )

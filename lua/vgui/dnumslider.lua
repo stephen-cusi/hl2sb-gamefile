@@ -112,8 +112,19 @@ function PANEL:IsEnabled()
 	return self.m_bEnabled ~= false
 end
 
-function PANEL:SetMin( v ) self.m_flMin = v; self:UpdateNotches() end
-function PANEL:SetMax( v ) self.m_flMax = v; self:UpdateNotches() end
+-- GMod coerces the ends to numbers (dnumslider.lua:130-148) and re-clamps the
+-- current value; the old bare store left m_flValue outside a re-ranged slider.
+function PANEL:SetMin( v )
+	self.m_flMin = tonumber( v ) or 0
+	self:UpdateNotches()
+	self:SetValue( self.m_flValue )
+end
+
+function PANEL:SetMax( v )
+	self.m_flMax = tonumber( v ) or 0
+	self:UpdateNotches()
+	self:SetValue( self.m_flValue )
+end
 function PANEL:GetMin() return self.m_flMin end
 function PANEL:GetMax() return self.m_flMax end
 
@@ -145,6 +156,11 @@ function PANEL:SetDecimals( i ) self.m_iDecimals = i; self:UpdateNotches() end
 
 function PANEL:SetValue( flVal, bFromSlider )
 	flVal = math.Clamp( flVal or 0, self.m_flMin, self.m_flMax )
+
+	-- GMod early-outs an unchanged value (dnumslider.lua:154): without this the
+	-- drag at a rail end spams OnValueChanged + convar writes every frame
+	if ( flVal == self.m_flValue and not bFromSlider ) then return end
+
 	self.m_flValue = flVal
 
 	if ( not bFromSlider ) then

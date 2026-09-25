@@ -349,6 +349,104 @@ if ( CLIENT and surface and vgui ) then
 			end
 
 			--=================================================================
+			-- HL2SB: three more GMod Panel names the control files call.
+			--
+			-- ChildCount -- the wiki name (wiki.facepunch.com/gmod/Panel:ChildCount)
+			-- for what this engine binds as GetChildCount.  lua/vgui/DTileLayout.lua:184
+			-- calls it from PerformLayout, so every tile layout threw
+			-- "attempt to call a nil value (method 'ChildCount')".
+			--
+			-- SetFontInternal -- GMod's Panel method that sets a label font WITHOUT
+			-- the surrounding per-control font bookkeeping.  GMod's own
+			-- dtextentry.lua:105 drives its scheme pass through it; addons call it
+			-- directly.  Same resolution as the SetFont wrapper above: a string name
+			-- is resolved to the engine font first.
+			--
+			-- SetTextSelectionColors( textColor, backgroundColor ) -- the wiki method
+			-- (added 2023.01.25, RichText/TextEntry selection colours), plus the
+			-- three legacy per-name setters some Derma-derived addons still call.
+			-- This engine's TextEntry paints selection colours from ITS scheme and
+			-- has no binding for them, so they are recorded only -- the fork's
+			-- DTextEntry:ApplySchemeSettings already guards its own three calls on
+			-- the same names.
+			--=================================================================
+			if ( PanelMeta.ChildCount == nil and PanelMeta.GetChildCount ~= nil ) then
+				PanelMeta.ChildCount = PanelMeta.GetChildCount
+
+				Msg( "[HL2SB]   Panel:ChildCount aliased\n" )
+			end
+
+			-- ⚠️ This engine binds SetFont on the LABEL metatable only
+			-- (lLabel.cpp:201) -- PanelMeta.SetFont is nil, so the guard must not
+			-- require it (the old SetFont wrapper above has been silently skipping
+			-- for the same reason).  Route through whatever SetFont the panel's own
+			-- chain answers: every one of those (the LabelMeta wrapper, the fork's
+			-- DTextEntry/DLabel/DButton class overrides) already accepts a NAME, so
+			-- the original value is passed through untouched.  Plain panels with no
+			-- SetFont at all record the resolved HFont.
+			if ( PanelMeta.SetFontInternal == nil ) then
+				PanelMeta.SetFontInternal = function( self, font )
+					if ( self.SetFont ~= nil ) then
+						return self:SetFont( font )
+					end
+
+					local hfont = font
+					if ( type( hfont ) == "string" ) then
+						if ( surface ~= nil and surface.SetFont ~= nil ) then
+							hfont = surface.SetFont( hfont )
+						end
+						if ( hfont == nil and _G.draw ~= nil and draw.GetFont ~= nil ) then
+							hfont = draw.GetFont( font )
+						end
+					end
+
+					self.m_HFontInternal = hfont
+				end
+
+				Msg( "[HL2SB]   Panel:SetFontInternal implemented\n" )
+			end
+
+			if ( PanelMeta.SetTextSelectionColors == nil ) then
+				function PanelMeta:SetTextSelectionColors( textColor, backgroundColor )
+					self.m_colTextSelectionText = textColor
+					self.m_colTextSelectionBackground = backgroundColor
+				end
+			end
+
+			if ( PanelMeta.SetSelectionTextColor == nil ) then
+				function PanelMeta:SetSelectionTextColor( clr )
+					self.m_colTextSelectionText = clr
+				end
+
+				function PanelMeta:SetSelectionBackgroundColor( clr )
+					self.m_colTextSelectionBackground = clr
+				end
+
+				function PanelMeta:SetSelectionUnfocusedBackgroundColor( clr )
+					self.m_colTextSelectionUnfocusedBackground = clr
+				end
+			end
+
+			--=================================================================
+			-- HL2SB: vgui.GetKeyboardFocus() -- the GMod global that answers "which
+			-- panel has the keyboard right now" (GMod's dtextentry.lua:65/289/421
+			-- build IsEditing on it).  The engine binds the same question as
+			-- input.GetFocus (public/lua/vgui/LIInput.cpp:413), so the alias is
+			-- exact; recorded as a stub returning nil otherwise.
+			--=================================================================
+			if ( vgui.GetKeyboardFocus == nil ) then
+				if ( input ~= nil and input.GetFocus ~= nil ) then
+					vgui.GetKeyboardFocus = input.GetFocus
+				else
+					function vgui.GetKeyboardFocus()
+						return nil
+					end
+				end
+
+				Msg( "[HL2SB]   vgui.GetKeyboardFocus wired\n" )
+			end
+
+			--=================================================================
 			-- HL2SB: Panel:SetExpensiveShadow( offset, color )
 			--
 			-- GMod's DCategoryHeader:UpdateColours calls it
@@ -675,6 +773,70 @@ if ( CLIENT and surface and vgui ) then
 	include( "derma/init.lua" )
 
 	include( "vgui_base.lua" )
+
+	--=====================================================================
+	-- HL2SB: wire the tooltip hover pair.  GMod's engine calls the global
+	-- ChangeTooltip( panel ) / EndTooltip( panel ) (lua/includes/util/tooltips.lua)
+	-- when the hovered panel changes; this engine has no such callback, so the
+	-- two are driven from the panels themselves: every panel built through
+	-- vgui.Create from now on gets its OnCursorEntered / OnCursorExited wrapped
+	-- to raise the same globals.  Controls that define their own handlers keep
+	-- them (wrapped around the tooltip call), panels whose parents carry the
+	-- tooltip fields are covered by FindTooltip's parent walk, exactly like GMod.
+	--
+	-- tooltips.lua is NOT auto-loaded here (this fork's util.lua only includes
+	-- util/color.lua -- there is no util/ folder pass like GMod's), so include
+	-- it explicitly.  It has to run AFTER vgui_base.lua: the DTooltip control
+	-- must be registered before ChangeTooltip can build one, and vgui.Create is
+	-- the framework's final version only once derma/init.lua has defined it.
+	--=====================================================================
+	include( "util/tooltips.lua" )
+
+	do
+		local CreateNoTooltip = vgui.Create
+
+		vgui.Create = function( strClass, pParent, strName )
+			local pnl = CreateNoTooltip( strClass, pParent, strName )
+
+			-- The wrapper is installed on EVERY panel, not only ones that already
+			-- define the cursor handlers: a plain DPanel carries no OnCursorEntered
+			-- of its own, and it is exactly the common tooltip host.  The engine
+			-- dispatch reads the ref table first, so the write below makes the
+			-- events reach Lua on controls that had no handler before.
+			if ( pnl ~= nil and not pnl.HL2SBTooltipWired ) then
+				pnl.HL2SBTooltipWired = true
+
+				-- ⚠️ Tooltip panels never get wired: ChangeTooltip on a tooltip
+				-- would RemoveTooltip() itself (the panel it walks with IS the
+				-- tooltip), so cursor enter/exit on the bubble would fight the
+				-- creator forever.
+				if ( not pnl.m_bIsTooltipPanel ) then
+					-- ⚠️ Capture the previous handlers from the REF TABLE ONLY.
+					-- `pnl.OnCursorEntered` reads through the metatable, whose
+					-- entries are C dispatchers that call the Lua method back --
+					-- wrapping THAT made wrapper -> C -> wrapper -> C ... a C stack
+					-- overflow on every hover (92 in one session, hl2sb_lua.log).
+					local tbl = ( pnl.GetTable ~= nil ) and pnl:GetTable() or nil
+					local BaseOnCursorEntered = tbl and rawget( tbl, "OnCursorEntered" ) or nil
+					local BaseOnCursorExited = tbl and rawget( tbl, "OnCursorExited" ) or nil
+
+					pnl.OnCursorEntered = function( s, ... )
+						if ( ChangeTooltip ~= nil ) then ChangeTooltip( s ) end
+						if ( BaseOnCursorEntered ~= nil ) then return BaseOnCursorEntered( s, ... ) end
+					end
+
+					pnl.OnCursorExited = function( s, ... )
+						if ( EndTooltip ~= nil ) then EndTooltip( s ) end
+						if ( BaseOnCursorExited ~= nil ) then return BaseOnCursorExited( s, ... ) end
+					end
+				end
+			end
+
+			return pnl
+		end
+
+		Msg( "[HL2SB]   tooltip hover wiring installed on vgui.Create\n" )
+	end
 
 	-- HL2SB: derma rewrite.  The copied GMod skin (skins/default.lua) and the
 	-- generated 39-control list (vgui_extra.lua) are gone to _legacy_gmod/;

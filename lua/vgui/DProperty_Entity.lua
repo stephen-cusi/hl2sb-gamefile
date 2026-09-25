@@ -58,7 +58,9 @@ function PANEL:Setup( vars )
 	local oldSetEnabled = self.SetEnabled
 	self.SetEnabled = function( slf, b )
 		btn:SetEnabled( b )
-		oldSetEnabled( b ) -- Also handle the text entry
+		-- GMod's own files drop the self here (prop_entity.lua:54); GMod's engine
+		-- tolerates SetEnabled(nil), this fork's luaL_checkboolean tags it. Pass it.
+		oldSetEnabled( slf, b ) -- Also handle the text entry
 	end
 
 end

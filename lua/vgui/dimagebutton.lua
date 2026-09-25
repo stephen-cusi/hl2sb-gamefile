@@ -79,10 +79,31 @@ function PANEL:GetKeepAspect()
 end
 
 function PANEL:SetMaterial( mat )
-	-- GMod's SetMaterial takes an IMaterial; store its path when possible.
+	-- GMod's SetMaterial takes an IMaterial or a path string; store the path.
+	if ( isstring( mat ) ) then return self:SetImage( mat ) end
 	if ( mat and mat.GetName ) then
 		self:SetImage( mat:GetName() )
 	end
+end
+
+--- GMod: DImageButton:SetImageVisible( b ) / GetImageVisible() -- show or hide
+--- the icon without clearing it (dimagebutton.lua:26-30).
+function PANEL:SetImageVisible( b )
+	self.m_bImageVisible = b and true or false
+end
+
+function PANEL:GetImageVisible()
+	return self.m_bImageVisible ~= false
+end
+
+--- GMod: DImageButton:SetDisabled( b ) (dimagebutton.lua:130-140; Panel:SetDisabled
+--- does not exist in this engine, so this is the image-button's own flag).
+function PANEL:SetDisabled( b )
+	self.m_bDisabled = b and true or false
+end
+
+function PANEL:GetDisabled()
+	return self.m_bDisabled == true
 end
 
 --- GMod: DImageButton:SizeToContents() -- the icon plus its caption.

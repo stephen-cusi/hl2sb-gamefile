@@ -149,7 +149,9 @@ function PANEL:Paint( w, h )
 	local stepH = h / steps
 
 	for i = 0, steps - 1 do
-		local alpha = 255 * ( ( i + 1 ) / steps )
+		-- value 1 is the TOP (UpdateFromCursor: f = 1 - y), so the strip at the
+		-- top of the bar is the OPAQUE one -- GMod paints gradient-u, opaque up
+		local alpha = 255 * ( 1 - i / steps )
 
 		surface.DrawSetColor( c.r or 255, c.g or 255, c.b or 255, alpha )
 		surface.DrawFilledRect( 0, math.floor( i * stepH ), w, math.ceil( ( i + 1 ) * stepH ) )

@@ -26,11 +26,92 @@ end
 --- header panel ("self.FileHeader = self.Files:AddColumn( "Files" ).Header" in
 --- lua/vgui/DFileBrowser.lua:180).  Here the header cell is created once per column
 --- and reused, so that reference stays valid across layouts.
+---
+--- The returned table also carries GMod's DListView_Column setter/getter surface
+--- (SetFixedWidth / SetDescending / SetTextAlign / SetSortable / ...) as plain
+--- fields: addons drive those on the object AddColumn returned, and without them
+--- every such call died with "attempt to call a nil value".  The per-column width
+--- (col.iWidth) feeds ColumnWidth below, which is what makes OnRequestResize and
+--- SetFixedWidth stick across PerformLayouts.
 function PANEL:AddColumn( strName )
 	local col = { name = tostring( strName or "" ), i = #self.m_tColumns + 1 }
 	self.m_tColumns[ col.i ] = col
 	self:RebuildHeader()
 	col.Header = self.m_tHeaderCells and self.m_tHeaderCells[ col.i ]
+
+	--- GMod: DListView_Column:SetFixedWidth( iSize ) -- fix the width and drop the
+	--- resize behaviour; here that is one stored width.
+	function col:SetFixedWidth( iSize )
+		iSize = math.max( 4, tonumber( iSize ) or 16 )
+		self.iWidth = iSize
+		local list = self.list
+		if ( list ~= nil ) then
+			list.m_bManual = true
+			list:RebuildHeader()
+			list:RelayoutRows()
+		end
+	end
+
+	function col:SetWidth( iSize )
+		self:SetFixedWidth( iSize )
+	end
+
+	function col:GetWidth()
+		return self.iWidth
+	end
+
+	function col:SetText( strName )
+		self.name = tostring( strName or "" )
+		local list = self.list
+		if ( IsValid( list ) and list.RebuildHeader ) then
+			if ( IsValid( self.Header ) ) then self.Header:SetText( self.name ) end
+		end
+	end
+
+	--- GMod: sortable flag -- recorded; SortByColumn always works here (the fork's
+	--- header click route carries no "non sortable" notion for plain tables).
+	function col:SetSortable( b )
+		self.bSortable = ( b ~= false )
+	end
+
+	function col:GetSortable()
+		return self.bSortable ~= false
+	end
+
+	function col:SetDescending( b )
+		self.bDesc = ( b == true )
+	end
+
+	function col:GetDescending()
+		return self.bDesc == true
+	end
+
+	function col:SetTextAlign( align )
+		self.iTextAlign = align
+	end
+
+	function col:GetTextAlign()
+		return self.iTextAlign
+	end
+
+	function col:SetMinWidth( iSize )
+		self.iMinWidth = tonumber( iSize )
+	end
+
+	function col:GetMinWidth()
+		return self.iMinWidth
+	end
+
+	function col:SetMaxWidth( iSize )
+		self.iMaxWidth = tonumber( iSize )
+	end
+
+	function col:GetMaxWidth()
+		return self.iMaxWidth
+	end
+
+	col.list = self
+
 	return col
 end
 
@@ -38,10 +119,27 @@ function PANEL:GetColumnCount()
 	return #self.m_tColumns
 end
 
+--- Fixed widths (col.iWidth, set through the column surface above) win over the
+--- even split; the remaining columns share what is left.
 function PANEL:ColumnWidth( i )
 	local n = #self.m_tColumns
 	if ( n == 0 ) then return self:GetWide() end
-	return math.floor( self:GetWide() / n )
+
+	local col = self.m_tColumns[ i ]
+	if ( col ~= nil and col.iWidth ~= nil ) then return col.iWidth end
+
+	local nFree = 0
+	local wFree = self:GetWide()
+	for _, c in ipairs( self.m_tColumns ) do
+		if ( c.iWidth ~= nil ) then
+			wFree = wFree - c.iWidth
+		else
+			nFree = nFree + 1
+		end
+	end
+
+	if ( nFree == 0 ) then return 0 end
+	return math.floor( math.max( 0, wFree ) / nFree )
 end
 
 --- GMod: DListView:GetColumnWidth( i ) -- the GMod spelling of ColumnWidth.
@@ -240,6 +338,54 @@ function PANEL:RebuildHeader()
 		self.m_tHeaderCells[ i ]:SetSize( self:ColumnWidth( i ), HEADER_H )
 		x = x + self:ColumnWidth( i )
 	end
+end
+
+--- GMod: DListView:OnRequestResize( SizingColumn, iSize ) -- a column drag (or an
+--- addon) asks for the sizing column to become iSize wide; the column to its right
+--- absorbs the difference (gmod/vgui/dlistview.lua:246).  SizingColumn arrives as a
+--- header cell, a column table from AddColumn, or a plain 1-based index.
+function PANEL:OnRequestResize( SizingColumn, iSize )
+	iSize = math.max( 4, math.floor( tonumber( iSize ) or 0 ) )
+
+	local idx
+	if ( isnumber( SizingColumn ) ) then
+		idx = SizingColumn
+	else
+		for i, c in ipairs( self.m_tColumns ) do
+			if ( c == SizingColumn or c.Header == SizingColumn ) then idx = i break end
+		end
+	end
+	if ( idx == nil ) then return end
+
+	local sizing = self.m_tColumns[ idx ]
+
+	-- Find the column to the right of this one
+	local right = nil
+	for i = idx + 1, #self.m_tColumns do
+		if ( self.m_tColumns[ i ].iWidth == nil ) then
+			right = self.m_tColumns[ i ]
+			break
+		end
+	end
+
+	local total = self:GetWide()
+	local fixed = 0
+	for _, c in ipairs( self.m_tColumns ) do
+		if ( c ~= sizing and c.iWidth ~= nil ) then fixed = fixed + c.iWidth end
+	end
+
+	-- Alter the size of the column on the right too, slightly
+	if ( right ~= nil ) then
+		local sizeChange = self:ColumnWidth( idx ) - iSize
+		right.iWidth = math.max( 4, self:ColumnWidth( right.i ) + sizeChange )
+		fixed = fixed + right.iWidth
+	end
+
+	sizing.iWidth = math.max( 4, math.min( iSize, total - fixed ) )
+	self.m_bManual = true
+
+	-- Invalidating will munge all the columns about and make it right
+	self:InvalidateLayout()
 end
 
 function PANEL:PerformLayout( w, h )

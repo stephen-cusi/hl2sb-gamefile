@@ -45,6 +45,49 @@ function PANEL:Fade( flDelay )
 	end )
 end
 
+--[[ GMod's DNotify is a CONTAINER (dnotify.lua): AddItem( panel, life ) adds a
+	panel to a re-stacking stack, GetItems/SetSpacing/SetAlignment/SetLife drive
+	the stack.  This fork's DNotify grew as a single card, so those container
+	names were all nil-call errors.  Both surfaces live here now: AddItem parents
+	the given panel in and stacks the children on the next think. --]]
+
+AccessorFunc( PANEL, "m_iSpacing", "Spacing", FORCE_NUMBER )
+AccessorFunc( PANEL, "m_iAlignment", "Alignment", FORCE_NUMBER )
+AccessorFunc( PANEL, "m_flLife", "Life", FORCE_NUMBER )
+
+function PANEL:AddItem( pnl, flLife )
+	if ( not IsValid( pnl ) ) then return end
+
+	pnl:SetParent( self )
+	self.m_tItems = self.m_tItems or {}
+	table.insert( self.m_tItems, pnl )
+
+	local life = flLife or self.m_flLife or 4
+	timer.Create( "dnotify_item_" .. tostring( pnl ), life, 1, function()
+		if ( IsValid( pnl ) ) then pnl:Remove() end
+	end )
+
+	self:InvalidateLayout( true )
+	return pnl
+end
+
+function PANEL:GetItems()
+	return self.m_tItems or {}
+end
+
+function PANEL:PerformLayout_Notify( w, h )
+	-- vertical stack, GMod's default alignment (BOTTOM alignment 4 in GMod's
+	-- enum; only the stacking matters here)
+	local y = 0
+	for _, pnl in ipairs( self:GetItems() ) do
+		if ( IsValid( pnl ) ) then
+			pnl:SetPos( 0, y )
+			pnl:SetSize( w, pnl:GetTall() )
+			y = y + pnl:GetTall() + ( self.m_iSpacing or 4 )
+		end
+	end
+end
+
 function PANEL:Paint( w, h )
 	w = w or self:GetWide()
 	h = h or self:GetTall()

@@ -146,6 +146,9 @@ end
 
 function PANEL:OnMousePressed( code )
 	if ( code ~= MOUSE_LEFT ) then return end
+	-- GMod refuses the drag on a disabled slider (dslider.lua:113-115); without
+	-- this a SetEnabled( false ) DNumSlider row still dragged and wrote its convar
+	if ( self.IsEnabled and not self:IsEnabled() ) then return end
 
 	self.m_bHeld = true
 	self:MouseCapture( true )

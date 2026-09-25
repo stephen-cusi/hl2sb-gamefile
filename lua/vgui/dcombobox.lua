@@ -21,6 +21,7 @@ function PANEL:Init()
 
 	self.m_pOptions = vgui.Create( "DPanel", nil, "Menu" )
 	self.m_pOptions:SetVisible( false )
+	self.m_pOptions.m_bIsMenu = true	-- the click-away watcher spares it
 	self.m_pOptions.Paint = function( pnl, w, h )
 		derma.SkinHook( "Paint", "Menu", pnl, w, h )
 	end
@@ -141,9 +142,41 @@ function PANEL:GetOptionByID( id )
 	return self.m_tOptions[ id ]
 end
 
---- GMod: DComboBox:GetSelected() -- the selected index.
+--- GMod: DComboBox:GetSelected() -- returns the TEXT and DATA of the selection
+--- (dcombobox.lua:106-118), not the index; nothing selected returns nothing.
 function PANEL:GetSelected()
-	return self.m_iSelected
+	if ( not self.m_iSelected or self.m_iSelected == 0 ) then return end
+
+	local opt = self.m_tOptions[ self.m_iSelected ]
+	return opt and opt.label or "", self.Data[ self.m_iSelected ]
+end
+
+--- GMod: DComboBox:GetSelectedID() -- the selected index (0 = none).
+function PANEL:GetSelectedID()
+	return self.m_iSelected or 0
+end
+
+--- GMod: DComboBox:GetOptionText( id ) / GetOptionData( id ).
+function PANEL:GetOptionText( id )
+	local opt = self.m_tOptions[ id ]
+	return opt and opt.label or ""
+end
+
+function PANEL:GetOptionData( id )
+	return self.Data[ id ]
+end
+
+--- GMod: DComboBox:GetOptionTextByData( data ) -- the data->text mapping helper
+--- (dcombobox.lua:54-72); convar binding drives its display through this.
+function PANEL:GetOptionTextByData( data )
+	for id, d in pairs( self.Data ) do
+		if ( d == data ) then
+			local opt = self.m_tOptions[ id ]
+			return opt and opt.label or ""
+		end
+	end
+
+	return ""
 end
 
 --- GMod: DComboBox:IsMenuOpen() -- prop_combo's IsEditing.
@@ -185,6 +218,30 @@ function PANEL:BuildOptions()
 end
 
 function PANEL:SetDropdownVisible( b )
+	if ( b ) then
+		-- behave like GMod's DermaMenu-backed dropdown: mutually exclusive with
+		-- every other open menu/popup, and closable by the click-away watcher
+		if ( CloseDermaMenus ~= nil ) then
+			CloseDermaMenus()
+		end
+
+		self.m_pOptions.Close = function( pnlOptions )
+			self:SetDropdownVisible( false )
+		end
+
+		if ( RegisterDermaMenuForClose ~= nil ) then
+			RegisterDermaMenuForClose( self.m_pOptions )
+		end
+
+		-- GMod sizes the dropdown to the widest entry at least as wide as the box
+		-- (Menu:SetMinimumWidth( self:GetWide() )); the fixed 140 clipped long labels.
+		local w = self:GetWide()
+		for _, o in ipairs( self.m_tOptionPanels or {} ) do
+			o:SetSize( w, 18 )
+		end
+		self.m_pOptions:SetSize( w, math.max( 18, ( #( self.m_tOptionPanels or {} ) ) * 18 + 2 ) )
+	end
+
 	self.m_pDown = b
 	self.m_pOptions:SetVisible( b )
 

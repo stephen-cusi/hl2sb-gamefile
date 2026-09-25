@@ -48,6 +48,17 @@ function PANEL:Toggle()
 	self:SetExpanded( self.m_bCollapsed )
 end
 
+--- GMod: DCollapsibleCategory:OnToggle( expanded ) -- the developer hook Toggle
+--- fires (dcategorycollapse.lua:209-231).
+function PANEL:OnToggle( expanded )
+end
+
+--- GMod: DCollapsibleCategory:DoExpansion( b ) -- programmatic expand/collapse
+--- without the OnToggle callback (dcategorycollapse.lua:233-238).
+function PANEL:DoExpansion( b )
+	self:SetExpanded( b )
+end
+
 --- GMod: DCollapsibleCategory:GetExpanded() / SetExpanded( expanded ) -- its
 --- AccessorFunc pair plus DoExpansion (gmod/vgui/dcategorycollapse.lua:48/198-233).
 --- This fork stores the state inverted in m_bCollapsed, and DCategoryHeader
@@ -58,6 +69,8 @@ function PANEL:GetExpanded()
 end
 
 function PANEL:SetExpanded( bExpanded )
+	local bWas = self:GetExpanded()
+
 	self.m_bCollapsed = not bExpanded
 
 	if ( IsValid( self.m_pBody ) ) then
@@ -65,6 +78,21 @@ function PANEL:SetExpanded( bExpanded )
 	end
 
 	self:InvalidateLayout( true )
+
+	-- GMod fires the developer hook when Toggle changed the state
+	-- (dcategorycollapse.lua:226-230)
+	if ( bWas ~= self:GetExpanded() ) then
+		self:OnToggle( self:GetExpanded() )
+	end
+end
+
+--- GMod: DCollapsibleCategory:SetHeaderHeight( h ) / GetHeaderHeight()
+--- (dcategorycollapse.lua:156-166).  The fork used a fixed HEAD_H; honour an
+--- override.
+AccessorFunc( PANEL, "m_iHeaderHeight", "HeaderHeight", FORCE_NUMBER )
+
+function PANEL:GetHeaderHeight()
+	return self.m_iHeaderHeight or HEAD_H
 end
 
 function PANEL:IsExpanded()
@@ -78,10 +106,12 @@ end
 function PANEL:PerformLayout( w, h )
 	w = w or self:GetWide()
 
-	self.m_pHeader:SetPos( 0, 0 )
-	self.m_pHeader:SetSize( w, HEAD_H )
+	local headH = self:GetHeaderHeight()
 
-	self.m_pBody:SetPos( 0, HEAD_H )
+	self.m_pHeader:SetPos( 0, 0 )
+	self.m_pHeader:SetSize( w, headH )
+
+	self.m_pBody:SetPos( 0, headH )
 	self.m_pBody:SetSize( w, self.m_bCollapsed and 0 or ( self.m_pContents and self.m_pContents:GetTall() or 0 ) )
 end
 

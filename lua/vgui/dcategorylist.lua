@@ -35,6 +35,37 @@ function PANEL:AddCategory( strName, strIcon, bOpen, iSortNum )
 	return entry
 end
 
+--- GMod: DCategoryList:Add( name, icon, help, opencat, table ) -- the wiki's
+--- entry point: returns a real DCollapsibleCategory whose SetContents/Add receive
+--- the row content (dcategorylist.lua:18-28 wraps AddCategory).  AddCategory stays
+--- as the fork's richer internal path; this adapter returns the category PANEL so
+--- `cat:SetContents( pnl )` / `cat:Add( ... )` behave like GMod's.
+function PANEL:Add( strName, strIcon, strHelp, bOpen, tHookTable )
+	local entry = self:AddCategory( strName, strIcon, bOpen )
+	if ( not entry ) then return end
+
+	entry.cat.Unwrap = entry.contents
+	return entry.cat
+end
+
+--- GMod: DCategoryList:AddItem( pnl, name ) -- a wrapped item panel
+--- (dcategorylist.lua:10-16): folds the panel into a new category's contents.
+function PANEL:AddItem( pnl, strName )
+	local cat = self:Add( strName or ( pnl.GetName and pnl:GetName() ) or "Category" )
+	if ( not cat ) then return end
+
+	cat:SetContents( pnl )
+	return cat
+end
+
+--- GMod: DCategoryList:UnselectAll() -- collapse-independent row de-selection
+--- used by the spawnmenu's selection machinery (dcategorylist.lua:37-47).
+function PANEL:UnselectAll()
+	for _, e in ipairs( self.m_tCategories ) do
+		if ( IsValid( e.cat ) and e.cat.UnselectAll ) then e.cat:UnselectAll() end
+	end
+end
+
 function PANEL:GetCategory( strName )
 	for _, e in ipairs( self.m_tCategories ) do
 		if ( e.name == strName ) then return e end

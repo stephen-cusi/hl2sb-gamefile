@@ -38,6 +38,13 @@ function PANEL:Init()
 	self.m_iScrollDelta = 0
 	self.m_iRange = 0
 	self.m_iPos = 0
+
+	-- GMod's documented member names for the same two children
+	-- (wiki.facepunch.com/gmod/DScrollPanel: "pnlCanvas" / "pnlVBar"; GMod's own
+	-- files read scroll.pnlCanvas all over).  They point at the same panels, so
+	-- both spellings stay valid for the life of the control.
+	self.pnlCanvas = self.m_pCanvas
+	self.pnlVBar = self.m_pVBar
 end
 
 function PANEL:GetCanvas()
@@ -90,8 +97,14 @@ function PANEL:SetVScrollRange( iMin, iMax )
 end
 
 function PANEL:SetValue( iVal )
+	local old = self.m_iPos
 	self.m_iPos = math.Clamp( iVal or 0, 0, math.max( 0, self.m_iRange ) )
 	self.m_pVBar:SetValue( self.m_iRange > 0 and ( self.m_iPos / self.m_iRange ) or 0 )
+
+	if ( old ~= self.m_iPos and self.OnVScroll ) then
+		local ok, err = pcall( self.OnVScroll, self, self.m_iPos )
+		if ( not ok ) then Warning( "DScrollPanel:OnVScroll failed: " .. tostring( err ) .. "\n" ) end
+	end
 end
 
 function PANEL:GetValue()
@@ -205,6 +218,23 @@ end
 --- GMod's Rebuild: measure the children again instead of trusting the last range.
 function PANEL:Rebuild()
 	self:InvalidateContentSize( true )
+end
+
+--- GMod: DScrollPanel:SetScrollY( pixels ) / SetScrollX -- the wiki spellings.
+--- This fork scrolls vertically only; SetScrollX is recorded (m_bHorizontalScroll
+--- exists but no bar drives it yet).
+function PANEL:SetScrollY( pixels )
+	self:SetValue( tonumber( pixels ) or 0 )
+end
+
+function PANEL:SetScrollX( pixels )
+	self.m_iScrollX = tonumber( pixels ) or 0
+end
+
+--- GMod: DScrollPanel:OnVScroll( scrollPos ) -- the wiki callback fired when the
+--- scroll position changes.  Raise it from SetValue so ports that implement it run.
+function PANEL:OnVScroll( scrollPos )
+	-- for override
 end
 
 derma.DefineControl( "DScrollPanel", "HL2SB scrolling container", PANEL, "DPanel" )

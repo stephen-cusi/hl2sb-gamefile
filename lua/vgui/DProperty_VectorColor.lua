@@ -88,8 +88,11 @@ function PANEL:Setup( vars )
 
 			if ( isvector( self.VectorValue ) ) then
 				-- convert color to vector
-				local vec = Vector( newcol.r / 255, newcol.g / 255, newcol.b / 255 )
-				self:ValueChanged( tostring( vec ), true )
+				-- This engine's tostring(Vector) is "Vector: (%f, %f, %f)"
+				-- (lvector.cpp:442) and Vector(str) parses "%f %f %f" -- the round trip
+				-- through tostring snapped every picked colour to (0,0,0).  Emit GMod's
+				-- documented space-separated form directly.
+				self:ValueChanged( string.format( "%f %f %f", newcol.r / 255, newcol.g / 255, newcol.b / 255 ), true )
 			else
 				self:ValueChanged( ColorToString( newcol ), true )
 			end
@@ -130,7 +133,9 @@ function PANEL:Setup( vars )
 	local oldSetEnabled = self.SetEnabled
 	self.SetEnabled = function( slf, b )
 		btn:SetEnabled( b )
-		oldSetEnabled( b ) -- Also handle the text entry
+		-- GMod's own files drop the self here (prop_entity.lua:54); GMod's engine
+		-- tolerates SetEnabled(nil), this fork's luaL_checkboolean tags it. Pass it.
+		oldSetEnabled( slf, b ) -- Also handle the text entry
 	end
 
 end

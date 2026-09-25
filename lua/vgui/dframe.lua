@@ -54,6 +54,14 @@ function PANEL:Init()
 	-- body panel: GMod's DFrame content docks into this, not the frame itself
 	self.m_pBody = vgui.Create( "DPanel", self, "Body" )
 	self.m_pBody:SetDrawBackground( false )
+
+	-- GMod docks the title bar area out of the frame's dock space
+	-- (gmod/vgui/dframe.lua:65 `self:DockPadding( 5, 24+5, 5, 5 )`): children
+	-- docked DIRECTLY onto the frame (a common addon idiom -- only frame:Add()
+	-- routes to the body) were laid out across the painted title bar.
+	if ( self.SetDockPadding ) then
+		self:SetDockPadding( 0, TITLEBAR_TALL, 0, 0 )
+	end
 end
 
 -- HL2SB: GMod's DFrame:Add() parents the child to the body (the area below the
@@ -344,9 +352,25 @@ function PANEL:PerformLayout( w, h )
 	self.m_pBody:SetSize( w, math.max( 0, h - TITLEBAR_TALL ) )
 end
 
+--- GMod: DFrame:SetBackgroundBlur( b ) / GetBackgroundBlur -- "Should the screen
+--- behind the frame be blurred while the frame is visible" (gmod/vgui/dframe.lua:14).
+--- This engine has no blur path; the frame's Paint draws the dim instead, through
+--- the same Derma_DrawBackgroundBlur GMod's dialogs call from Paint.
+function PANEL:SetBackgroundBlur( b )
+	self.m_bBackgroundBlur = b and true or false
+end
+
+function PANEL:GetBackgroundBlur()
+	return self.m_bBackgroundBlur == true
+end
+
 function PANEL:Paint( w, h )
 	w = w or self:GetWide()
 	h = h or self:GetTall()
+
+	if ( self.m_bBackgroundBlur and Derma_DrawBackgroundBlur ~= nil ) then
+		Derma_DrawBackgroundBlur( self, SysTime() )
+	end
 
 	derma.SkinHook( "Paint", "Frame", self, w, h )
 	derma.SkinHook( "Paint", "FrameTitle", self, w, TITLEBAR_TALL )

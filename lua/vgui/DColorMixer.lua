@@ -67,12 +67,16 @@ function PANEL:Init()
 
 			self.cube:SetBaseRGB( HSVToColor( h, 1, 1 ) )
 			self.cube:SetColor( HSVToColor( h, s, v ) )
-			self:UpdateColor( self.cube:GetRGB() )
+			local col = self.cube:GetRGB()
+			col.a = self.m_Color.a
+			self:UpdateColor( col )
 		end
 	end
 
 	if ( self.cube ) then
 		self.cube.OnUserChanged = function( _, col )
+			-- the cube only knows RGB: keep the mixer's alpha (GMod dcolormixer.lua:114)
+			col.a = self.m_Color.a
 			self:UpdateColor( col )
 		end
 	end
@@ -202,7 +206,9 @@ end
 function PANEL:UpdateColor( col )
 	local c = col or ( IsValid( self.cube ) and self.cube:GetRGB() ) or self.m_Color
 
-	self.m_Color = Color( c.r or 255, c.g or 255, c.b or 255, self.m_Color.a or 255 )
+	-- keep the INCOMING alpha (GMod dcolormixer.lua:326 stores col as-is); the
+	-- old discard here made the alpha bar a no-op decoration
+	self.m_Color = Color( c.r or 255, c.g or 255, c.b or 255, c.a or self.m_Color.a or 255 )
 
 	if ( IsValid( self.alphabar ) ) then self.alphabar:SetBarColor( self.m_Color ) end
 	if ( IsValid( self.Preview ) ) then self.Preview:SetColor( self.m_Color, true ) end
@@ -290,10 +296,23 @@ end
 function PANEL:ConVarThink()
 	if ( not ( ConVarExists and ConVarExists ) ) then return end
 
-	self:DoConVarThink( self.m_ConVarR )
-	self:DoConVarThink( self.m_ConVarG )
-	self:DoConVarThink( self.m_ConVarB )
-	self:DoConVarThink( self.m_ConVarA )
+	-- Gather the per-channel probes first, THEN resync through SetColor: the old
+	-- version patched only m_Color + the preview + the ONE changed label, so the
+	-- cube grip, hue indicator, alpha bar and the other wangs kept the old colour,
+	-- and ValueChanged never fired for an external write (GMod dcolormixer.lua
+	-- :361-380 does SetColor( Color( r, g, b, a ) )).
+	local r, g, b, a
+	local changed = false
+
+	if ( self:DoConVarThink( self.m_ConVarR ) ) then changed = true end
+	if ( self:DoConVarThink( self.m_ConVarG ) ) then changed = true end
+	if ( self:DoConVarThink( self.m_ConVarB ) ) then changed = true end
+	if ( self:DoConVarThink( self.m_ConVarA ) ) then changed = true end
+
+	if ( changed and self.m_Color ) then
+		local c = self.m_Color
+		self:SetColor( Color( c.r, c.g, c.b, c.a ) )
+	end
 end
 
 --- ⚠️ This fork's scripted panels dispatch OnThink, not Think (see the note in

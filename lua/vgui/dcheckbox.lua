@@ -109,6 +109,23 @@ function PANEL:OnMousePressed( iMouseCode )
 	if ( MOUSE_LEFT ~= nil and iMouseCode ~= MOUSE_LEFT ) then return end
 	if ( self.IsEnabled and not self:IsEnabled() ) then return end
 
+	-- GMod toggles on DoClick (release) with Depressed marking the held state;
+	-- DProperties highlights IsEditing rows off that flag.
+	self.m_bDepressed = true
+end
+
+function PANEL:OnMouseReleased( iMouseCode )
+	local wasHeld = self.m_bDepressed == true
+	self.m_bDepressed = false
+
+	if ( not wasHeld ) then return end
+	-- the box maintains m_bHover (OnCursorEntered/Exited): dragging off cancels
+	if ( self.m_bHover == false ) then return end
+
+	self:DoClick()
+end
+
+function PANEL:DoClick()
 	self:Toggle()
 end
 

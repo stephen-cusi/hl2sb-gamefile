@@ -194,7 +194,10 @@ function PANEL:OnCursorMoved( x, y )
 	local maxzoom = 10 ^ ( 1 + self:GetDecimals() )
 
 	zoom = math.Clamp( zoom + ( ( y * -0.6 ) / ControlScale ), 0.01, maxzoom )
-	if ( !input.IsKeyDown( KEY_LSHIFT ) ) then self:SetZoom( zoom ) end
+	-- GMod's enum is KEY_LSHIFT; this engine publishes the same key as
+	-- KEY_SHIFT_LEFT (public/lenumerations_shared.cpp:798) -- with GMod's name
+	-- this read nil and the first drag threw "bad argument #1 to 'IsKeyDown'".
+	if ( !input.IsKeyDown( KEY_LSHIFT or KEY_SHIFT_LEFT ) ) then self:SetZoom( zoom ) end
 
 	local oldValue = self:GetFloatValue()
 	local value = self:GetFloatValue()

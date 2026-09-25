@@ -16,7 +16,9 @@ function PANEL:Init()
 	self.m_strFont = "DermaDefault"
 	self.m_colText = Color( 228, 228, 228, 255 )
 	self.m_bWrap = false
-	self.m_iAlign = 0	-- 0 left, 1 center, 2 right
+	-- vgui2/GMod Label default alignment is a_west (3: vertically MIDDLE, left);
+	-- the old 0 here drew every taller-than-text label pinned to the top edge.
+	self.m_iAlign = 3
 end
 
 function PANEL:SetText( strText )
@@ -43,6 +45,10 @@ end
 function PANEL:GetTextColor()
 	return self.m_colText
 end
+
+-- GMod: DLabel:SetColor / GetColor are the same slot (dlabel.lua:57-63).
+PANEL.GetColor = PANEL.GetTextColor
+PANEL.SetColor = PANEL.SetTextColor
 
 --- GMod: DLabel:SetDark( b ) / SetBright( b ) -- "sets the text of the label to be
 --- dark/bright colored in accordance with the currently active Derma skin"
@@ -247,6 +253,13 @@ end
 --- GMod: with SetAutoStretchVertical the label keeps its width and grows (or
 --- shrinks) to the wrapped text, instead of being resized to it.
 function PANEL:PerformLayout( w, h )
+	-- GMod re-runs ApplySchemeSettings on every layout (dlabel.lua:150-154),
+	-- which is what makes UpdateColours overrides recolour on state change
+	-- (DCategoryHeader's collapsed/expanded caption, addon subclasses).
+	if ( self.UpdateColours and self.GetSkin ) then
+		self:ApplySchemeSettings()
+	end
+
 	if ( not self.m_bAutoStretchVertical ) then return end
 
 	local _, th = self:GetContentSize()
@@ -276,6 +289,7 @@ function PANEL:OnMousePressed( mousecode )
 	if ( !self:IsEnabled() ) then return end
 
 	self.m_bLabelDepressed = true
+	self:MouseCapture( true )
 	self:DragMousePress( mousecode )
 end
 
@@ -287,6 +301,8 @@ end
 
 function PANEL:OnMouseReleased( mousecode )
 	if ( !self:IsEnabled() ) then return end
+
+	self:MouseCapture( false )
 
 	-- GMod checks this before the hover/click handling, because a drag that ends
 	-- outside the label must not also click it.
@@ -308,11 +324,37 @@ function PANEL:OnMouseReleased( mousecode )
 	elseif ( mousecode == MOUSE_MIDDLE ) then
 		self:DoMiddleClick()
 	elseif ( mousecode == MOUSE_LEFT ) then
+		self:DoClickInternal()
 		self:DoClick()
 	end
 end
 
+--- GMod's engine fires DoClickInternal before DoClick (dlabel.lua's toggle uses
+--- it); keep the stage so toggle labels and future overrides behave.
+function PANEL:DoClickInternal()
+	if ( self:GetIsToggle() ) then
+		self:Toggle()
+	end
+end
+
 function PANEL:DoClick()
+end
+
+--- GMod: the toggle-label family (dlabel.lua:16-17, 76-83, 273-274) --
+--- SetIsToggle( true ) makes a label clickable, flipping state on click.
+AccessorFunc( PANEL, "m_bIsToggle", "IsToggle", FORCE_BOOL )
+
+function PANEL:Toggle()
+	if ( !self:GetIsToggle() ) then return end
+
+	self:SetToggle( !self:GetToggle() )
+	self:OnToggled( self:GetToggle() )
+end
+
+AccessorFunc( PANEL, "m_bToggle", "Toggle", FORCE_BOOL )
+
+--- GMod: OnToggled( bToggled ) -- the developer override.
+function PANEL:OnToggled( bToggled )
 end
 
 function PANEL:DoRightClick()
@@ -399,3 +441,13 @@ function PANEL:Paint( w, h )
 end
 
 derma.DefineControl( "DLabel", "HL2SB text label", PANEL, "DPanel" )
+
+--- GMod: the global Label( strText, parent ) helper (dlabel.lua:310-317,
+--- wiki "Global.Label") -- a plain text label, auto-sized to its caption.
+function Label( strText, parent )
+	local lbl = vgui.Create( "DLabel", parent )
+	lbl:SetText( strText or "" )
+	lbl:SizeToContents()
+	lbl:SetAutoStretchVertical( true )
+	return lbl
+end

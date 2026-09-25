@@ -105,8 +105,11 @@ function PANEL:SizeToContents()
 end
 
 function PANEL:OnMousePressed( code )
-	if ( code == MOUSE_RIGHT ) then
-		self:DoRightClick()
+	-- GMod fires DoMiddleClick on PRESS (dlabel.lua:259-261); right-click is
+	-- fired on RELEASE below, gated by IsEnabled like GMod's dlabel.lua:250-252
+	-- (the old press-time right-click here fired even on disabled buttons).
+	if ( code == MOUSE_MIDDLE ) then
+		self:DoMiddleClick()
 		return
 	end
 
@@ -156,10 +159,18 @@ function PANEL:OnMouseReleased( code )
 		return
 	end
 
+	if ( code == MOUSE_RIGHT ) then
+		if ( self.m_bEnabled and wasDepressed and self.m_bHover ~= false ) then
+			self:DoRightClick()
+		end
+		return
+	end
+
 	if ( not self.m_bEnabled ) then return end
 	if ( not wasDepressed ) then return end
 	if ( self.m_bHover == false ) then return end
 
+	self:DoClickInternal()
 	self:DoClick()
 end
 
@@ -171,11 +182,42 @@ end
 function PANEL:DoClick()
 end
 
+--- GMod's engine fires DoClickInternal BEFORE DoClick on every button
+--- (dmenuoption's checkable toggle rides on it); this stage is where the
+--- SetActionFunction / SetConsoleCommand callbacks run so a script assigning
+--- btn.DoClick does not strand them.
+function PANEL:DoClickInternal()
+	if ( self.m_fnAction ) then
+		local ok, err = pcall( self.m_fnAction, self )
+		if ( not ok ) then Warning( "DButton action failed: " .. tostring( err ) .. "\n" ) end
+	end
+
+	if ( self.m_strConCommand ~= nil and self.m_strConCommand ~= "" ) then
+		if ( RunConsoleCommand ~= nil ) then
+			RunConsoleCommand( self.m_strConCommand, self.m_strConArgs )
+		end
+	end
+end
+
 --- GMod's right-click hook.
 function PANEL:DoRightClick()
 end
 
-function PANEL:OnMouseReleasedRight( code )
+--- GMod's middle-click hook (dlabel.lua:259-261); DBinder's reset relies on it.
+function PANEL:DoMiddleClick()
+end
+
+--- GMod: DButton:SetConsoleCommand( command, args ) -- click runs the command
+--- (gmod wiki); DForm guards its absence, addons don't.
+function PANEL:SetConsoleCommand( strCommand, strArgs )
+	self.m_strConCommand = tostring( strCommand or "" )
+	self.m_strConArgs = strArgs and tostring( strArgs ) or ""
+end
+
+--- GMod: DButton:SetActionFunction( fn ) / SetConsoleCommand's Lua twin -- kept as
+--- a stored callback fired from DoClick for the "Button" compat control below.
+function PANEL:SetActionFunction( fn )
+	self.m_fnAction = fn
 end
 
 --- GMod: Panel:SetContentAlignment( align ) / SetTextInset( x, y ), using
@@ -330,3 +372,11 @@ function PANEL:Paint( w, h )
 end
 
 derma.DefineControl( "DButton", "HL2SB push button", PANEL, "DPanel" )
+
+--[[ GMod's lua/vgui/dbutton.lua:179-193 registers a separate "Button" control for
+	backwards compatibility (SetActionFunction-based).  Nothing here means that a
+	`vgui.Create( "Button" )` built the engine's C Button -- which, per the header
+	note at the top of this file, never consults a Lua DoClick, so addon buttons
+	were silently unclickable.  Register the same table under GMod's name. ]]
+
+derma.DefineControl( "Button", "GMod backwards-compatibility button", PANEL, "DPanel" )

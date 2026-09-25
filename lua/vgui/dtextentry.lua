@@ -166,13 +166,44 @@ function PANEL:GetPlaceholderText()
 	return self.m_strPlaceholder or ""
 end
 
---- GMod idiom: replace the OnEnter field with a callable.
+--- GMod idiom: replace the OnEnter field with a callable.  The engine dispatch
+--- (game/client/lua/scripted_controls/lTextEntry.h) now pushes the entry's text
+--- as the argument and only fires when the base accepts the enter key
+--- (single-line, or multiline with send-new-lines) -- GMod's signature.
 function PANEL:OnEnter( strText )
 	if ( self.OnChange ) then self:OnChange( self ) end
 
 	if ( self.OnValueChange ) then
-		self:OnValueChange( self:GetValue() )
+		self:OnValueChange( strText or self:GetValue() )
 	end
+end
+
+--- GMod: DTextEntry:GetInt() / GetFloat() -- the documented getters (engine
+--- spells GetValueAsInteger / GetValueAsFloat).
+function PANEL:GetInt()
+	if ( self.GetValueAsInteger ) then return self:GetValueAsInteger() end
+	return tonumber( self:GetValue() ) or 0
+end
+
+function PANEL:GetFloat()
+	if ( self.GetValueAsFloat ) then return self:GetValueAsFloat() end
+	return tonumber( self:GetValue() ) or 0.0
+end
+
+--- GMod: DTextEntry:SetEnterAllowed( b ) / GetEnterAllowed() -- multiline
+--- entries swallow the enter key unless allowed; recorded here (the engine's
+--- multiline gate reads its own flag).
+AccessorFunc( PANEL, "m_bEnterAllowed", "EnterAllowed", FORCE_BOOL )
+
+--- GMod: DTextEntry:SetCaretPos( i ) / GetCaretPos() -- the wiki spellings of
+--- the engine's cursor-position pair.
+function PANEL:SetCaretPos( i )
+	if ( self.SetCursorPosition ) then return self:SetCursorPosition( tonumber( i ) or 0 ) end
+end
+
+function PANEL:GetCaretPos()
+	if ( self.GetCursorPosition ) then return self:GetCursorPosition() end
+	return 0
 end
 
 --- GMod: DTextEntry:SetNumeric( b ) -- "Sets whether or not the text entry will

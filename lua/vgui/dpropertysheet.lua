@@ -65,7 +65,14 @@ end
 --- GMod: DPropertySheet:AddSheet( label, panel, material, NoStretchX, NoStretchY ) ->
 --- the sheet entry.  ⚠️ The 4th/5th arguments mean "do NOT stretch this axis" in
 --- GMod (every GenerateExample in GMod passes `true, true`), not "stretch".
-function PANEL:AddSheet( strLabel, pnl, strIcon, bNoStretchX, bNoStretchY )
+function PANEL:AddSheet( strLabel, pnl, strIcon, bNoStretchX, bNoStretchY, strTooltip )
+	-- GMod halts gracefully on a dead page panel (dpropertysheet.lua:177-181)
+	-- instead of throwing out of SetParent.
+	if ( not IsValid( pnl ) ) then
+		ErrorNoHalt( "DPropertySheet:AddSheet - invalid panel!\n" )
+		return
+	end
+
 	local tab = vgui.Create( "DTab", self.m_pTabBar, "Tab" )
 	tab:Setup( strLabel, self, pnl, strIcon )
 
@@ -73,6 +80,11 @@ function PANEL:AddSheet( strLabel, pnl, strIcon, bNoStretchX, bNoStretchY )
 	pnl:SetVisible( false )
 	pnl.NoStretchX = bNoStretchX
 	pnl.NoStretchY = bNoStretchY
+
+	-- GMod's 6th argument: the sheet tab's tooltip (dpropertysheet.lua:175-188).
+	if ( strTooltip and tab.SetTooltip ) then
+		tab:SetTooltip( strTooltip )
+	end
 
 	-- both naming schemes, so GMod code (entry.Name/.Tab/.Panel) and this fork's
 	-- own layout code (entry.label/.tab/.pnl) read the same entry
@@ -85,6 +97,82 @@ function PANEL:AddSheet( strLabel, pnl, strIcon, bNoStretchX, bNoStretchY )
 	if ( #self.m_tTabs == 1 ) then self:Activate( entry ) end
 	self:InvalidateLayout( true )
 	return entry
+end
+
+--- GMod: DPropertySheet:GetItems() -- the sheet entries addons iterate
+--- (dpropertysheet.lua:248-252).  The fork kept the list in Items but never
+--- exposed the getter.
+function PANEL:GetItems()
+	return self.m_tTabs
+end
+
+--- GMod: DPropertySheet:SetFadeTime / GetFadeTime, SetShowIcons / GetShowIcons
+--- (accessors around dpropertysheet.lua:153-155).  Recorded only: this fork
+--- switches tabs instantly and draws icons through DTab.
+AccessorFunc( PANEL, "m_fFadeTime", "FadeTime", FORCE_NUMBER )
+AccessorFunc( PANEL, "m_bShowIcons", "ShowIcons", FORCE_BOOL )
+
+--- GMod: DPropertySheet:SwitchToName( name ) (dpropertysheet.lua:376-389).
+function PANEL:SwitchToName( name )
+	for _, e in ipairs( self.m_tTabs ) do
+		if ( e.Name == name or e.label == name ) then
+			self:SetActiveTab( e.Tab )
+			return
+		end
+	end
+end
+
+--- GMod: DPropertySheet:CloseTab( tab, bRemovePanelToo ) (dpropertysheet.lua:405-443).
+function PANEL:CloseTab( tab, bRemovePanelToo )
+	local tabWasActive = self:GetActiveTab() == tab
+
+	for k, e in ipairs( self.m_tTabs ) do
+		if ( e.Tab == tab ) then
+			table.remove( self.m_tTabs, k )
+
+			if ( bRemovePanelToo and IsValid( e.Panel ) ) then
+				e.Panel:Remove()
+			end
+
+			if ( IsValid( tab ) ) then tab:Remove() end
+			break
+		end
+	end
+
+	if ( tabWasActive ) then
+		local newTab = self.m_tTabs[ 1 ]
+		self:SetActiveTab( newTab and newTab.Tab or nil )
+	end
+
+	self:InvalidateLayout( true )
+end
+
+--- GMod: DPropertySheet:Clear() -- remove every sheet (dpropertysheet.lua:445-461).
+function PANEL:Clear()
+	for _, e in ipairs( self.m_tTabs ) do
+		if ( IsValid( e.Tab ) ) then e.Tab:Remove() end
+		if ( IsValid( e.Panel ) ) then e.Panel:Remove() end
+	end
+
+	self.m_tTabs = {}
+	self.Items = self.m_tTabs
+	self.m_pActive = nil
+	self.m_pActiveTab = nil
+	self:InvalidateLayout( true )
+end
+
+--- GMod: DPropertySheet:SizeToContentWidth() (dpropertysheet.lua:359-374) --
+--- widen to the widest page plus padding.
+function PANEL:SizeToContentWidth()
+	local widest = 0
+
+	for _, e in ipairs( self.m_tTabs ) do
+		if ( IsValid( e.Panel ) and e.Panel.GetWide ) then
+			widest = math.max( widest, e.Panel:GetWide() )
+		end
+	end
+
+	self:SetWide( widest + self:GetPadding() * 2 )
 end
 
 function PANEL:Activate( entry )

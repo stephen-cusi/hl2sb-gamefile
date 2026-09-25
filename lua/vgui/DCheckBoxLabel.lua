@@ -49,10 +49,21 @@ function PANEL:Toggle()
 end
 
 --- GMod: SetFont( name ) -- a font NAME.  The skin reads pnl.m_strDermaFont, so
---- this really does change the caption's font.
+--- this really does change the caption's font.  GMod's SetText/SetFont both
+--- resize the control afterwards (dcheckbox.lua:149-161) -- without the resize
+--- the default-size panel clipped every longer caption.
 function PANEL:SetFont( strFont )
 	self.m_strDermaFont = strFont
 	self:InvalidateLayout( true )
+	self:SizeToContents()
+end
+
+--- GMod: DCheckBoxLabel:SetText( text ) -- caption update + resize (the base
+--- DCheckBox version only stores the text).
+function PANEL:SetText( strText )
+	self.m_strText = tostring( strText or "" )
+	self:InvalidateLayout( true )
+	self:SizeToContents()
 end
 
 --- GMod: SetTextColor( color ).  The skin's text helper prefers a per-panel
@@ -62,16 +73,30 @@ function PANEL:SetTextColor( clr )
 end
 
 --- GMod: "sets the text of the DCheckBoxLabel to be dark colored in accordance
---- with the currently active Derma skin".  This fork's built-in skin does not
---- define DCheckBoxLabel text colours yet, so these two are what paints.
+--- with the currently active Derma skin".  The old pair hardcoded Color(60,60,60)
+--- for dark -- near-invisible on this fork's dark skin.  Resolve the skin's
+--- Colours.Label.Dark like DLabel does (fallback keeps the old colour).
 function PANEL:SetDark( bDark )
 	self.m_bDark = bDark and true or false
 
-	self:SetTextColor( self.m_bDark and Color( 60, 60, 60, 255 ) or Color( 255, 255, 255, 255 ) )
+	local clr = Color( 60, 60, 60, 255 )
+
+	if ( derma.GetSkinTable ~= nil ) then
+		local ok, skin = pcall( derma.GetSkinTable )
+		if ( ok and skin and skin.Colours and skin.Colours.Label and skin.Colours.Label.Dark ) then
+			clr = skin.Colours.Label.Dark
+		end
+	end
+
+	self:SetTextColor( self.m_bDark and clr or Color( 255, 255, 255, 255 ) )
 end
 
 function PANEL:SetBright( bBright )
-	self:SetDark( not bBright )
+	self.m_bBright = bBright and true or false
+
+	if ( bBright ) then
+		self:SetDark( false )
+	end
 end
 
 --- GMod: "sizes the panel to the size of the internal DLabel and DButton".

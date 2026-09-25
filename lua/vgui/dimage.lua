@@ -47,7 +47,9 @@ function PANEL:Init()
 	self.m_strMatName = ""
 	self.m_strFailsafe = ""
 	self.m_colImage = Color( 255, 255, 255, 255 )
-	self.m_bKeepAspect = true
+	-- GMod's default is KEEP-ASPECT OFF (dimage.lua:16 SetKeepAspect( false )):
+	-- a DImage fills its rect; the old true here letterboxed every addon image
+	self.m_bKeepAspect = false
 	self.m_iTexture = nil
 end
 
@@ -82,6 +84,7 @@ end
 function PANEL:GetFailsafeMatName() return self.m_strFailsafe end
 
 function PANEL:SetMaterial( mat )
+	if ( isstring( mat ) ) then return self:SetImage( mat ) end
 	if ( mat and mat.GetName ) then
 		self:SetImage( mat:GetName() )
 	end
@@ -94,7 +97,7 @@ end
 function PANEL:SetImageColor( col ) self.m_colImage = col or Color( 255, 255, 255, 255 ) end
 function PANEL:GetImageColor() return self.m_colImage end
 
-function PANEL:SetKeepAspect( b ) self.m_bKeepAspect = ( b ~= false ) end
+function PANEL:SetKeepAspect( b ) self.m_bKeepAspect = b and true or false end
 function PANEL:GetKeepAspect() return self.m_bKeepAspect end
 
 --- Resolve (once) and answer the texture id, falling back to the backup name.
