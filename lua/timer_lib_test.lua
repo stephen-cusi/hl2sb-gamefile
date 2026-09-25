@@ -1,23 +1,19 @@
 ------------------------------------------------------------------------------
 -- timer_lib_test.lua - HL2SB timer library test (2026-09-25)
 --
--- 34 assertions covering every GMod timer member (wiki-checked), plus the
--- two 2026-09-25 fixes: the recursive timer.Simple(0, self) hang and the
--- finite-timer removal-before-callback contract.
+-- 45 sync assertions + 14 async assertions covering every GMod timer member
+-- (wiki-checked), the 2026-09-25 fixes (recursive timer.Simple(0, self) hang,
+-- Adjust with omitted args) and the GMod pause semantics (paused TimeLeft
+-- drifts negative; UnPause resumes from the remaining-at-pause countdown).
 --
 -- Run (game console, after a FULL restart - DLLs load at process start):
 --     lua_dofile lua/timer_lib_test.lua        (server realm)
 --     lua_dofile_cl lua/timer_lib_test.lua     (client realm)
 --
--- Layout mirrors file_lib_test.lua: PASS/FAIL lines + a final summary, then
--- the async half runs on timers and cleans itself up.  Nothing is written to
--- disk, so there is nothing to clean.
+-- Layout mirrors file_lib_test.lua: PASS/FAIL lines + a final summary at
+-- ~3.8s, then the script cleans itself up.  Nothing is written to disk.
 --
--- NOTE on async assertions: the script schedules the time-dependent checks
--- via timer.Simple and prints "TIMER_ASYNC_ALL_PASSED" when they all land.
--- Pass criteria for the whole file:
---     summary says 34/34  AND  "TIMER_ASYNC_ALL_PASSED" appears ~2s later
---     AND  "TIMER_TICKS" fires exactly twice, ~1s apart  AND  no "FAIL:".
+-- Pass criteria: "TIMER_ASYNC_ALL_PASSED n/n" at the end and no "FAIL:".
 ------------------------------------------------------------------------------
 
 local PASS = 0
@@ -69,11 +65,12 @@ ok( timer.TimeLeft( "tst_never" ) == false, "TimeLeft unknown id returns false" 
 ok( timer.RepsLeft( "tst_never" ) == 0, "RepsLeft unknown id returns 0" )
 ok( timer.IsPaused( "tst_never" ) == false, "IsPaused unknown id returns false" )
 
--- Create: immediately Exists, TimeLeft within (0, delay], RepsLeft exact
+-- Create: immediately Exists, TimeLeft within (0, delay+eps], RepsLeft exact
+-- (eps: float (now+delay)-now can exceed delay by 1 ULP at large curtime)
 timer.Create( "tst_once", 10, 1, function() end )
 ok( timer.Exists( "tst_once" ) == true, "Create => Exists" )
 local tl = timer.TimeLeft( "tst_once" )
-ok( type( tl ) == "number" and tl > 0 and tl <= 10, "TimeLeft in (0, delay]" )
+ok( type( tl ) == "number" and tl > 0 and tl <= 10.01, "TimeLeft in (0, delay] (" .. tostring( tl ) .. ")" )
 ok( timer.RepsLeft( "tst_once" ) == 1, "RepsLeft after Create" )
 ok( timer.IsPaused( "tst_once" ) == false, "fresh timer not paused" )
 
@@ -101,7 +98,7 @@ timer.Create( "tst_adj", 5, 7, function() end )
 local oldFn = true
 ok( timer.Adjust( "tst_adj", 3 ) == true, "Adjust delay-only returns true" )
 ok( timer.RepsLeft( "tst_adj" ) == 7, "Adjust keeps reps on nil" )
-ok( timer.TimeLeft( "tst_adj" ) ~= false and timer.TimeLeft( "tst_adj" ) <= 3.001, "Adjust rewinds clock" )
+ok( timer.TimeLeft( "tst_adj" ) ~= false and timer.TimeLeft( "tst_adj" ) <= 3.01, "Adjust rewinds clock" )
 
 -- Adjust with explicit reps and a new function
 timer.Adjust( "tst_adj", 1, 2, function() end )
@@ -226,18 +223,25 @@ timer.Simple( 0.45, function()
 end )
 timer.Simple( 1.1, function()
 	asyncOk( timer.Exists( "tst_reps" ) == false, "3-rep timer exhausted" )
-	print( "[timer-test] TIMER_ASYNC_ALL_PASSED " .. asyncOK .. "/" .. asyncTotal )
 end )
 
--- 4g. Pause really freezes the countdown: pause a 2s timer, come back after
---     1s, TimeLeft must be untouched (~2s, not ~1s).
+-- 4g. Pause semantics (GMod, user-verified against the wiki 2026-09-25):
+--     - TimeLeft on a PAUSED timer drifts NEGATIVE: roughly -(time since pause)
+--     - UnPause resumes from the remaining time AT the pause moment (no
+--         compensation for the paused span, no full-delay reset)
 timer.Create( "tst_pause", 2, 1, function() end )
-timer.Pause( "tst_pause" )
+timer.Pause( "tst_pause" )	-- pause immediately: remaining-at-pause ~= 2s
 timer.Simple( 1.0, function()
 	local left = timer.TimeLeft( "tst_pause" )
-	asyncOk( type( left ) == "number" and left > 1.8, "paused timer did not count down (" .. tostring( left ) .. ")" )
+	asyncOk( type( left ) == "number" and left < -0.8, "paused TimeLeft drifts negative (" .. tostring( left ) .. ")" )
 	timer.UnPause( "tst_pause" )
-	timer.Remove( "tst_pause" )
+	-- remaining at pause was ~2s, so it fires ~2s of wall time AFTER the unpause
+end )
+timer.Simple( 2.5, function()
+	asyncOk( timer.Exists( "tst_pause" ) == true, "resumed timer not yet fired at +2.5s" )
+end )
+timer.Simple( 3.6, function()
+	asyncOk( timer.Exists( "tst_pause" ) == false, "resumed timer fired ~2s after UnPause" )
 end )
 
 -- 4h. Two timers, same id: callback Create'd from INSIDE a callback replaces
@@ -249,13 +253,16 @@ timer.Simple( 0.2, function()
 end )
 
 -- =============================================================================
--- Summary
+-- Summary - printed LAST (after every async group, the pause-resume test ends
+-- at ~3.6s, so the summary lands at 3.8s)
 -- =============================================================================
 
-print( "[timer-test] ==========================================" )
-print( "[timer-test] SUMMARY: " .. PASS .. " passed, " .. FAIL .. " failed (sync)" )
-if FAIL == 0 then
-	print( "[timer-test] SYNC_ALL_PASSED - wait ~2s for the async half" )
-else
-	print( "[timer-test] SYNC HAD FAILURES - async half still runs" )
-end
+timer.Simple( 3.8, function()
+	print( "[timer-test] ==========================================" )
+	print( "[timer-test] SUMMARY: " .. PASS .. " passed, " .. FAIL .. " failed (sync) | async " .. asyncOK .. "/" .. asyncTotal )
+	if FAIL == 0 and asyncOK == asyncTotal then
+		print( "[timer-test] TIMER_ASYNC_ALL_PASSED " .. asyncOK .. "/" .. asyncTotal )
+	else
+		print( "[timer-test] HAD FAILURES - see the FAIL lines above" )
+	end
+end )
