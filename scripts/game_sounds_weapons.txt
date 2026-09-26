@@ -637,11 +637,14 @@
 
 "Weapon_Physgun.Special1"
 {
+	// HL2SB (2026-09-26): GMod's own entry points at weapons/flaregun/impact.wav,
+	// which no shipped GMod content carries either -- its freeze crack is the EP2
+	// superphyscannon electro-zap (the same sound RagdollBoogie.Zap plays).
 	"channel"		"CHAN_WEAPON"
 	"volume"		"0.42"
 	"soundlevel"	"SNDLVL_GUNFIRE"
 
-	"wave"		"weapons/flaregun/impact.wav"
+	"wave"		"weapons/stunstick/spark1.wav"
 }
 
 
