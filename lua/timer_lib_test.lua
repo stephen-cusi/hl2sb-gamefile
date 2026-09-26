@@ -1,17 +1,20 @@
 ------------------------------------------------------------------------------
--- timer_lib_test.lua - HL2SB timer library test (2026-09-25)
+-- timer_lib_test.lua - HL2SB timer library test (2026-09-26)
 --
--- 45 sync assertions + 14 async assertions covering every GMod timer member
--- (wiki-checked), the 2026-09-25 fixes (recursive timer.Simple(0, self) hang,
--- Adjust with omitted args) and the GMod pause semantics (paused TimeLeft
--- drifts negative; UnPause resumes from the remaining-at-pause countdown).
+-- Rewritten against a FULL reference of GMod's timer library (client.dll
+-- luaL_Reg , workers .., executor ).
+-- The reference decisions this file checks:
+--   * reps 0 -> INFINITE stored as -1  => RepsLeft(infinite) == -1
+--   * Pause folds remaining into `next`; TimeLeft(paused) == -next (frozen)
+--   * executor removes a timer when reps hit 0 OR the callback errored
+--   * the retire happens AFTER the callback (last call still sees Exists)
 --
 -- Run (game console, after a FULL restart - DLLs load at process start):
 --     lua_dofile lua/timer_lib_test.lua        (server realm)
 --     lua_dofile_cl lua/timer_lib_test.lua     (client realm)
 --
 -- Layout mirrors file_lib_test.lua: PASS/FAIL lines + a final summary at
--- ~3.8s, then the script cleans itself up.  Nothing is written to disk.
+-- ~4.0s, then the script cleans itself up.  Nothing is written to disk.
 --
 -- Pass criteria: "TIMER_ASYNC_ALL_PASSED n/n" at the end and no "FAIL:".
 ------------------------------------------------------------------------------
@@ -116,10 +119,16 @@ ok( timer.Exists( "tst_rm" ) == false, "Destroy removes (alias of Remove)" )
 -- timer.Check is a deprecated no-op that must not error
 timer.Check()
 
--- negative reps = infinite (wiki: "0 or any value below 0")
+-- negative reps = infinite (wiki: "0 or any value below 0"); 0 is stored as
+-- -1 per GMod's Create worker, so RepsLeft answers -1
 timer.Create( "tst_inf", 1000000, -3, function() end )
 ok( timer.Exists( "tst_inf" ) == true, "negative reps accepted" )
 timer.Remove( "tst_inf" )
+
+-- GMod Create worker : `if (reps == 0) reps = -1`
+timer.Create( "tst_inf0", 1000000, 0, function() end )
+ok( timer.RepsLeft( "tst_inf0" ) == -1, "reps 0 => RepsLeft -1 (reference infinite sentinel)" )
+timer.Remove( "tst_inf0" )
 
 -- tiny delay is legal (fires next tick) - just must not error
 timer.Create( "tst_tiny", 0.0001, 1, function() end )
@@ -188,8 +197,9 @@ timer.Simple( 1.5, function()
 	asyncOk( recursionDepth == 5, "recursive Simple(0) unrolled once per frame (got " .. recursionDepth .. ")" )
 end )
 
--- 4d. Named finite timer: fires N times then self-removes, and inside the
---     LAST call Exists() is already false (removal-before-callback contract).
+-- 4d. Named finite timer: fires N times then self-removes.  GMod's executor
+--     decrements reps and runs the callback FIRST, then removes on (reps==0 ||
+--     failed) -- so inside the LAST callback Exists() is still TRUE.
 local finiteFires = 0
 local lastCallExists = nil
 timer.Create( "tst_finite", 0.25, 2, function()
@@ -198,8 +208,17 @@ timer.Create( "tst_finite", 0.25, 2, function()
 end )
 timer.Simple( 1.2, function()
 	asyncOk( finiteFires == 2, "finite timer fired exactly its reps (" .. finiteFires .. ")" )
-	asyncOk( lastCallExists == false, "final callback saw Exists() == false" )
+	asyncOk( lastCallExists == true, "final callback still saw Exists() == true (reference: retire AFTER the call)" )
 	asyncOk( timer.Exists( "tst_finite" ) == false, "exhausted timer removed itself" )
+end )
+
+-- 4d2. HEADLINE FIX (executor ): a callback that ERRORS is retired.
+--      Before the rewrite the fork kept it alive and it re-errored每 delay.
+local errCalls = 0
+timer.Create( "tst_err", 0.1, 0, function() errCalls = errCalls + 1 error( "intentional" ) end )
+timer.Simple( 0.8, function()
+	asyncOk( errCalls == 1, "erroring callback ran exactly once (" .. errCalls .. ")" )
+	asyncOk( timer.Exists( "tst_err" ) == false, "erroring timer was REMOVED (reference)" )
 end )
 
 -- 4e. Infinite timer ticks repeatedly; Stop stops it; Remove kills it.
@@ -225,15 +244,15 @@ timer.Simple( 1.1, function()
 	asyncOk( timer.Exists( "tst_reps" ) == false, "3-rep timer exhausted" )
 end )
 
--- 4g. Pause semantics (GMod, user-verified against the wiki 2026-09-25):
---     - TimeLeft on a PAUSED timer drifts NEGATIVE: roughly -(time since pause)
---     - UnPause resumes from the remaining time AT the pause moment (no
---         compensation for the paused span, no full-delay reset)
+-- 4g. Pause semantics, per the reference TimeLeft worker ():
+--     GMod's timer object has NO pause-time field, so a paused TimeLeft is the
+--     NEGATED frozen remaining (-next), not a drifting value.  UnPause resumes
+--     from that remaining time (next = now + remaining).
 timer.Create( "tst_pause", 2, 1, function() end )
 timer.Pause( "tst_pause" )	-- pause immediately: remaining-at-pause ~= 2s
 timer.Simple( 1.0, function()
 	local left = timer.TimeLeft( "tst_pause" )
-	asyncOk( type( left ) == "number" and left < -0.8, "paused TimeLeft drifts negative (" .. tostring( left ) .. ")" )
+	asyncOk( type( left ) == "number" and left < -1.5 and left > -2.5, "paused TimeLeft == -remaining (" .. tostring( left ) .. ")" )
 	timer.UnPause( "tst_pause" )
 	-- remaining at pause was ~2s, so it fires ~2s of wall time AFTER the unpause
 end )
