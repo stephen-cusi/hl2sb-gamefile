@@ -257,6 +257,28 @@ if ( Material == nil ) then
 			}
 		end
 
+		-- HL2SB (2026-09-26): the GMod post-process stack (halo's pp/copy,
+		-- pp/add; bloom's pp/blurx) retargets material variables at draw time
+		-- through Material():SetTexture/SetString/SetFloat.  The writes go to
+		-- the ENGINE material via render.MaterialSetVar -- without this the
+		-- halo restore/composite quads sample stale textures and the whole
+		-- pipeline is dead.
+		function mat:SetTexture( name, tex )
+			render.MaterialSetVar( self.__path, name, tex )
+		end
+
+		function mat:SetString( name, value )
+			render.MaterialSetVar( self.__path, name, tostring( value ) )
+		end
+
+		function mat:SetFloat( name, value )
+			render.MaterialSetVar( self.__path, name, tonumber( value ) or 0 )
+		end
+
+		function mat:SetInt( name, value )
+			render.MaterialSetVar( self.__path, name, tonumber( value ) or 0 )
+		end
+
 		matCache[ path ] = mat
 		return mat
 	end
