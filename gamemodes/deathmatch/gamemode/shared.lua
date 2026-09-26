@@ -7,6 +7,12 @@
 
 include( "ammo.lua" )
 
+-- HL2SB (2026-09-27): GMod's player animation glue (base gamemode
+-- animations.lua port).  The C++ player animation path dispatches
+-- GM:CalcMainActivity / GM:UpdateAnimation / GM:TranslateActivity /
+-- GM:DoAnimationEvent from here, both realms.
+include( "animations.lua" )
+
 GM.Name       = "Deathmatch"
 GM.Homepage   = "http://www.steampowered.com/"
 GM.Developer  = "Valve"

@@ -95,14 +95,11 @@ hook.add( "OnUndo", "hl2sb_notification", function( name, customtext )
 	local flNow = ( SysTime ~= nil and SysTime() ) or 0
 
 	if ( strText == strLastUndoText and ( flNow - flLastUndoTime ) < 0.25 ) then
-		HL2SB_HUDDebug( "OnUndo: duplicate suppressed:", strText )
 		return
 	end
 
 	flLastUndoTime = flNow
 	strLastUndoText = strText
-
-	HL2SB_HUDDebug( "OnUndo:", tostring( name ), "custom=" .. tostring( customtext ) )
 
 	-- GMod: self:AddNotify( text, NOTIFY_UNDO, 2 )
 	notification.AddLegacy( strText, NOTIFY_UNDO, 2 )

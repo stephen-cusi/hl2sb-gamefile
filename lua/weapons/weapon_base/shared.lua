@@ -200,12 +200,44 @@ local BaseSlots = {
 	{ ACT_HL2MP_JUMP,					8 },
 }
 
+-- ---------------------------------------------------------------------------
+-- HL2SB (2026-09-27): GMod's player-animation layer (the ported base-gamemode
+-- animations.lua) works in ACT_MP_* vocabulary, and the weapon has to translate
+-- THOSE through its acttable.  This table only had ACT_HL2MP_* keys, so for every
+-- SWEP the lookup missed, the activity came back unchanged, the hold-type suffix
+-- was lost, and the player fell through to the generic "walk_all"/"run_all"
+-- family - exactly the reported "holding a SWEP the player is stuck in walk
+-- state / no third-person or mirror animation".
+--
+-- The built-in HL2MP weapons never showed this because their C++ acttables list
+-- both vocabularies (weapon_pistol.cpp:147 starts with ACT_MP_STAND_IDLE).  The
+-- weapon activities below are the same _<holdtype> ones the ACT_HL2MP_* rows use,
+-- so emitting both key sets costs nothing and serves both code paths.
+local MpBaseSlots = {
+	{ ACT_MP_STAND_IDLE,				1 },
+	{ ACT_MP_WALK,						2 },
+	{ ACT_MP_RUN,						3 },
+	{ ACT_MP_CROUCH_IDLE,				4 },
+	{ ACT_MP_CROUCHWALK,				5 },
+	{ ACT_MP_ATTACK_STAND_PRIMARYFIRE,	6 },
+	{ ACT_MP_ATTACK_CROUCH_PRIMARYFIRE,	6 },
+	{ ACT_MP_RELOAD_STAND,				7 },
+	{ ACT_MP_RELOAD_CROUCH,				7 },
+	{ ACT_MP_JUMP,						8 },
+}
+
 -- Rows for one hold type: every family in the argument list, in order, so the
 -- first family that the player's model can satisfy wins.
 local function HoldTypeRows( ... )
 	local rows = {}
 	for _, unit in ipairs( { ... } ) do
 		for _, slot in ipairs( BaseSlots ) do
+			local act = unit[ slot[ 2 ] ]
+			if ( act ) then
+				rows[ #rows + 1 ] = { slot[ 1 ], act, false }
+			end
+		end
+		for _, slot in ipairs( MpBaseSlots ) do
 			local act = unit[ slot[ 2 ] ]
 			if ( act ) then
 				rows[ #rows + 1 ] = { slot[ 1 ], act, false }

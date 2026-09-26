@@ -64,6 +64,24 @@ function math.Approach( x, target, step )
 end
 
 -------------------------------------------------------------------------------
+-- NormalizeAngle(a) / AngleDifference(a, b) -- GMod's math extension
+-- (garrysmod/lua/includes/extensions/math.lua:189).  The ported base-gamemode
+-- animations.lua uses NormalizeAngle on the vehicle aim_yaw pose parameter;
+-- without it that pose write died mid-frame.
+-------------------------------------------------------------------------------
+function math.NormalizeAngle( a )
+  return ( a + 180 ) % 360 - 180
+end
+
+function math.AngleDifference( a, b )
+  local diff = math.NormalizeAngle( a - b )
+  if ( diff < 180 ) then
+    return diff
+  end
+  return diff - 360
+end
+
+-------------------------------------------------------------------------------
 -- Remap(x, in_min, in_max, out_min, out_max)
 -------------------------------------------------------------------------------
 function math.Remap( x, inMin, inMax, outMin, outMax )
