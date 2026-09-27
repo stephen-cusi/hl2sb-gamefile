@@ -178,7 +178,14 @@ local function RenderGlow( entry )
 			render.SetColorModulation( cr, cg, cb )
 			render.ModelMaterialOverride( matGlow )
 
-			local perPass = ca * ( entry.Additive and 2.4 or 1.4 ) / ( #dirs * #rings )
+			-- 2026-09-27: user report "生效但微乎其微".  The old math divided the
+			-- total by EVERY draw (12 dirs x 3 rings = 36), leaving ~0.07
+			-- additive per copy -- but the angular offsets are tiny, so most
+			-- copies land on the same edge pixels and the accumulated ring
+			-- read at a fraction of GMod's outline strength.  Per-draw alpha
+			-- is now a constant (~4x the old accumulated result); the ring
+			-- brightness then scales naturally with how many copies overlap.
+			local perPass = math.min( ca * ( entry.Additive and 0.25 or 0.15 ), 1 )
 
 			for ri = 1, #rings do
 				local ring = rings[ ri ]
