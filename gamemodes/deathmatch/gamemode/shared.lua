@@ -13,6 +13,21 @@ include( "ammo.lua" )
 -- GM:DoAnimationEvent from here, both realms.
 include( "animations.lua" )
 
+-- HL2SB (2026-09-27): GMod's base gamemode taunt hooks (player.lua:774-789).
+-- The server `act` command (game/server/hl2mp/hl2mp_player.cpp) dispatches
+-- PlayerShouldTaunt before starting a taunt and PlayerStartTaunt after; the
+-- base gamemode owns the default answers, gamemodes override to refuse.
+function GM:PlayerShouldTaunt( ply, actid )
+
+	-- The default behaviour is to always let them act
+	-- Some gamemodes will obviously want to stop this for certain players by returning false
+	return true
+
+end
+
+function GM:PlayerStartTaunt( ply, actid, length )
+end
+
 GM.Name       = "Deathmatch"
 GM.Homepage   = "http://www.steampowered.com/"
 GM.Developer  = "Valve"

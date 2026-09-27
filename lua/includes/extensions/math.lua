@@ -143,5 +143,25 @@ if ( math.random ~= nil and math.__hl2sb_random_patched ~= true ) then
   math.__hl2sb_random_patched = true
 end
 
+-- HL2SB (2026-09-27): GMod's global LerpVector / LerpAngle (linear component
+-- interpolation; GMod ships LerpVector C++-side, LerpAngle in its extensions).
+-- The taunt camera (gamemodes/deathmatch/gamemode/taunt_camera.lua) lerps the
+-- view origin/angles with these, and several extensions already call them.
+function LerpVector( t, from, to )
+  return Vector(
+    from.x + ( to.x - from.x ) * t,
+    from.y + ( to.y - from.y ) * t,
+    from.z + ( to.z - from.z ) * t
+  )
+end
+
+function LerpAngle( t, from, to )
+  return QAngle(
+    from.p + ( to.p - from.p ) * t,
+    from.y + ( to.y - from.y ) * t,
+    from.r + ( to.r - from.r ) * t
+  )
+end
+
 -- Load marker (console + ds_debug.log), for confirming the extension ran.
 print( "[HL2SB] math extension loaded" )

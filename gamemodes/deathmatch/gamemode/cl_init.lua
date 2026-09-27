@@ -14,6 +14,14 @@ include( "shared.lua" )
 -- cl_hudpickup.lua the same way and drives it from GM:HUDPaint below.
 include( "cl_hudpickup.lua" )
 
+-- HL2SB (2026-09-27): GMod's taunt camera (base gamemode player_class
+-- taunt_camera.lua verbatim).  GMod wires it through the sandbox player_class;
+-- this fork calls it directly from GM:CalcView / GM:CreateMove /
+-- GM:ShouldDrawLocalPlayer below, keyed on Player:IsPlayingTaunt() (the
+-- replicated taunt clock the server `act` command stamps).
+include( "taunt_camera.lua" )
+local TauntCam = TauntCamera()
+
 function GM:ActivateClientUI()
 end
 
@@ -180,7 +188,50 @@ end
 function GM:ShouldDrawFog()
 end
 
-function GM:ShouldDrawLocalPlayer()
+-- HL2SB (2026-09-27): GMod's GM:CalcView.  Builds the CamData table, gives the
+-- taunt camera its turn while a taunt plays (GMod goes through
+-- player_manager.RunClass( ply, "CalcView", view ) -> PLAYER:CalcView), and
+-- hands the (possibly modified) view back to the engine's CalcView hook reader.
+function GM:CalcView( ply, origin, angles, fov )
+
+	local view = {
+		["origin"] = origin,
+		["angles"] = angles,
+		["fov"] = fov,
+	}
+
+	TauntCam:CalcView( view, ply, ply:IsPlayingTaunt() )
+
+	return view
+
+end
+
+-- HL2SB (2026-09-27): GMod's GM:CreateMove.  While a taunt plays the taunt
+-- camera orbits itself with the mouse and locks the body
+-- (cmd:SetViewAngles/ClearButtons/ClearMovement); in_main.cpp copies the
+-- writable fields back into the real command after the hook returns.
+function GM:CreateMove( cmd )
+
+	local ply = LocalPlayer()
+
+	if ( IsValid( ply ) && TauntCam:CreateMove( cmd, ply, ply:IsPlayingTaunt() ) ) then
+		return true
+	end
+
+end
+
+-- If return true:		Will draw the local player
+-- If return false:		Won't draw the local player
+-- If return nil:		Will carry out default action
+--
+-- HL2SB (2026-09-27): the taunt camera turn (GMod: player_manager.RunClass(
+-- ply, "ShouldDrawLocal" ) -> PLAYER:ShouldDrawLocal -> TauntCam).
+function GM:ShouldDrawLocalPlayer( ply )
+
+	if ( IsValid( ply ) && TauntCam:ShouldDrawLocalPlayer( ply, ply:IsPlayingTaunt() ) ) then
+		return true
+	end
+
 end
 
 function GM:ShouldDrawParticles()
