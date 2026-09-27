@@ -205,22 +205,6 @@ list.Set( "DesktopWindows", "PlayerEditor", {
 				table.insert( categorized[ catName ], { title = Phrase( info.title ), model = info.model, name = name } )
 			end
 
-			-- HL2SB (2026-09-27, TEMPORARY DIAG): dump the categorization to
-			-- data/hl2sb_modellist_debug.txt so a missing category can be checked
-			-- against the data directly.  Remove once the list is confirmed.
-			if ( file and file.Write ) then
-				local nTotal = 0
-				local diag = {}
-
-				for cname, citems in SortedPairs( categorized ) do
-					diag[ #diag + 1 ] = string.format( "%s = %d", cname, #citems )
-					nTotal = nTotal + #citems
-				end
-
-				file.Write( "hl2sb_modellist_debug.txt",
-					"total=" .. tostring( nTotal ) .. "\n" .. table.concat( diag, "\n" ) .. "\n" )
-			end
-
 			-- DELTA: cells stream in a few per frame instead of ~100 SpawnIcon:SetModel()
 			-- calls in one frame (each loads and renders a .mdl).  The LABELS go
 			-- through the same queue, because the queue must create cells in the
@@ -316,27 +300,6 @@ list.Set( "DesktopWindows", "PlayerEditor", {
 
 					Msg( "[HL2SB] model list filled: " .. tostring( #queue ) .. " entries, "
 						.. tostring( fillErrors ) .. " failed\n" )
-
-					-- HL2SB (2026-09-27, TEMPORARY DIAG 2): dump what ACTUALLY got
-					-- created and where it sits, so a missing category can be traced
-					-- to creation vs layout.  Remove with the other diag block.
-					if ( file and file.Write and file.Append and PanelSelect.GetItems ) then
-						local items = PanelSelect:GetItems()
-						local out = { "created=" .. tostring( #items ) .. " / queued=" .. tostring( #queue ) }
-
-						local canvas = ( PanelSelect.GetCanvas and PanelSelect:GetCanvas() ) or nil
-						out[ #out + 1 ] = "canvasTall=" .. tostring( canvas and canvas.GetTall and canvas:GetTall() or -1 )
-
-						for i = 1, #items do
-							local p = items[ i ]
-							local x, y = p:GetPos()
-							out[ #out + 1 ] = string.format( "%d %s x=%s y=%s vis=%s",
-								i, tostring( p.ClassName ), tostring( x ), tostring( y ),
-								tostring( p.IsVisible ~= nil and p:IsVisible() or "?" ) )
-						end
-
-						file.Append( "hl2sb_modellist_debug.txt", table.concat( out, "\n" ) .. "\n" )
-					end
 
 					-- Icons that arrived after the last keystroke need the filter applied.
 					if ( SearchBar.OnValueChange ~= nil ) then

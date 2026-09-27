@@ -343,5 +343,9 @@
 		"userid"	"short"		// user ID on server
 		"item"		"string"	// class name of the weapon/item (or "_ammo")
 		"amount"	"short"		// ammo amount when weapon/ammo pickup, else 0
+		"weapon"	"bool"		// HL2SB: server says this was a WEAPON pickup
+								// (GMod design: the server knows what happened;
+								// SWEP classnames carry no "weapon_" prefix, so
+								// the client must not guess from the name)
 	}
 }

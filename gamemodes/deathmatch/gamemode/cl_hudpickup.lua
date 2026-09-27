@@ -273,7 +273,7 @@ end
 -- （首参 userid 是数字）错调 GM:HUDItemPickedUp( itemName )。返回值本身被
 -- C++ 丢弃（END_LUA_CALL_HOOK 3, 0）。
 -- ===========================================================================
-hook.Add( "HUDItemPickedUp", "gmod_cl_hudpickup", function( userid, item, amount, weaponEntity )
+hook.Add( "HUDItemPickedUp", "gmod_cl_hudpickup", function( userid, item, amount, weaponEntity, weaponFlag )
 
 	local ply = LocalPlayer()
 	if ( not IsValid( ply ) ) then return true end
@@ -288,23 +288,50 @@ hook.Add( "HUDItemPickedUp", "gmod_cl_hudpickup", function( userid, item, amount
 	local low = string.lower( item )
 
 	-- 弹药事件带 "_ammo" 后缀；GMod 的 HUDAmmoPickedUp 收裸名、自己加后缀。
+	-- 服务端只在实收弹药 > 0 时发（满弹药静默，GMod 同）。
 	if ( string.sub( low, -5 ) == "_ammo" ) then
 		gm:HUDAmmoPickedUp( string.sub( item, 1, #item - 5 ), tonumber( amount ) or 0 )
 		return true
 	end
 
-	if ( string.sub( low, 1, 7 ) == "weapon_" ) then
-		-- wiki：GM:HUDWeaponPickedUp 收到的是 Weapon 实体。引擎第四参把背包里
-		-- 按类名匹配到的武器实体递过来（hud_killfeed.cpp，m_hMyWeapons 对本地
-		-- 玩家网络化）；激活武器匹配只作回退（捡起即部署的场景）。
-		local wep = weaponEntity
-		if ( not IsValid( wep ) ) then
-			local active = ply:GetActiveWeapon()
-			if ( IsValid( active ) and active:GetClass() == item ) then
-				wep = active
-			end
+	-- wiki：GM:HUDWeaponPickedUp 收到的是 Weapon 实体。
+	--
+	-- 武器判定按 GMod 的设计由服务端声明（事件第五参 weaponFlag），
+	-- 客户端不再从类名猜——SWEP 可以注册任意类名（nyangun、cf 包、
+	-- tfusion_combustible_lemon）。前缀 / weapons.GetStored 只作老事件源
+	-- 的兜底。实体解析顺序：引擎查好的背包实体 → 0.2s 后激活武器
+	-- （事件可能先于实体快照到达，捡起/发放的武器即被部署）。
+	local bWeapon = ( weaponEntity ~= nil ) or ( weaponFlag == true )
+		or ( string.sub( low, 1, 7 ) == "weapon_" )
+		or ( _G.weapons ~= nil and _G.weapons.GetStored ~= nil and _G.weapons.GetStored( item ) ~= nil )
+
+	if ( bWeapon ) then
+		if ( weaponEntity ~= nil ) then
+			gm:HUDWeaponPickedUp( weaponEntity )
+			return true
 		end
-		gm:HUDWeaponPickedUp( wep )
+
+		-- 事件先于实体快照到达的补偿：稍后一拍再认激活武器。
+		timer.Simple( 0.2, function()
+			local wep = nil
+			local ply2 = LocalPlayer()
+			if ( IsValid( ply2 ) ) then
+				local active = ply2:GetActiveWeapon()
+				if ( IsValid( active ) and active:GetClass() == item ) then
+					wep = active
+				end
+			end
+
+			if ( wep ~= nil ) then
+				local gm2 = GAMEMODE or _G._GAMEMODE
+				if ( gm2 ~= nil ) then gm2:HUDWeaponPickedUp( wep ) end
+			else
+				-- 实体始终没拿到：以物品条兜底（GMod 语义里实体无效就不画，
+				-- 但用户要的是"总有通知"，物品条至少把名字报出来）。
+				local gm2 = GAMEMODE or _G._GAMEMODE
+				if ( gm2 ~= nil ) then gm2:HUDItemPickedUp( item ) end
+			end
+		end )
 		return true
 	end
 

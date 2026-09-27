@@ -381,6 +381,18 @@ function PANEL:ApplyContentHeight( h )
 	self.m_iRange = math.max( 0, h - canvas:GetTall() )
 	bar:SetEnabled( self.m_iRange > 0 )
 
+	-- HL2SB (2026-09-27): the canvas PANEL itself has to grow to the content
+	-- height.  Updating the scrollbar range alone left the canvas at a stale
+	-- smaller tall, and everything laid out below the canvas bounds was CLIPPED
+	-- away -- the player-model list's last categories (hostage / Other /
+	-- patchythepirateusa) could not be scrolled to at all, while the diag dump
+	-- showed all 117 items created and visible.  Set the tall DIRECTLY (never
+	-- through DScrollPanel:SetContentHeight -- see the recursion note above);
+	-- the range above was computed against the pre-grow tall on purpose.
+	if ( canvas.SetTall ~= nil and canvas:GetTall() != h ) then
+		canvas:SetTall( h )
+	end
+
 	-- re-clamp the pixel offset against the range above
 	self:SetValue( self:GetValue() )
 

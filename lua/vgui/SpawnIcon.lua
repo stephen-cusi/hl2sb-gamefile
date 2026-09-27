@@ -51,7 +51,55 @@ AccessorFunc( PANEL, "m_strIconName", "IconName" )
 -- most one per tick, and only for cells that are actually on screen.
 -- ===========================================================================
 local g_LoadQueue = {}
+local g_SnapshotReported = false
+local g_SnapshotFailed = false
 local g_NextLoad  = 0
+
+-- ---------------------------------------------------------------------------
+-- HL2SB (perf, 2026-09-27): the screen-bounds cull still rendered every cell
+-- inside a SCROLLED list.  The player-model editor's DPanelSelect holds ~100
+-- cells that all sit on screen (they are merely clipped by the scroll
+-- viewport), so all ~100 live 3D thumbnails rendered every frame and the
+-- window was unusable while open.  The real viewport is the nearest scrolling
+-- list ancestor; cells outside it are skipped for rendering AND deferred for
+-- loading (their next OnThink requeues them, so visible cells bubble to the
+-- front of the load queue).
+-- ---------------------------------------------------------------------------
+local g_ClipClasses = {
+	DPanelSelect	= true,
+	DPanelList		= true,
+	DScrollPanel	= true,
+}
+
+local function FindClipPanel( pnl )
+	local p = pnl:GetParent()
+
+	while ( IsValid( p ) ) do
+		if ( p.ClassName and g_ClipClasses[ p.ClassName ] ) then return p end
+		p = p:GetParent()
+	end
+
+	return nil
+end
+
+--- True when the cell's screen rect intersects its scrolling ancestor's rect.
+--- Never-painted cells answer true (they load and render; the first Paint
+--- corrects the flag within a frame).
+local function IsInViewport( pnl, ax, ay, w, h )
+	if ( pnl.m_ClipPanel == nil ) then
+		pnl.m_ClipPanel = FindClipPanel( pnl ) or false
+	end
+
+	local clip = pnl.m_ClipPanel or nil
+	if ( not IsValid( clip ) ) then return true end
+
+	local cx, cy = clip:LocalToScreen( 0, 0 )
+	local cw, ch = clip:GetWide(), clip:GetTall()
+
+	if ( ay + h <= cy or ay >= cy + ch or ax + w <= cx or ax >= cx + cw ) then return false end
+
+	return true
+end
 
 local function PumpModelLoads()
 	if ( #g_LoadQueue == 0 ) then return end
@@ -64,6 +112,11 @@ local function PumpModelLoads()
 	if ( pnl.m_bModelLoaded or pnl.m_bModelFailed ) then return end
 
 	if ( pnl.IsVisible and not pnl:IsVisible() ) then return end	-- hidden tab/category: OnThink requeues when shown
+
+	-- HL2SB: off-viewport cells wait in line (OnThink requeues them, so the
+	-- visible ones always bubble to the front) -- opening a big list must not
+	-- stream a hundred models the player is not looking at.
+	if ( pnl.m_bInView == false ) then return end
 
 	pnl:LoadModel()
 	g_NextLoad = RealTime() + 0.04
@@ -139,14 +192,58 @@ function PANEL:Paint( w, h )
 		return
 	end
 
+	-- HL2SB (2026-09-27): queued for its load -- say so, so the filling grid
+	-- reads as "loading" instead of a wall of dead tiles.  Loads are paced one
+	-- per tick because each one hitches the frame.
+	if ( not self.m_bModelLoaded and not self.m_bModelFailed ) then
+		if ( draw and draw.SimpleText ) then
+			local name = self:GetModelName() or ""
+			local short = string.match( name, "([^/]+)%.mdl$" ) or name
+			draw.SimpleText( short, "DermaDefault", w / 2, h / 2 - 4,
+				Color( 120, 126, 132, 255 ), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
+		end
+		return
+	end
+
+	-- HL2SB (2026-09-27): snapshot path -- the model was rendered once into a
+	-- render target at LoadModel time; drawing it is a textured rect.  This is
+	-- the cheap path, and it is why the model list no longer lags while open.
+	if ( self.m_IconTexPath ) then
+		-- keep the child pinned off -- it paints itself independently of this
+		-- Paint, and the texture is already on top of it
+		if ( IsValid( self.Icon ) ) then self.Icon.m_bCulled = true end
+
+		local id = self.m_IconTexID
+		if ( not id and surface.GetTextureID ) then
+			id = surface.GetTextureID( self.m_IconTexPath )
+			self.m_IconTexID = id
+		end
+
+		if ( id and surface.SetTexture and surface.DrawTexturedRect ) then
+			surface.SetTexture( id )
+			surface.SetDrawColor( 255, 255, 255, 255 )
+			surface.DrawTexturedRect( 0, 0, w, h )
+		end
+
+		return
+	end
+
 	-- viewport culling: the live 3D thumbnail is the one expensive thing a
-	-- cell does per frame; a cell scrolled out of the screen (or behind the
-	-- menu edge) skips it entirely.  The child reads the flag in its Paint.
+	-- cell does per frame.  Two tests: on screen at all, and inside the
+	-- nearest scrolling list's viewport (a cell clipped by the list's scroll
+	-- is still "on screen" but must not render -- see the perf note at the
+	-- top of the load queue).  The child reads the flag in its Paint.
 	local bOnScreen = true
 	local ok, ax, ay = pcall( self.LocalToScreen, self, 0, 0 )
 	if ( ok and ax ~= nil ) then
 		bOnScreen = not ( ay + h < 0 or ay > ScrH() or ax + w < 0 or ax > ScrW() )
+
+		if ( bOnScreen ) then
+			bOnScreen = IsInViewport( self, ax, ay, w, h )
+		end
 	end
+
+	self.m_bInView = bOnScreen
 
 	if ( IsValid( self.Icon ) ) then
 		self.Icon.m_bCulled = not bOnScreen
@@ -323,13 +420,33 @@ function PANEL:LoadModel()
 	-- odd bounds or a missing vector binding must not error every Think.
 	pcall( function()
 		if ( self.Icon.SetCamPos ) then
-			local mins, maxs = ent:OBBMins(), ent:OBBMaxs()
+			-- HL2SB (2026-09-27): OBBMins/OBBMaxs on a clientside entity come
+			-- back all-zero (nothing creates its collision), so radius collapsed
+			-- to the 10-unit floor and the camera sat inside the model's feet --
+			-- every thumbnail in the model list was legs.  Render bounds are the
+			-- real studio bounds; OBB is the fallback; a standing-player box is
+			-- the last resort.
+			local mins, maxs
+			local okb, bmin, bmax = pcall( ent.GetRenderBounds, ent )
+			if ( okb and bmin and bmax ) then mins, maxs = bmin, bmax end
+			if ( not mins ) then mins, maxs = ent:OBBMins(), ent:OBBMaxs() end
+			if ( math.max( maxs.x - mins.x, maxs.y - mins.y, maxs.z - mins.z ) <= 0 ) then
+				mins, maxs = Vector( -16, -16, 0 ), Vector( 16, 16, 70 )
+			end
+
 			local center = ( mins + maxs ) * 0.5
 			local radius = math.max( maxs.x - mins.x, maxs.y - mins.y, maxs.z - mins.z ) * 0.5
 			if ( radius < 1 ) then radius = 10 end
 
 			self.Icon:SetLookAt( center )
-			self.Icon:SetCamPos( center + Vector( radius * 1.9, radius * 1.4, radius * 1.1 ) )
+			-- HL2SB (2026-09-27): the old offset (1.9/1.4/1.1)x radius put the
+			-- camera 2.6x radius out -- at FOV 70 that framed the model at barely
+			-- half the cell.  Same direction, but pulled in so the model fills
+			-- the cell the way GMod's thumbnails do.
+			local dir = Vector( radius * 1.9, radius * 1.4, radius * 1.1 )
+			local len = dir:Length()
+			if ( len and len > 0 ) then dir = dir * ( radius * 1.65 / len ) end
+			self.Icon:SetCamPos( center + dir )
 			self.Icon:SetFOV( 70 )
 		end
 
@@ -339,6 +456,34 @@ function PANEL:LoadModel()
 		-- (2026-09-17 screenshot).  RefitCamera is the binding for FitCameraToModel.
 		if ( self.Icon.RefitCamera ) then self.Icon:RefitCamera() end
 	end )
+
+	-- HL2SB (2026-09-27): render the model ONCE into a render target and let
+	-- Paint draw the texture.  Live 3D thumbnails meant the visible grid
+	-- re-rendered dozens of player models every frame, which is what made the
+	-- model list lag the whole time it was open.  Set hl2sb_spawnicon_live 1
+	-- to revert to the live render.
+	local bLive = ( GetConVarNumber ~= nil and GetConVarNumber( "hl2sb_spawnicon_live" ) == 1 )
+	if ( not bLive and self.m_IconTexPath == nil and self.Icon.Snapshot ) then
+		local okSnap, texpath = pcall( self.Icon.Snapshot, self.Icon, 64, 64 )
+		if ( okSnap and texpath ) then
+			self.m_IconTexPath = texpath
+			-- the child must NEVER render again -- Paint's snapshot path returns
+			-- before the live path sets m_bCulled, and the DModelPanel child
+			-- paints itself regardless of what the parent drew (this is exactly
+			-- how the first snapshot build stayed laggy: textures on top, live
+			-- renders still running underneath)
+			if ( IsValid( self.Icon ) ) then self.Icon.m_bCulled = true end
+
+			-- one-line console proof that the snapshot path is live
+			if ( not g_SnapshotReported ) then
+				g_SnapshotReported = true
+				Msg( "[HL2SB] spawnicon snapshots active (rt + vmt ok)\n" )
+			end
+		elseif ( not g_SnapshotFailed ) then
+			g_SnapshotFailed = true
+			Msg( "[HL2SB] spawnicon snapshot FAILED: " .. tostring( texpath ) .. "\n" )
+		end
+	end
 end
 
 function PANEL:RebuildSpawnIcon()

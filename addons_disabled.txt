@@ -4,7 +4,6 @@
 example_addon
 firstpersonbody
 hitnumbers
-miku
 minecraft
-qiandai
+scp173
 windgrin_npc

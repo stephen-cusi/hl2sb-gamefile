@@ -241,6 +241,69 @@ function PANEL:Paint( w, h )
 	self.LastPaint = RealTime()
 end
 
+--- HL2SB (2026-09-27): render the current model ONCE into a render target and
+--- return a texture PATH ("spawnicon/hl2sb_icon_...") that surface.GetTextureID
+--- can bind -- the .vmt that path resolves to simply points $basetexture at the
+--- render target, so Paint draws a textured rect instead of re-rendering the
+--- model every frame (~60 live player-model thumbnails per frame was what made
+--- the model list unusable).  Returns nil when a required binding is missing;
+--- callers fall back to the live render.  The camera used is whatever the
+--- panel's vCamPos / vLookatPos / fFOV are at call time.
+function PANEL:Snapshot( wide, tall )
+	if ( not IsValid( self.Entity ) ) then return end
+
+	if ( not ( render and render.PushRenderTarget and render.PopRenderTarget
+		and render.PushView3D and render.PopView3D and render.CreateNamedRenderTarget
+		and file and file.Write ) ) then return end
+
+	local mdl = tostring( self.Entity:GetModel() or "" )
+	if ( mdl == "" ) then return end
+
+	local base = "hl2sb_icon_" .. string.gsub( string.lower( mdl ), "[^%w]", "_" )
+	local rtname = "_rt_" .. base
+	local texpath = "spawnicon/" .. base
+
+	local rt = render.CreateNamedRenderTarget( rtname, wide, tall )
+	if ( not rt ) then return end
+
+	render.PushRenderTarget( rt, 0, 0, wide, tall )
+
+	render.ClearBuffers( true, true, false )
+
+	local delta = self.vLookatPos - self.vCamPos
+	if ( delta:LengthSqr() < 1e-6 ) then delta = Vector( 0, 1, 0 ) end
+	local ang = delta:Angle()
+
+	render.PushView3D( self.vCamPos, ang, self.fFOV, 0, 0, wide, tall, 5, self.FarZ or 4096 )
+
+	if ( render.SetLightingOrigin ) then render.SetLightingOrigin( self.Entity:GetPos() ) end
+	render.SetColorModulation( 1, 1, 1 )
+	render.SetBlend( 1 )
+
+	self.Entity:DrawModel()
+
+	-- Local lights / cubemap are GLOBAL render state (see Paint); clear them so
+	-- the world pass cannot inherit them from the snapshot.
+	if ( render.SetLocalModelLights ) then render.SetLocalModelLights() end
+	if ( render.BindLocalCubemap ) then render.BindLocalCubemap() end
+
+	render.PopView3D()
+	render.PopRenderTarget()
+
+	-- A one-line material pointing $basetexture at the render target.  Written
+	-- AFTER the target exists so the texture name resolves.  The fork's
+	-- file.Write allows paths outside data/.
+	file.Write( "materials/" .. texpath .. ".vmt", "\"UnlitGeneric\"\n" ..
+		"{\n" ..
+		"\t\"$basetexture\" \"" .. rtname .. "\"\n" ..
+		"\t\"$vertexcolor\" \"1\"\n" ..
+		"\t\"$vertexalpha\" \"1\"\n" ..
+		"\t\"$nofog\" \"1\"\n" ..
+		"}\n" )
+
+	return texpath
+end
+
 function PANEL:RunAnimation()
 	if ( IsValid( self.Entity ) and self.Entity.FrameAdvance ) then
 		self.Entity:FrameAdvance()
