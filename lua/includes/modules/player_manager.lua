@@ -72,6 +72,16 @@ function AddValidModel( name, model, title, category )
 
 	ModelNameDict[ string.lower( model ) ] = name
 
+	-- HL2SB (2026-09-27): GMod parity - AddValidModel lands in the list registry
+	-- too ("PlayerOptionsModel").  Older GMod playermodel addons register with
+	-- list.Set( "PlayerOptionsModel", ... ) DIRECTLY (that is GMod's actual
+	-- storage - its editor reads list.Get, not a private table), so GetAllPlayerModels
+	-- below merges that list back in; without these two bridges one style or the
+	-- other was invisible in the player model menu.
+	if ( list ~= nil and list.Set ~= nil ) then
+		list.Set( "PlayerOptionsModel", name, ModelList[ name ] )
+	end
+
 	-- HL2SB: engine side (menu / precache / SetPlayerModel) - hands are a
 	-- separate AddValidHands call, so pass "keep" (nil) for them.
 	EngineAddModel( name, model, nil )
@@ -83,6 +93,10 @@ function RemoveValidModel( name )
 
 	ModelNameDict[ string.lower( entry.model ) ] = nil
 	ModelList[ name ] = nil
+
+	if ( list ~= nil and list.RemoveEntry ~= nil ) then
+		list.RemoveEntry( "PlayerOptionsModel", name )
+	end
 end
 
 function AllValidModels()
@@ -94,7 +108,29 @@ function AllValidModels()
 end
 
 function GetAllPlayerModels()
-	return table.Copy( ModelList )
+	local out = table.Copy( ModelList )
+
+	-- HL2SB (2026-09-27): merge entries registered GMod-style via
+	-- list.Set( "PlayerOptionsModel", name, path|table ).  The value can be a
+	-- plain model path string (GMod's old wiki form) or a table with model/title/
+	-- category.  Entries this module already knows keep their richer shape.
+	if ( list ~= nil and list.Get ~= nil ) then
+		local ok, listed = pcall( list.Get, "PlayerOptionsModel" )
+
+		if ( ok and type( listed ) == "table" ) then
+			for lname, lvalue in pairs( listed ) do
+				if ( out[ lname ] == nil ) then
+					if ( type( lvalue ) == "table" and type( lvalue.model ) == "string" ) then
+						out[ lname ] = table.Copy( lvalue )
+					elseif ( type( lvalue ) == "string" ) then
+						out[ lname ] = { model = lvalue, title = lname, category = "Other" }
+					end
+				end
+			end
+		end
+	end
+
+	return out
 end
 
 function AddValidHands( name, model, skin, body, matchBodySkin )

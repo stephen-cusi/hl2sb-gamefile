@@ -14,22 +14,16 @@
     in every mounted path and registers each .mdl it finds, so adding a playermodel
     is dropping the file in place - there is nothing to write by hand.
 
-    Order:
-      1. the engine's own table, hl2sb.GetPlayerModels() - still fed by
-         cfg/playermodel/*.cfg when such files exist.  Those are OPTIONAL now: a cfg
-         entry only contributes a nicer title and the model's own hands, and it is
-         merged instead of being the only way in (their keys, e.g. "gmod_alyx", are
-         kept so existing scripts and hl2sb_setmodel-era configs keep working).
-      2. the scan - everything under models/player/ that step 1 did not already cover.
+    HL2SB (2026-09-27): this is the ONLY source of the model list now.  The legacy
+    cfg/playermodel/*.cfg table (hl2sb.GetPlayerModels) is gone - the cfg files
+    were deleted and the scan covers everything they did.
 
-    Both end up in player_manager, and AddValidModel forwards to
-    hl2sb.AddPlayerModel() -> HL2SB_AddRuntimeModelConfig, which is the table the
-    menu, the server's precache and c_baseviewmodel's c_hands lookup read.
+    Registrations go through player_manager.AddValidModel, which forwards to
+    hl2sb.AddPlayerModel() -> HL2SB_AddRuntimeModelConfig, the table the menu,
+    the server's precache and c_baseviewmodel's c_hands lookup read.
 
     Client only: the arms model is a client entity, and the server accepts any
     models/player/ path by itself (game/shared/hl2sb_model_scan.cpp).
-
-    Dev log: set hl2sb_hud_debug to 1 for a per-source count.
 --]]----------------------------------------------------------------------------
 
 if ( _G.player_manager == nil or player_manager.AddValidModel == nil ) then return end
@@ -146,6 +140,13 @@ local function StockCategory( path )
 	return nil
 end
 
+--- 手写覆盖表 (2026-09-27)：散在 models/player/ 根下、名字认不出来的模型会被归进
+--- "Other"（GMod 的 #spawnmenu.category.other 同款兜底）。想给某个模型指定分类或
+--- 标题，在这里填一行 -- 键是相对 models/ 的完整路径（小写）：
+local CUSTOM = {
+	-- ["models/player/my_model.mdl"] = { category = "我的收藏", title = "我的模型" },
+}
+
 local function Describe( path )
 	local rel = string.sub( path, #SCAN_ROOT + 2 )
 	rel = string.gsub( rel, "%.[Mm][Dd][Ll]$", "" )
@@ -159,31 +160,21 @@ local function Describe( path )
 	end
 
 	local title = string.NiceName( string.GetFileFromFilename( rel ) or rel )
+
+	local custom = CUSTOM[ string.lower( path ) ]
+	if ( custom ~= nil ) then
+		if ( custom.category ~= nil ) then category = custom.category end
+		if ( custom.title ~= nil ) then title = custom.title end
+	end
+
 	local key = string.lower( string.gsub( rel, "[\\/]", "_" ) )
 
-	return key, title, category
-end
-
---- The cfg files (still optional) carry a human readable name in their "name" key:
----     cfg/playermodel/hutao_old.cfg:  "name"  "Hutao Old"
---- while the engine only exposes the config NAME with the list, so it is read here.
-local function TitleFromConfig( entry )
-	if ( _G.file == nil or file.Read == nil ) then return nil end
-	if ( type( entry.file ) ~= "string" or entry.file == "" ) then return nil end
-
-	local ok, text = pcall( file.Read, entry.file, "GAME" )
-	if ( not ok or type( text ) ~= "string" ) then return nil end
-
-	local pretty = string.match( text, '"name"%s*"([^"]*)"' )
-
-	if ( pretty ~= nil and pretty ~= "" ) then return pretty end
-
-	return nil
+ return key, title, category
 end
 
 local Paths = {}	-- [ lowercase model path ] = true
 local Keys = {}		-- [ key ] = true
-local nCfg, nScan = 0, 0
+local nScan = 0
 
 --- A model only belongs in the list if the client can actually load it.  The check is
 --- on the .mdl alone: right after a map load the .vvd/.vtx of a model that is still
@@ -215,29 +206,10 @@ end
 local function BuildList()
 
 -- ---------------------------------------------------------------------------
--- 1. the engine's own table (cfg/playermodel/*.cfg, when they are there)
--- ---------------------------------------------------------------------------
-if ( _G.hl2sb ~= nil and hl2sb.GetPlayerModels ~= nil ) then
-	local ok, models = pcall( hl2sb.GetPlayerModels )
-
-	if ( ok and type( models ) == "table" ) then
-		for _, entry in ipairs( models ) do
-			if ( type( entry ) == "table" and type( entry.name ) == "string"
-				and type( entry.model ) == "string" and entry.model ~= "" ) then
-
-				if ( Register( entry.name, entry.model, TitleFromConfig( entry ) or entry.name, "Other" ) ) then
-					nCfg = nCfg + 1
-				end
-			end
-		end
-	end
-end
-
--- ---------------------------------------------------------------------------
--- 2. the scan: everything under models/player/ the list does not know yet
+-- the scan: everything under models/player/
 -- ---------------------------------------------------------------------------
 -- file.Find is the engine binding this whole step rests on; without it (an offline
--- harness, a realm that has no filesystem) the cfg half above is still worth keeping.
+-- harness, a realm that has no filesystem) there is nothing to register.
 local scanned = {}
 
 if ( _G.file ~= nil and file.Find ~= nil ) then
@@ -286,8 +258,7 @@ if ( timer ~= nil and timer.Simple ~= nil ) then
 end
 
 if ( GetConVarNumber ~= nil and GetConVarNumber( "hl2sb_hud_debug" ) ~= 0 ) then
-	Msg( "[HL2SB] player models: " .. tostring( nCfg ) .. " from cfg, "
-		.. tostring( nScan ) .. " from the models/player/ scan\n" )
+	Msg( "[HL2SB] player models: " .. tostring( nScan ) .. " from the models/player/ scan\n" )
 end
 
 -- ---------------------------------------------------------------------------
