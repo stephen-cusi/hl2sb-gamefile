@@ -56,4 +56,18 @@ function PLAYER:SetModel()
 	self.Player:SetModel( modelname )
 end
 
+-------------------------------------------------------------------------------
+-- Name: PLAYER:GetHandsModel
+-- Desc: Called on player spawn to determine which hand model to use.
+--  HL2SB (2026-09-27): GMod base player_default.lua:126 verbatim.
+-------------------------------------------------------------------------------
+function PLAYER:GetHandsModel()
+
+	-- return { model = "models/weapons/c_arms_citizen.mdl", skin = 1, body = "0100000" }
+
+	local playermodel = player_manager.TranslateToPlayerModelName( self.Player:GetModel() )
+	return player_manager.TranslatePlayerHands( playermodel )
+
+end
+
 player_manager.RegisterClass( "player_deathmatch", PLAYER, "player_default" )

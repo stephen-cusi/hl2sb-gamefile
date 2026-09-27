@@ -114,7 +114,28 @@ local function CallBody( strEventName, tGamemode, ... )
         tHooks[ k ] = nil
         break
       else
-        tReturns = { pcall( v, ... ) }
+        -- HL2SB (2026-09-27): GMod's entity-key semantics (its hook.lua:95-119).
+        -- A STRING key is a plain id: the callback gets the event args only.
+        -- A NON-string key is an entity/panel: still valid => passed as the
+        -- FIRST argument so hook.Add( name, ent, ent.Think ) self-binds;
+        -- invalid => the hook is dropped ("the object has become invalid").
+        -- CallBody used to run every callback args-only, which bound
+        -- gmod_hands' ViewModelChanged to the first EVENT argument (the
+        -- viewmodel) and let dead entity keys linger ("Hook 'NULL' ... Failed").
+        local bEntityKey = ( type( k ) ~= "string" )
+        local bDropKey = false
+        if ( bEntityKey ) then
+          local fnIsValid = globals.IsValid
+          bDropKey = ( fnIsValid ~= nil ) and ( not fnIsValid( k ) )
+        end
+        if ( bDropKey ) then
+          tHooks[ k ] = nil
+        elseif ( bEntityKey ) then
+          tReturns = { pcall( v, k, ... ) }
+        else
+          tReturns = { pcall( v, ... ) }
+        end
+        if ( not bDropKey ) then
         if ( tReturns[ 1 ] == false ) then
           Warning( "Hook '" .. tostring( k ) .. "' (" .. tostring( strEventName ) .. ") Failed: " .. tostring( tReturns[ 2 ] ) .. "\n" )
           ReportHookError( tReturns[ 2 ] )
@@ -124,6 +145,7 @@ local function CallBody( strEventName, tGamemode, ... )
           -- empty LocalPlayer model) into permanent silent hook death.
         elseif ( tReturns[ 2 ] ~= nil ) then
           return unpack( tReturns, 2 )
+        end
         end
       end
     end
@@ -253,13 +275,35 @@ function Run( strEventName, ... )
         tHooks[ k ] = nil
         break
       else
-        tReturns = { pcall( v, ... ) }
+        -- HL2SB (2026-09-27): GMod's entity-key semantics (its hook.lua:95-119).
+        -- A STRING key is a plain id: the callback gets the event args only.
+        -- A NON-string key is an entity/panel: still valid => passed as the
+        -- FIRST argument so hook.Add( name, ent, ent.Think ) self-binds;
+        -- invalid => the hook is dropped ("the object has become invalid").
+        -- CallBody used to run every callback args-only, which bound
+        -- gmod_hands' ViewModelChanged to the first EVENT argument (the
+        -- viewmodel) and let dead entity keys linger ("Hook 'NULL' ... Failed").
+        local bEntityKey = ( type( k ) ~= "string" )
+        local bDropKey = false
+        if ( bEntityKey ) then
+          local fnIsValid = globals.IsValid
+          bDropKey = ( fnIsValid ~= nil ) and ( not fnIsValid( k ) )
+        end
+        if ( bDropKey ) then
+          tHooks[ k ] = nil
+        elseif ( bEntityKey ) then
+          tReturns = { pcall( v, k, ... ) }
+        else
+          tReturns = { pcall( v, ... ) }
+        end
+        if ( not bDropKey ) then
         if ( tReturns[ 1 ] == false ) then
           Warning( "Hook '" .. tostring( k ) .. "' (" .. tostring( strEventName ) .. ") Failed: " .. tostring( tReturns[ 2 ] ) .. "\n" )
           ReportHookError( tReturns[ 2 ] )
           -- HL2SB (2026-09-25): keep erroring hooks (GMod parity), see call().
         elseif ( tReturns[ 2 ] ~= nil ) then
           return unpack( tReturns, 2 )
+        end
         end
       end
     end

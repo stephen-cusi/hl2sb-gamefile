@@ -234,6 +234,63 @@ function GM:ShouldDrawLocalPlayer( ply )
 
 end
 
+--[[---------------------------------------------------------
+	Name: gamemode:PreDrawViewModel()
+	Desc: Called before drawing the view model; return true to suppress it
+	(the engine then skips ViewModelDrawn/PostDrawViewModel too).
+	HL2SB (2026-09-27): port of GMod base cl_init.lua:585.  The engine
+	(viewrender.cpp) dispatches this GAMEMODE hook now instead of calling the
+	SWEP method directly; the SWEP forward below is GMod's own chain.
+-----------------------------------------------------------]]
+function GM:PreDrawViewModel( vm, ply, wep, flags )
+
+	if ( !IsValid( wep ) ) then return false end
+
+	player_manager.RunClass( ply, "PreDrawViewModel", vm, wep, flags )
+
+	if ( wep.PreDrawViewModel == nil ) then return false end
+	return wep:PreDrawViewModel( vm, wep, ply, flags )
+
+end
+
+--[[---------------------------------------------------------
+	Name: gamemode:PostDrawViewModel()
+	Desc: Called after drawing the view model.  THIS is where the player's
+	hands (the gmod_hands entity, EF_BONEMERGE'd onto the viewmodel) are
+	drawn, gated on the weapon's UseHands -- GMod base cl_init.lua:597
+	verbatim, ported 2026-09-27.
+-----------------------------------------------------------]]
+function GM:PostDrawViewModel( vm, ply, wep, flags )
+
+	if ( !IsValid( wep ) ) then return false end
+
+	if ( wep.UseHands || !wep:IsScripted() ) then
+
+		local hands = ply:GetHands()
+		if ( IsValid( hands ) && IsValid( hands:GetParent() ) ) then
+
+			if ( not hook.Call( "PreDrawPlayerHands", self, hands, vm, ply, wep, flags ) ) then
+
+				-- HL2SB: GMod flips to back-face culling for ViewModelFlip
+				-- weapons here (render.CullMode is not bound in this fork);
+				-- the arms draw with the default winding either way.
+				hands:DrawModel( flags )
+
+			end
+
+			hook.Call( "PostDrawPlayerHands", self, hands, vm, ply, wep, flags )
+
+		end
+
+	end
+
+	player_manager.RunClass( ply, "PostDrawViewModel", vm, wep, flags )
+
+	if ( wep.PostDrawViewModel == nil ) then return false end
+	return wep:PostDrawViewModel( vm, wep, ply, flags )
+
+end
+
 function GM:ShouldDrawParticles()
 end
 

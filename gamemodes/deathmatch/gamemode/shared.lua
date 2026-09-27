@@ -28,6 +28,29 @@ end
 function GM:PlayerStartTaunt( ply, actid, length )
 end
 
+--[[---------------------------------------------------------
+	Name: gamemode:PlayerSetHandsModel()
+	Desc: Sets the player's view model hands model.
+	 HL2SB (2026-09-27): port of GMod base player.lua:275.  Called by the
+	 gmod_hands entity's DoSetup on every spawn; the model comes from the
+	 player class (PLAYER:GetHandsModel) or the path->hands registry.
+-----------------------------------------------------------]]
+function GM:PlayerSetHandsModel( pl, ent )
+
+	local info = player_manager.RunClass( pl, "GetHandsModel" )
+	if ( !info ) then
+		local playermodel = player_manager.TranslateToPlayerModelName( pl:GetModel() )
+		info = player_manager.TranslatePlayerHands( playermodel )
+	end
+
+	if ( info ) then
+		ent:SetModel( info.model )
+		ent:SetSkin( info.matchBodySkin and pl:GetSkin() or info.skin )
+		ent:SetBodyGroups( info.body )
+	end
+
+end
+
 GM.Name       = "Deathmatch"
 GM.Homepage   = "http://www.steampowered.com/"
 GM.Developer  = "Valve"

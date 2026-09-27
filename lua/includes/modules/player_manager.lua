@@ -151,8 +151,137 @@ function AddValidHands( name, model, skin, body, matchBodySkin )
 	end
 end
 
-function TranslatePlayerHands( model )
-	return HandNames[ model ]
+-- ===========================================================================
+-- HL2SB (2026-09-27): GMod's default HL2/CSS/Portal/DOD cast (the bottom half
+-- of its player_manager.lua) -- the HANDS half only.  The fork's playermodel
+-- menu is engine-scan driven, so GMod's ModelList/AddValidModel registration
+-- is deliberately NOT ported here; what the hands pipeline needs is the
+-- path->name dict for TranslateToPlayerModelName and these HandNames entries
+-- for TranslatePlayerHands.  GMod's own AddPlayerModel( name, title, model,
+-- handsModel, ... ) calls both halves; entries registered this way keep the
+-- same names GMod uses.
+-- ===========================================================================
+local HandsCitizen = "models/weapons/c_arms_citizen.mdl"
+local HandsRefugee = "models/weapons/c_arms_refugee.mdl"
+local HandsCombine = "models/weapons/c_arms_combine.mdl"
+local HandsCSS     = "models/weapons/c_arms_cstrike.mdl"
+local HandsChell   = "models/weapons/c_arms_chell.mdl"
+local HandsDOD     = "models/weapons/c_arms_dod.mdl"
+
+local DefaultHandsModels = {
+	-- Main cast
+	{ "alyx",           "models/player/alyx.mdl",                          HandsCitizen, 0, "0000000" },
+	{ "breen",          "models/player/breen.mdl",                         HandsCitizen, 0, "0000000" },
+	{ "eli",            "models/player/eli.mdl",                           HandsCitizen, 1, "0000000" },
+	{ "gman",           "models/player/gman_high.mdl",                     HandsCitizen, 0, "0000000" },
+	{ "kleiner",        "models/player/kleiner.mdl",                       HandsCitizen, 0, "0000000" },
+	{ "monk",           "models/player/monk.mdl",                          HandsCitizen, 0, "0000000" },
+	{ "odessa",         "models/player/odessa.mdl",                        HandsCitizen, 0, "0000000" },
+	{ "barney",         "models/player/barney.mdl",                        HandsCombine, 0, "0000000" },
+	{ "magnusson",      "models/player/magnusson.mdl",                     HandsCitizen, 0, "0000000" },
+	{ "mossman",        "models/player/mossman.mdl",                       HandsCitizen, 0, "0000000" },
+	{ "mossmanarctic",  "models/player/mossman_arctic.mdl",                HandsCitizen, 0, "0100000" },
+
+	-- Baddies
+	{ "combine",        "models/player/combine_soldier.mdl",               HandsCombine, 0, "0000000" },
+	{ "combineprison",  "models/player/combine_soldier_prisonguard.mdl",   HandsCombine, 0, "0000000" },
+	{ "combineelite",   "models/player/combine_super_soldier.mdl",         HandsCombine, 0, "0000000" },
+	{ "police",         "models/player/police.mdl",                        HandsCombine, 0, "0000000" },
+	{ "policefem",      "models/player/police_fem.mdl",                    HandsCombine, 0, "0000000" },
+	{ "stripped",       "models/player/soldier_stripped.mdl",              HandsCitizen, 0, "0000000" },
+
+	-- Zombies
+	{ "charple",        "models/player/charple.mdl",                       HandsCitizen, 2, "0000000" },
+	{ "corpse",         "models/player/corpse1.mdl",                       HandsCitizen, 2, "0000000" },
+	{ "skeleton",       "models/player/skeleton.mdl",                      HandsCitizen, 2, "0000000" },
+	{ "zombie",         "models/player/zombie_classic.mdl",                HandsCitizen, 2, "0000000" },
+	{ "zombiefast",     "models/player/zombie_fast.mdl",                   HandsCitizen, 2, "0000000" },
+	{ "zombine",        "models/player/zombie_soldier.mdl",                HandsCombine, 0, "0000000" },
+
+	-- Citizens
+	{ "female01",       "models/player/Group01/female_01.mdl",             HandsCitizen, 0, "0000000" },
+	{ "female02",       "models/player/Group01/female_02.mdl",             HandsCitizen, 0, "0000000" },
+	{ "female03",       "models/player/Group01/female_03.mdl",             HandsCitizen, 1, "0000000" },
+	{ "female04",       "models/player/Group01/female_04.mdl",             HandsCitizen, 0, "0000000" },
+	{ "female05",       "models/player/Group01/female_05.mdl",             HandsCitizen, 1, "0000000" },
+	{ "female06",       "models/player/Group01/female_06.mdl",             HandsCitizen, 0, "0000000" },
+	{ "female07",       "models/player/Group03/female_01.mdl",             HandsRefugee, 0, "0100000" },
+	{ "female08",       "models/player/Group03/female_02.mdl",             HandsRefugee, 0, "0100000" },
+	{ "female09",       "models/player/Group03/female_03.mdl",             HandsRefugee, 1, "0100000" },
+	{ "female10",       "models/player/Group03/female_04.mdl",             HandsRefugee, 0, "0100000" },
+	{ "female11",       "models/player/Group03/female_05.mdl",             HandsRefugee, 1, "0100000" },
+	{ "female12",       "models/player/Group03/female_06.mdl",             HandsRefugee, 0, "0100000" },
+	{ "male01",         "models/player/Group01/male_01.mdl",               HandsCitizen, 1, "0000000" },
+	{ "male02",         "models/player/Group01/male_02.mdl",               HandsCitizen, 0, "0000000" },
+	{ "male03",         "models/player/Group01/male_03.mdl",               HandsCitizen, 1, "0000000" },
+	{ "male04",         "models/player/Group01/male_04.mdl",               HandsCitizen, 0, "0000000" },
+	{ "male05",         "models/player/Group01/male_05.mdl",               HandsCitizen, 0, "0000000" },
+	{ "male06",         "models/player/Group01/male_06.mdl",               HandsCitizen, 0, "0000000" },
+	{ "male07",         "models/player/Group01/male_07.mdl",               HandsCitizen, 0, "0000000" },
+	{ "male08",         "models/player/Group01/male_08.mdl",               HandsCitizen, 0, "0000000" },
+	{ "male09",         "models/player/Group01/male_09.mdl",               HandsCitizen, 0, "0000000" },
+	{ "male10",         "models/player/Group03/male_01.mdl",               HandsRefugee, 1, "0100000" },
+	{ "male11",         "models/player/Group03/male_02.mdl",               HandsRefugee, 0, "0000000" },
+	{ "male12",         "models/player/Group03/male_03.mdl",               HandsRefugee, 1, "0100000" },
+	{ "male13",         "models/player/Group03/male_04.mdl",               HandsRefugee, 0, "0100000" },
+	{ "male14",         "models/player/Group03/male_05.mdl",               HandsRefugee, 0, "0100000" },
+	{ "male15",         "models/player/Group03/male_06.mdl",               HandsRefugee, 0, "0100000" },
+	{ "male16",         "models/player/Group03/male_07.mdl",               HandsRefugee, 0, "0100000" },
+	{ "male17",         "models/player/Group03/male_08.mdl",               HandsRefugee, 0, "0000000" },
+	{ "male18",         "models/player/Group03/male_09.mdl",               HandsRefugee, 0, "0100000" },
+	{ "medic01",        "models/player/Group03m/male_01.mdl",              HandsRefugee, 1, "0100000" },
+	{ "medic02",        "models/player/Group03m/male_02.mdl",              HandsRefugee, 0, "0000000" },
+	{ "medic03",        "models/player/Group03m/male_03.mdl",              HandsRefugee, 1, "0100000" },
+	{ "medic04",        "models/player/Group03m/male_04.mdl",              HandsRefugee, 0, "0000000" },
+	{ "medic05",        "models/player/Group03m/male_05.mdl",              HandsRefugee, 0, "0100000" },
+	{ "medic06",        "models/player/Group03m/male_06.mdl",              HandsRefugee, 0, "0000000" },
+	{ "medic07",        "models/player/Group03m/male_07.mdl",              HandsRefugee, 0, "0000000" },
+	{ "medic08",        "models/player/Group03m/male_08.mdl",              HandsRefugee, 0, "0000000" },
+	{ "medic09",        "models/player/Group03m/male_09.mdl",              HandsRefugee, 0, "0000000" },
+	{ "medic10",        "models/player/Group03m/female_01.mdl",            HandsRefugee, 0, "0100000" },
+	{ "medic11",        "models/player/Group03m/female_02.mdl",            HandsRefugee, 0, "0000000" },
+	{ "medic12",        "models/player/Group03m/female_03.mdl",            HandsRefugee, 1, "0000000" },
+	{ "medic13",        "models/player/Group03m/female_04.mdl",            HandsRefugee, 0, "0100000" },
+	{ "medic14",        "models/player/Group03m/female_05.mdl",            HandsRefugee, 0, "0100000" },
+	{ "medic15",        "models/player/Group03m/female_06.mdl",            HandsRefugee, 1, "0100000" },
+	{ "refugee01",      "models/player/Group02/male_02.mdl",               HandsCitizen, 0, "0000000" },
+	{ "refugee02",      "models/player/Group02/male_04.mdl",               HandsCitizen, 0, "0000000" },
+	{ "refugee03",      "models/player/Group02/male_06.mdl",               HandsCitizen, 0, "0000000" },
+	{ "refugee04",      "models/player/Group02/male_08.mdl",               HandsCitizen, 0, "0000000" },
+
+	-- Counter-Strike
+	{ "css_arctic",     "models/player/arctic.mdl",                        HandsCSS, 0, "0000000" },
+	{ "css_gasmask",    "models/player/gasmask.mdl",                       HandsCSS, 0, "0000000" },
+	{ "css_guerilla",   "models/player/guerilla.mdl",                      HandsCSS, 0, "0000000" },
+	{ "css_leet",       "models/player/leet.mdl",                          HandsCSS, 0, "0000000" },
+	{ "css_phoenix",    "models/player/phoenix.mdl",                       HandsCSS, 0, "0000000" },
+	{ "css_riot",       "models/player/riot.mdl",                          HandsCSS, 0, "0000000" },
+	{ "css_swat",       "models/player/swat.mdl",                          HandsCSS, 0, "0000000" },
+	{ "css_urban",      "models/player/urban.mdl",                         HandsCSS, 0, "0000000" },
+
+	-- Portal / Day of Defeat: Source
+	{ "chell",          "models/player/p2_chell.mdl",                      HandsChell, 0, "0000000" },
+	{ "dod_german",     "models/player/dod_german.mdl",                    HandsDOD, 0, "0000000" },
+	{ "dod_american",   "models/player/dod_american.mdl",                  HandsDOD, 1, "0000000" },
+}
+
+for _, castEntry in ipairs( DefaultHandsModels ) do
+	local castName, castModel = castEntry[ 1 ], castEntry[ 2 ]
+	if ( ModelNameDict[ string.lower( castModel ) ] == nil ) then
+		ModelNameDict[ string.lower( castModel ) ] = castName
+	end
+	AddValidHands( castName, castEntry[ 3 ], castEntry[ 4 ], castEntry[ 5 ] )
+end
+
+function TranslatePlayerHands( name )
+
+	if ( HandNames[ name ] != nil ) then
+		return HandNames[ name ]
+	end
+
+	-- GMod's default (its player_manager.lua): citizen arms, empty bodygroups.
+	return { model = "models/weapons/c_arms_citizen.mdl", skin = 0, body = "100000000" }
+
 end
 
 -------------------------------------------------------------------------------
