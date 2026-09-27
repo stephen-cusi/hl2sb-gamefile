@@ -397,14 +397,27 @@ end
 --[[---------------------------------------------------------
 	Name: IsBinaryModuleInstalled( name )
 	Desc: Returns whether a binary module with the given name is present on disk
+
+	DELTA (sbrust): 与 GMod 原文的三处偏离，全部有据：
+	  1. GMod 公式没有安卓槽位，且本引擎 system.IsLinux() 在安卓上为 true
+	     （__linux__），原公式会把安卓算进 linux64 -- 与桌面 glibc 模块命名撞车。
+	     改为 IsAndroid 优先判定，后缀 android64/android32（C++ 侧
+	     hl2sb_binmod.c 的 HL2SB_BinModSuffix 同表）。
+	  2. 扩展名不再硬编码 .dll（GMod 原文在 Linux 上本来就是坏的）：
+	     Windows .dll，POSIX .so。
+	  3. 64 位判定不再依赖 jit.arch（jit 是替身表，arch 已在 lsrcinit 补上，
+	     这里用 string.pack 的 size_t 宽度做权威判定，双保险）。
 -----------------------------------------------------------]]
-local suffix = ( { "osx64", "osx", "linux64", "linux", "win64", "win32" } )[
-	( system.IsWindows() and 4 or 0 )
-	+ ( system.IsLinux() and 2 or 0 )
-	+ ( jit.arch == "x86" and 1 or 0 )
-	+ 1
-]
-local fmt = "lua/bin/gm" .. ( ( CLIENT and !MENU_DLL ) and "cl" or "sv" ) .. "_%s_%s.dll"
+local is64bit = ( #string.pack( "T", 0 ) == 8 )
+local suffix, binext
+if ( system.IsWindows() ) then
+	suffix, binext = ( is64bit and "win64" or "win32" ), ".dll"
+elseif ( system.IsAndroid and system.IsAndroid() ) then
+	suffix, binext = ( is64bit and "android64" or "android32" ), ".so"
+else
+	suffix, binext = ( is64bit and "linux64" or "linux" ), ".so"
+end
+local fmt = "lua/bin/gm" .. ( ( CLIENT and !MENU_DLL ) and "cl" or "sv" ) .. "_%s_" .. suffix .. binext
 function util.IsBinaryModuleInstalled( name )
 	if ( !isstring( name ) ) then
 		error( "bad argument #1 to 'IsBinaryModuleInstalled' (string expected, got " .. type( name ) .. ")", 2 )
@@ -412,16 +425,7 @@ function util.IsBinaryModuleInstalled( name )
 		error( "bad argument #1 to 'IsBinaryModuleInstalled' (string cannot be empty)", 2 )
 	end
 
-	if ( file.Exists( string.format( fmt, name, suffix ), "MOD" ) ) then
-		return true
-	end
-
-	-- Edge case - on Linux 32-bit x86-64 branch, linux32 is also supported as a suffix
-	if ( jit.versionnum != 20004 and jit.arch == "x86" and system.IsLinux() ) then
-		return file.Exists( string.format( fmt, name, "linux32" ), "MOD" )
-	end
-
-	return false
+	return file.Exists( string.format( fmt, name ), "MOD" )
 end
 
 
