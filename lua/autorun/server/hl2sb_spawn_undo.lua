@@ -74,8 +74,14 @@ local function Fail( ... )
 	if ( Warning ) then Warning( msg ) end
 end
 
--- GMod's commands.lua body, in one place.
-local function RecordUndo( ply, ent, name )
+-- GMod's commands.lua body, in one place.  The two strings are GMod's two
+-- strings: Create receives the CATEGORY/class it puts in the stack entry
+-- ("prop_physics", "NPC", "SENT", "Vehicle"), Finish receives the NiceText the
+-- undo LIST shows ("#prop_physics (models/...)").  Passing the same "#token"
+-- to both (the old behavior) made the popup say "Undone #prop_physics (...)"
+-- and put the raw token in undo.Name - GMod's popup builds
+-- "#Undone_"..undo.Name from the BARE class.
+local function RecordUndo( ply, ent, createName, niceText )
 	if ( undo == nil or undo.Create == nil ) then
 		Dbg( "RecordUndo: no undo module (lua/includes/modules/undo.lua did not load)" )
 		return false
@@ -84,10 +90,10 @@ local function RecordUndo( ply, ent, name )
 	-- pcall so a failure here names itself instead of silently producing an
 	-- empty undo stack -- the exact symptom that made this hard to find.
 	local ok, err = pcall( function()
-		undo.Create( name )
+		undo.Create( createName )
 			undo.SetPlayer( ply )
 			undo.AddEntity( ent )
-		undo.Finish( name )
+		undo.Finish( niceText )
 	end )
 
 	if ( not ok ) then
@@ -95,7 +101,7 @@ local function RecordUndo( ply, ent, name )
 		return false
 	end
 
-	Dbg( "RecordUndo ok:", name )
+	Dbg( "RecordUndo ok:", createName, niceText )
 	return true
 end
 
@@ -151,10 +157,13 @@ concommand.Add( "hl2sb_spawnprop", function( ply, cmd, args )
 	local ent = SpawnProp( ply, model )
 	if ( not IsValid( ent ) ) then return end
 
-	RecordUndo( ply, ent, "#prop_physics (" .. model .. ")" )
+	-- GMod's prop grammar: the stack entry is classed "prop_physics" (the
+	-- popup resolves "#Undone_prop_physics" from it) and the undo LIST shows
+	-- the NiceText "#prop_physics (<model>)" (commands.lua:302-305).
+	RecordUndo( ply, ent, "prop_physics", "#prop_physics (" .. model .. ")" )
 end, nil, "Spawn a prop and record it in the undo stack (GMod-style)" )
 
--- ⚠️ RETIRED: these four now live in the ENGINE - game/server/
+-- RETIRED: these four now live in the ENGINE - game/server/
 -- hl2sb_gm_commands.cpp provides gm_giveswep / gm_spawn / gm_spawnvehicle /
 -- gm_spawnnpc / gm_spawnprop, and records undo through HL2SB_UndoRecord instead of
 -- coming back through Lua.  One spawn path for every client that spawns something,
@@ -259,7 +268,7 @@ local function SpawnAndRecord( ply, class, model, setup )
 		return nil
 	end
 
-	RecordUndo( ply, ent, NiceName( class ) )
+	RecordUndo( ply, ent, "SENT", "#undo.generic.entity (" .. NiceName( class ) .. ")" )
 
 	return ent
 end
@@ -312,7 +321,7 @@ concommand.Add( "gm_spawnvehicle", function( ply, cmd, args )
 	local class = args ~= nil and args[ 1 ] or nil
 	if ( class == nil or class == "" ) then return end
 
-	-- ⚠️ The MODEL is not decoration: it is what makes a vehicle a vehicle, and in
+	-- The MODEL is not decoration: it is what makes a vehicle a vehicle, and in
 	-- GMod's own list every chair and seat is the SAME class told apart by its model.
 	-- A model-less vehicle is what took the server down inside
 	-- CFourWheelVehiclePhysics::Initialize (VPhysicsInitNormal answers NULL, and the

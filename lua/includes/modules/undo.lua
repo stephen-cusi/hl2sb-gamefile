@@ -1,128 +1,65 @@
 --[[---------------------------------------------------------------------------
-    HL2SB undo module (server + client).
+    HL2SB undo module (shared realm - GMod calls it a "lua shared module").
 
-    This is Garry's Mod's own lua/includes/modules/undo.lua, ported with the
-    smallest possible diff.  HL2SB's Lua keeps GLua's lexer extensions (`!`,
-    `!=`, `&&`, `||`, `continue`), so GMod's source is usable nearly verbatim --
-    the edits below are only the things HL2SB genuinely does not have.
+    This file IS Garry's Mod's own lua/includes/modules/undo.lua.  The exported
+    surface is identical, function for function, byte for byte where the fork's
+    Lua can take it:
 
-    Differences from GMod's file, all marked with "HL2SB:" comments:
-      * CLIENT / SERVER   -> _CLIENT / _GAME
-      * saverestore.*     -> omitted; HL2SB has no saverestore module yet, and
-                             GMod only needs it for singleplayer saves.
-      * controlpanel.Get / spawnmenu.AddToolMenuOption / Panel:ListBox
-                          -> the spawnmenu control panel does not exist yet, so
-                             the client UI block is gated behind a presence
-                             check.  The net receivers, GetTable/MakeUIDirty and
-                             the OnUndo hook (the parts scripts actually use)
-                             are unconditional.
-      * language.GetPhrase -> optional; the "#name (secondary)" prettifier is
-                             skipped when the language module is absent.
+        module table "undo", package.seeall:
+          client:  GetTable MakeUIDirty SetupUI
+                   net.Receive  "Undo_AddUndo" "Undo_FireUndo" "Undo_Undone"
+                   hook.Run( "OnUndo", name, customtext )
+                   hook.Add( "PopulateToolMenu", "Undo_RegisterToolMenu", ... )
+          server:  GetTable Create SetCustomUndoText AddEntity AddFunction
+                   ReplaceEntity SetPlayer Finish Do_Undo
+                   util.AddNetworkString x3
+                   saverestore.AddSaveHook / AddRestoreHook  ("UndoTable")
+                   concommand.Add  "undo" "gmod_undo" "gmod_undonum"
+                   hook.Run( "CanCreateUndo" / "PreUndo" / "PostUndo" / "CanUndo" )
+                   hook.Add( "EntityRemoved", "Undo_RemoveInvalidUndos", ... )
 
-    Force conditions (GMod semantics, unchanged):
-      hook.Run("CanCreateUndo", owner, undo)
-      hook.Run("PreUndo", undo)            -- false cancels Do_Undo
-      hook.Run("PostUndo", undo, count)
-      hook.Run("CanUndo", ply, undo)
-      hook.Run("OnUndo", name, customtext) -- client side, from Undo_FireUndo
+    There is NO C++ side to undo anywhere in GMod: the win64/x86 lua_shared.dll
+    export tables (151 names, audited 2026-09-29) contain zero undo symbols, the
+    game DLLs contain no undo commands - the whole feature is this one file plus
+    the gamemode's GM:OnUndo popup (in THIS fork: gamemodes/deathmatch/gamemode/
+    cl_init.lua, the equivalent of GMod's sandbox/gamemode/cl_init.lua:46).
 
-    Console commands (GMod's own names):
-      undo / gmod_undo     -> undo the player's most recent action
-      gmod_undonum <n>     -> undo a specific entry (used by the control panel)
+    The only deviations from GMod's file (both invisible at the API surface):
 
-    Loaded every level from lua/includes/modules/.
+      1. Re-entrancy guard below.  lua/includes/modules/ is executed by
+         luasrc_dofolder, which does not write package.loaded, so a second
+         require("undo") would re-run this file and APPEND a second set of
+         net receivers (the engine's net.Receive appends) - one undo then
+         produces one OnUndo PER RECEIVER.  hook.lua and concommand.lua carry
+         the same guard for the same reason.
+
+      2. name[ 1 ] == "#"  ->  string.sub( name, 1, 1 ) == "#"
+         GLua sugar: GMod's Lua gives strings a 1-based __index; standard
+         Lua 5.4 does not.  Same test, same result.
+
+    Everything else - the validity checks (IsValid), the Remove loop, the
+    compaction recursion, the flag tables on concommand.Add - is GMod's code
+    running on primitives the fork now actually has (IsValid: real entity
+    method + safe NULL handling, unpack: gmod_compat alias, table.IsEmpty:
+    extensions/table.lua, continue: lexer extension, saverestore/controlpanel/
+    spawnmenu/language: present in lua/includes/modules/ and load-ordered
+    before this file).
+
+    The previous port of this file diverged from GMod in eight places (a
+    pcall-based UndoValid, a 0.25 s command de-duplication that ate legitimate
+    fast double undos, a pcall wrapper, an IsCarriedByPlayer veto that made
+    undo NOT behave like GMod, a vehicle-eject block the engine now does
+    itself in CPropVehicleDriveable::UpdateOnRemove, and client-side display
+    name re-translation in two net receivers).  All of them are gone.  If a
+    GMod undo behavior and this file disagree, this file wins and the other
+    side gets fixed.
 -----------------------------------------------------------------------------]]
 
--- HL2SB: GMod loads its modules in a fixed order and its undo.lua carries no
--- requires.  luasrc_dofolder() walks lua/includes/modules/ in directory order,
--- so pull in what the module body touches at load time and what its functions
--- rely on.  (`net` is a C library, already a global; no require for it.)
-require( "hook" )
-require( "concommand" )
-require( "table" )
-require( "timer" )
-
--- HL2SB: re-entrancy guard.
---
--- lua/includes/modules/ is loaded as a folder of plain files (luasrc_dofolder),
--- which does not write package.loaded, so a later require("undo") runs this
--- whole file a SECOND time.  The body registers net receivers at load time, and
--- the engine's net.Receive appends rather than replaces, so the second run left
--- two receivers for "Undo_FireUndo":
---
---     one undo  ->  Undo_FireUndo handled twice  ->  hook.Run( "OnUndo" ) twice
---               ->  two undo notices on screen
---
--- Same class of bug, same guard as lua/includes/modules/hook.lua.  (The marker
--- has to be a module function: ClientUndos is a file-local.)
 if ( _G.undo ~= nil and _G.undo.GetTable ~= nil ) then
 	return _G.undo
 end
 
 module( "undo", package.seeall )
-
--- HL2SB debug: hl2sb_hud_debug 1 traces the whole undo chain.  Every step below
--- returns silently when it has nothing to do, so "undo does nothing" cannot be
--- told apart between "no entry was recorded", "Can_Undo said no", "count == 0"
--- and "the net message never arrived" without a line at each one.
-local function UndoDebug( ... )
-	if ( GetConVarNumber( "hl2sb_hud_debug" ) == 0 ) then return end
-	local out = {}
-	for i = 1, select( "#", ... ) do out[ i ] = tostring( ( select( i, ... ) ) ) end
-	print( "[HL2SB HUD] " .. table.concat( out, " " ) .. "\n" )
-end
-
--- HL2SB: validity in this module.
---
--- Do NOT use the GLOBAL IsValid() here.  Measured in game with hl2sb_hud_debug 1:
---     [HL2SB HUD] undo.Finish REJECTED: IsValid(Owner)=false owner=nil entities=0
--- while the same run had already reported
---     [HL2SB undo] HL2SB_UndoRecord( hut, prop_physics )
--- with a valid owner and entity.  That shim answered false for live entities, so
--- this module cannot be built on it.
---
--- UndoValid() below is the replacement and it is a REAL test (Entity:IsValid(),
--- resolved through the entity's CBaseHandle) -- see its body.  It must not be
--- relaxed back to "accept everything" again: doing so let Do_Undo() call
--- entity:Remove() on entities that were already gone, which is the use-after-free
--- behind dumps/crash_20260913_234437_1_accessviolation.mdmp.
-local function UndoValid( ent )
-	if ( ent == nil ) then return false end
-
-	-- HL2SB: a REAL validity test (GMod gates this with IsEntity()).
-	--
-	-- This used to end with an unconditional "return true", so the function
-	-- accepted everything that was not nil and Do_Undo() happily called
-	-- entity:Remove() on entities that had already been removed.  That is the
-	-- use-after-free behind
-	--   dumps/crash_20260913_234437_1_accessviolation.mdmp
-	-- (EXECUTE access violation on recycled heap memory, reached from the
-	-- physics collision solver, which still held the entity as its game data).
-	--
-	-- Values that are not entity-like at all are now rejected BEFORE the field
-	-- read: the NULL-entity method shim hands back plain booleans
-	-- (ent:GetOwnerEntity() on a dead entity answers false), and indexing a
-	-- boolean raised
-	--   undo.lua:111: attempt to index a boolean value (local 'ent')
-	-- which aborted Do_Undo() before it removed anything AND left the poisoned
-	-- entry on the stack forever -- every later press of undo died on the same
-	-- entry (measured 2026-09-19, six "undo failed" lines, zero removals).
-	if ( isbool( ent ) or isnumber( ent ) or isstring( ent ) or isfunction( ent ) ) then
-		return false
-	end
-
-	-- A removed entity resolves to the NULL sentinel, which answers
-	-- `ent.IsValid` with a boolean false (not a function); a broken entity
-	-- table can raise through its own __index (the SCP-096 lesson in
-	-- luamanager.h).  So even the field READ is protected.  Either failure
-	-- means: not a live entity.
-	local okRead, isCallable = pcall( function() return isfunction( ent.IsValid ) end )
-	if ( !okRead or !isCallable ) then return false end
-
-	local okCall, res = pcall( ent.IsValid, ent )
-	if ( okCall ) then return res == true end
-	return false
-end
 
 -- undo.Create("Wheel")
 -- undo.AddEntity( axis )
@@ -130,7 +67,7 @@ end
 -- undo.SetPlayer( self.Owner )
 -- undo.Finish()
 
-if ( _CLIENT ) then
+if ( CLIENT ) then
 
 	local ClientUndos = {}
 	local bIsDirty = true
@@ -149,9 +86,6 @@ if ( _CLIENT ) then
 		re-creates them using the new data.
 	-----------------------------------------------------------]]
 	local function UpdateUI()
-
-		-- HL2SB: no spawnmenu control panel yet -> nothing to update.
-		if ( _G.controlpanel == nil ) then return end
 
 		local Panel = controlpanel.Get( "Undo" )
 		if ( !IsValid( Panel ) ) then return end
@@ -192,24 +126,12 @@ if ( _CLIENT ) then
 		local name = net.ReadString()
 
 		-- HACK: To support localization of "#prop_physics (models/path.mdl)"
+		-- HL2SB deviation 2: string.sub instead of GLua's name[1] indexing.
 		if ( string.sub( name, 1, 1 ) == "#" and string.find( name, " (", nil, true ) ) then
 			local undoName, undoSecondary = string.match( name, "^(#.*) %((.*)%)$" )
 			if ( undoName and undoSecondary ) then
-				-- HL2SB: language.GetPhrase only if the module exists.
-				if ( _G.language ~= nil and language.GetPhrase ~= nil ) then
-					name = string.format( "%s (%s)", language.GetPhrase( undoName ), language.GetPhrase( undoSecondary ) )
-				else
-					name = undoName .. " (" .. undoSecondary .. ")"
-				end
+				name = string.format( "%s (%s)", language.GetPhrase( undoName ), language.GetPhrase( undoSecondary ) )
 			end
-		end
-
-		-- HL2SB: the block above only localises "#name (secondary)".  A plain class
-		-- ("npc_zombie", "xxx_096") fell straight through and was shown AS the class,
-		-- and a reskinned NPC showed the class it inherits from.  Resolve it from the
-		-- content - the same resolver the kill feed uses, so both print the same name.
-		if ( _G.HL2SB_GetDisplayName ~= nil ) then
-			name = HL2SB_GetDisplayName( name )
 		end
 
 		table.insert( ClientUndos, 1, { Key = key, Name = name } )
@@ -226,11 +148,6 @@ if ( _CLIENT ) then
 		local customtext
 		if ( hasCustomText ) then
 			customtext = net.ReadString()
-		end
-
-		-- same name as the undo list shows (see Undo_AddUndo above)
-		if ( _G.HL2SB_GetDisplayName ~= nil ) then
-			name = HL2SB_GetDisplayName( name )
 		end
 
 		hook.Run( "OnUndo", name, customtext )
@@ -256,7 +173,6 @@ if ( _CLIENT ) then
 				NewUndo [ i ] = v
 				i = i + 1
 			end
-
 		end
 
 		ClientUndos = NewUndo
@@ -265,6 +181,7 @@ if ( _CLIENT ) then
 		MakeUIDirty()
 
 	end )
+
 
 	--[[---------------------------------------------------------
 		MakeUIDirty
@@ -306,9 +223,6 @@ if ( _CLIENT ) then
 	-----------------------------------------------------------]]
 	function SetupUI()
 
-		-- HL2SB: no spawnmenu control panel yet.
-		if ( _G.controlpanel == nil ) then return end
-
 		local UndoPanel = controlpanel.Get( "Undo" )
 		if ( !IsValid( UndoPanel ) ) then return end
 
@@ -320,20 +234,18 @@ if ( _CLIENT ) then
 
 	end
 
-	if ( _G.spawnmenu ~= nil and spawnmenu.AddToolMenuOption ~= nil ) then
-		hook.Add( "PopulateToolMenu", "Undo_RegisterToolMenu", function()
+	hook.Add( "PopulateToolMenu", "Undo_RegisterToolMenu", function()
 
-			spawnmenu.AddToolMenuOption( "Utilities", "User", "Undo", "#spawnmenu.utilities.undo", "", "", function( pnl )
-				SetupUI()
-			end )
-
+		spawnmenu.AddToolMenuOption( "Utilities", "User", "Undo", "#spawnmenu.utilities.undo", "", "", function( pnl )
+			SetupUI()
 		end )
-	end
+
+	end )
 
 end
 
 
-if ( !_GAME ) then return end
+if ( !SERVER ) then return end
 
 local PlayerUndo = {}
 -- PlayerUndo
@@ -359,9 +271,14 @@ end
 
 --[[---------------------------------------------------------
 	Save/Restore the undo tables
-	HL2SB: omitted - there is no saverestore module yet, and this only matters
-	for singleplayer saves (GMod: saverestore.AddSaveHook("UndoTable", ...)).
 -----------------------------------------------------------]]
+saverestore.AddSaveHook( "UndoTable", function( save )
+	saverestore.WriteTable( PlayerUndo, save )
+end )
+
+saverestore.AddRestoreHook( "UndoTable", function( restore )
+	PlayerUndo = saverestore.ReadTable( restore )
+end )
 
 --[[---------------------------------------------------------
 	Start a new undo
@@ -377,7 +294,7 @@ function Create( text )
 end
 
 --[[---------------------------------------------------------
-	Adds a custom undo text
+	Adds an entity to this undo (The entity is removed on undo)
 -----------------------------------------------------------]]
 function SetCustomUndoText( CustomUndoText )
 
@@ -393,7 +310,7 @@ end
 function AddEntity( ent )
 
 	if ( !Current_Undo ) then return end
-	if ( !UndoValid( ent ) ) then return end
+	if ( !IsValid( ent ) ) then return end
 
 	table.insert( Current_Undo.Entities, ent )
 
@@ -444,7 +361,7 @@ end
 function SetPlayer( ply )
 
 	if ( !Current_Undo ) then return end
-	if ( !UndoValid( ply ) ) then return end
+	if ( !IsValid( ply ) ) then return end
 
 	Current_Undo.Owner = ply
 
@@ -456,7 +373,7 @@ end
 -----------------------------------------------------------]]
 local function SendUndoneMessage( ent, id, ply )
 
-	if ( !UndoValid( ply ) ) then return end
+	if ( !IsValid( ply ) ) then return end
 
 	-- For further optimization we could queue up the ids and send them
 	-- in one batch every 0.5 seconds or something along those lines.
@@ -486,31 +403,9 @@ function Finish( NiceText )
 	if ( !Current_Undo ) then return end
 
 	-- Do not add undos that have no owner or anything to undo
-	if ( !UndoValid( Current_Undo.Owner ) or ( table.IsEmpty( Current_Undo.Entities ) && table.IsEmpty( Current_Undo.Functions ) ) or !Can_CreateUndo( Current_Undo ) ) then
-
-		-- HL2SB: this branch is why "undo" reported "no undo entry recorded"
-		-- while the C++ recorder ran cleanly and reported no error -- it returns
-		-- false and the caller (HL2SB_CallUndoFunc) asks for 0 results, so the
-		-- rejection was completely invisible.  Print which condition fired.
-		if ( GetConVarNumber( "hl2sb_hud_debug" ) ~= 0 ) then
-			local nEnts = 0
-			for _ in pairs( Current_Undo.Entities or {} ) do nEnts = nEnts + 1 end
-			local nFuncs = 0
-			for _ in pairs( Current_Undo.Functions or {} ) do nFuncs = nFuncs + 1 end
-
-			print( "[HL2SB HUD] undo.Finish REJECTED: IsValid(Owner)=" .. tostring( UndoValid( Current_Undo.Owner ) )
-				.. " owner=" .. tostring( Current_Undo.Owner )
-				.. " entities=" .. tostring( nEnts )
-				.. " functions=" .. tostring( nFuncs )
-				.. " CanCreateUndo=" .. tostring( Can_CreateUndo( Current_Undo ) ) .. "\n" )
-		end
-
+	if ( !IsValid( Current_Undo.Owner ) or ( table.IsEmpty( Current_Undo.Entities ) && table.IsEmpty( Current_Undo.Functions ) ) or !Can_CreateUndo( Current_Undo ) ) then
 		Current_Undo = nil
 		return false
-	end
-
-	if ( GetConVarNumber( "hl2sb_hud_debug" ) ~= 0 ) then
-		print( "[HL2SB HUD] undo.Finish accepted: " .. tostring( NiceText or Current_Undo.Name ) .. "\n" )
 	end
 
 	local index = Current_Undo.Owner:UniqueID()
@@ -526,7 +421,7 @@ function Finish( NiceText )
 	net.Send( Current_Undo.Owner )
 
 	-- Have one of the entities in the undo tell us when it gets undone.
-	if ( UndoValid( Current_Undo.Entities[ 1 ] ) ) then
+	if ( IsValid( Current_Undo.Entities[ 1 ] ) ) then
 
 		local ent = Current_Undo.Entities[ 1 ]
 		ent:CallOnRemove( "undo" .. id, SendUndoneMessage, id, Current_Undo.Owner )
@@ -557,7 +452,7 @@ local function CleanupInvalidUndos()
 
 			local allInvalid = true
 			for entIdx, ent in pairs( undoData.Entities or {} ) do
-				if ( UndoValid( ent ) ) then
+				if ( IsValid( ent ) ) then
 					allInvalid = false
 				else
 					undoData.Entities[ entIdx ] = nil
@@ -600,44 +495,6 @@ hook.Add( "EntityRemoved", "Undo_RemoveInvalidUndos", function( ent )
 end )
 
 --[[---------------------------------------------------------
-	HL2SB: is this entity currently carried by a player?
-
-	The engine records an undo action for everything `ent_create` spawns
-	(HL2SB_UndoRecord, game/server/hl2sb_undo.cpp), weapons from the admin menu
-	included.  That record goes stale the moment somebody picks the weapon up:
-	running the undo would delete it straight out of that player's hands.
-	Anything a player carries is therefore left alone -- weapons sitting in the
-	inventory too, because CBaseCombatWeapon::Equip() sets the owner as well.
------------------------------------------------------------]]
-local function IsCarriedByPlayer( ent )
-
-	local owner = nil
-
-	-- HL2SB: a dead/NULL entity answers every method with a shim that returns
-	-- a plain false, so these two can hand back a BOOLEAN -- never feed that
-	-- into UndoValid or the global IsValid unchecked (UndoValid indexes
-	-- ent.IsValid, which is exactly the undo.lua:111 boolean crash).
-	local okA, resA = pcall( function()
-		if ( isfunction( ent.GetOwnerEntity ) ) then return ent:GetOwnerEntity() end
-	end )
-	if ( okA and resA ~= nil ) then owner = resA end
-
-	if ( !UndoValid( owner ) ) then
-		local okB, resB = pcall( function()
-			if ( isfunction( ent.GetOwner ) ) then return ent:GetOwner() end
-		end )
-		if ( okB and resB ~= nil ) then owner = resB end
-	end
-
-	if ( UndoValid( owner ) and isfunction( owner.GetClass ) and owner:GetClass() == "player" ) then
-		return true
-	end
-
-	return false
-
-end
-
---[[---------------------------------------------------------
 	Undos an undo
 -----------------------------------------------------------]]
 function Do_Undo( undo )
@@ -660,88 +517,19 @@ function Do_Undo( undo )
 		end
 	end
 
-	-- HL2SB: get the owner OUT of anything this undo is about to delete.
-	--
-	-- GMod's own Do_Undo has no vehicle special-case at all:
-	--     D:\games\garrysmod\garrysmod\lua\includes\modules\undo.lua:438-481
-	-- just calls entity:Remove() on whatever IsValid.  It can afford to, because
-	-- the ENGINE drives the vehicle-exit transition, which GMod surfaces to Lua as
-	-- GM:CanExitVehicle / GM:PlayerLeaveVehicle
-	-- (gamemodes/base/gamemode/player.lua:567-578), and its drive module restores
-	-- the view with Player:SetViewEntity(nil) on the way out
-	-- (lua/includes/modules/drive.lua:231).
-	--
-	-- Our engine had no such transition on removal, so pressing undo while sitting
-	-- in a vehicle left the player parented to a dead entity with the vehicle view
-	-- -> black screen and no way back out.  The engine now ejects on removal too
-	-- (CPropVehicleDriveable::UpdateOnRemove + CBasePlayer::LeaveVehicle, which
-	-- force the on-foot state and the view back); this makes the intent explicit
-	-- BEFORE anything is deleted, using the same two player primitives GMod's own
-	-- Lua uses.
-	if ( undo.Owner and UndoValid( undo.Owner ) and isfunction( undo.Owner.IsInAVehicle ) and undo.Owner:IsInAVehicle() ) then
-
-		for _, entity in pairs( undo.Entities or {} ) do
-
-			if ( entity and isfunction( entity.GetClassname ) ) then
-
-				local ok, classname = pcall( entity.GetClassname, entity )
-
-				if ( ok and isstring( classname )
-					and ( string.sub( classname, 1, 13 ) == "prop_vehicle_" or string.sub( classname, 1, 8 ) == "vehicle_" ) ) then
-
-					UndoDebug( "undo: ejecting the owner before removing", classname )
-					local okLeave, errLeave = pcall( function() undo.Owner:LeaveVehicle() end )
-					if ( !okLeave ) then
-						UndoDebug( "undo: LeaveVehicle() failed:", tostring( errLeave ) )
-					end
-					break
-
-				end
-
-			end
-
-		end
-
-	end
-
 	-- Remove each entity in this undo
 	if ( undo.Entities ) then
 		for index, entity in pairs( undo.Entities ) do
 
-			if ( UndoValid( entity ) ) then
-
-				-- HL2SB: leave anything a player is carrying alone.  An
-				-- admin-spawned weapon gets an undo record when it is created,
-				-- but once a player picks it up that record is stale and
-				-- undoing it would rip the weapon out of their hands.
-				if ( !IsCarriedByPlayer( entity ) ) then
-					-- HL2SB: name the entity that is being removed.  The game
-					-- crashes (execute access violation in server.dll, inside a
-					-- C++ throw/unwind) at some point during the removal of a
-					-- spawned NPC or weapon; with hl2sb_hud_debug 1 the last line
-					-- of the log then says exactly which one it died on.
-					UndoDebug( "undo: removing entity", tostring( index ),
-						( entity.GetClassname ~= nil ) and tostring( entity:GetClassname() ) or "?" )
-					-- HL2SB: removing one entity must never abort (or crash) the
-					-- whole undo.  The binding resolves the entity's handle, so a
-					-- stale entry raises a Lua error instead of touching freed
-					-- memory -- catch it, name it, and carry on with the rest.
-					local okRemove, errRemove = pcall( entity.Remove, entity )
-					if ( okRemove ) then
-						UndoDebug( "undo: removed entity", tostring( index ) )
-						count = count + 1
-					else
-						UndoDebug( "undo: entity.Remove() failed, skipped:", tostring( errRemove ) )
-					end
-				end
-
+			if ( IsValid( entity ) ) then
+				entity:Remove()
+				count = count + 1
 			end
 
 		end
 	end
 
 	if ( count > 0 ) then
-		UndoDebug( "undo: sending Undo_FireUndo" )
 		net.Start( "Undo_FireUndo" )
 			net.WriteString( undo.Name )
 			net.WriteBool( undo.CustomUndoText != nil )
@@ -768,57 +556,7 @@ local function Can_Undo( ply, undo )
 
 end
 
-
--- HL2SB: one press of "undo" reaches this function TWICE.
---
--- Measured in engine.log for a single press:
---
---   [HL2SB HUD] undo: sending Undo_FireUndo
---   [HL2SB HUD] undo: Do_Undo returned count= 1
---   [HL2SB HUD] undo: sending Undo_FireUndo      <- second run
---   ... "OnUndo" twice, then the log stops: access violation in server.dll
---
--- The second Do_Undo deletes entities the first one already removed, so it ends
--- up calling through a freed object -- an execute fault, which is the crash, and
--- it is also why every undo produced two notices.  Only one registration of
--- "undo" exists (concommand.Add at the bottom of this file), so the duplicate is
--- in the dispatch, not the registration.  Ignore a repeat within 0.25s.
---
--- FAIL OPEN: SysTime and RealTime are both nil on the SERVER, so the first
--- version computed flNow == 0 and swallowed the very first press too ("undo does
--- nothing at all").  With no clock available, nothing is ever suppressed.
-local flLastUndoCommandTime = -1
-
-local function HL2SB_UndoNow()
-	local flTime = nil
-
-	if ( SysTime ~= nil ) then flTime = SysTime() end
-	if ( flTime == nil and CurTime ~= nil ) then flTime = CurTime() end
-	if ( flTime == nil and RealTime ~= nil ) then flTime = RealTime() end
-	if ( flTime == nil and gpGlobals ~= nil and gpGlobals.curtime ~= nil ) then flTime = gpGlobals.curtime() end
-
-	return flTime
-end
-
--- HL2SB: forward declaration.  CC_UndoLast_Body's compaction branch calls
--- CC_UndoLast( pl ), but the actual definition below was a `local function`
--- AFTER this point -- out of scope there, so the call resolved to the global
--- nil and every undo that removed nothing raised
--- "attempt to call a nil value (global 'CC_UndoLast')".
-local CC_UndoLast
-
-local function CC_UndoLast_Body( pl, command, args )
-
-	local flNow = HL2SB_UndoNow()
-
-	if ( flNow ~= nil and flLastUndoCommandTime >= 0 and ( flNow - flLastUndoCommandTime ) < 0.25 ) then
-		UndoDebug( "undo: duplicate command suppressed (it is dispatched twice per press)" )
-		return
-	end
-
-	if ( flNow ~= nil ) then
-		flLastUndoCommandTime = flNow
-	end
+local function CC_UndoLast( pl, command, args )
 
 	local index = pl:UniqueID()
 	PlayerUndo[ index ] = PlayerUndo[ index ] or {}
@@ -834,7 +572,6 @@ local function CC_UndoLast_Body( pl, command, args )
 	end
 
 	-- No undos
-	UndoDebug( "undo: no undo entry recorded for " .. tostring( pl ) )
 	if ( !last ) then return end
 
 	-- This is quite messy, but if the player rejoined the server
@@ -845,7 +582,6 @@ local function CC_UndoLast_Body( pl, command, args )
 	if ( !Can_Undo( pl, last ) ) then return end
 
 	local count = Do_Undo( last )
-	UndoDebug( "undo: Do_Undo returned count=", count )
 
 	net.Start( "Undo_Undone" )
 		net.WriteInt( lastk, 16 )
@@ -894,47 +630,6 @@ local function CC_UndoNum( ply, command, args )
 
 end
 
--- HL2SB: run the whole undo inside pcall.
---
--- Every undo of a spawned entity ended with the log stopping right after the
--- notice went out: something in the post-undo bookkeeping RAISED a Lua error, and
--- on this ARM64EC host (Windows on ARM, x64 emulation) raising is where the game
--- dies -- both of Lua's mechanisms fault there (_CxxThrowException, and
--- __longjmp_internal with LUA_USE_LONGJMP: execute access violation at a heap
--- address in the minidumps).  pcall-based catching does work on the ordinary
--- paths (that is why "[timer] ... failed:" lines appear), so catching here keeps
--- the error visible as text instead of killing the process.
-CC_UndoLast = function( pl, command, args )
-	local ok, err = pcall( CC_UndoLast_Body, pl, command, args )
-
-	if ( !ok ) then
-		print( "[HL2SB] undo failed (caught instead of crashing): " .. tostring( err ) .. "\n" )
-
-		-- HL2SB: name WHAT sat in the stack when it failed.  A bare line number
-		-- ("...111: attempt to index a boolean value") says a boolean reached
-		-- UndoValid but not WHERE it came from; dumping every entry's field
-		-- types turns the next report into an answer instead of a guess.
-		pcall( function()
-			local index = pl:UniqueID()
-			local stack = PlayerUndo[ index ]
-			if ( !istable( stack ) ) then return end
-
-			for k, v in pairs( stack ) do
-				local entTypes = {}
-				if ( istable( v.Entities ) ) then
-					for entIdx, ent in pairs( v.Entities ) do
-						entTypes[ #entTypes + 1 ] = tostring( entIdx ) .. "=" .. type( ent )
-					end
-				end
-				print( "[HL2SB] undo stack[" .. tostring( k ) .. "] name=" .. tostring( v.Name )
-					.. " owner=" .. type( v.Owner )
-					.. " entities={ " .. table.concat( entTypes, " " ) .. " }\n" )
-			end
-		end )
-	end
-end
 concommand.Add( "undo",			CC_UndoLast, nil, "", { FCVAR_DONTRECORD } )
 concommand.Add( "gmod_undo",	CC_UndoLast, nil, "", { FCVAR_DONTRECORD } )
 concommand.Add( "gmod_undonum",	CC_UndoNum, nil, "", { FCVAR_DONTRECORD } )
-
-print( "[HL2SB] undo module loaded (GMod lua/includes/modules/undo.lua)" )

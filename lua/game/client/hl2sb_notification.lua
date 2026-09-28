@@ -1,30 +1,28 @@
 --[[----------------------------------------------------------------------------
     hl2sb_notification.lua
 
-    GMod's notification system, wired to HL2SB (replaces the hand-written
-    hl2sb_undo_notify.lua that used to live next to this file).
+    Shims that keep GMod's notification module and its gamemode-layer notices
+    working on this fork.
 
-    GMod's chain, reproduced here:
+    The undo popup is NOT here.  GMod's chain is:
 
-        server: engine undo -> lua/includes/modules/undo.lua -> Do_Undo()
+        server: lua/includes/modules/undo.lua -> Do_Undo()
                 -> net "Undo_FireUndo" (name, hasCustomText, customtext)
-        client: lua/includes/modules/undo.lua:134 net.Receive
-                -> hook.Run( "OnUndo", name, customtext )
-                -> GM:OnUndo            (GMod sandbox gamemode/cl_init.lua:46)
-                -> GM:AddNotify         (GMod sandbox gamemode/cl_notice.lua:2)
+        client: undo.lua net.Receive -> hook.Run( "OnUndo", name, customtext )
+                -> GM:OnUndo            (GMod: sandbox/gamemode/cl_init.lua:46;
+                                         this fork: deathmatch/gamemode/cl_init.lua
+                                         - this fork's real base gamemode)
+                -> GM:AddNotify         (GMod: sandbox/gamemode/cl_notice.lua:2)
                 -> notification.AddLegacy( text, NOTIFY_UNDO, 2 )
-                -> NoticePanel (lua/includes/modules/notification.lua)
+                -> NoticePanel (lua/includes/notification.lua)
 
-    The last three are GMod code now:
-      * lua/includes/modules/notification.lua -- verbatim, byte for byte.  It
-        owns the whole look: spring physics (VelX/VelY + friction), the cartoon
-        "charge then fly off" exit, the DPanel background and the
-        vgui/notices/* icon.
-      * this file -- only the two things GMod keeps in its sandbox gamemode
-        (GM:OnUndo's text resolution and GM:AddNotify) plus the render.*
-        compatibility the panel needs.
-
-    Deviation count: 1 (the render.* no-ops below).
+    hook.Run dispatches the registered hooks and THEN the gamemode method
+    (GMod's own hook.lua Call - verified against the shipped file 2026-09-29),
+    so the gamemode method IS the popup and registering a second OnUndo hook on
+    top of it prints two notices per undo.  This file used to do exactly that
+    (a hook.add( "OnUndo", ... ) plus a 0.25 s de-dup hack masking it) - removed
+    2026-09-29; GM:OnUndo in the deathmatch cl_init is the only consumer, the
+    same shape as GMod.
 ----------------------------------------------------------------------------]]--
 
 -- ===========================================================================
@@ -55,62 +53,10 @@ render.PushFilterMin = render.PushFilterMin or NoopFilter
 render.PopFilterMag  = render.PopFilterMag  or NoopFilter
 render.PopFilterMin  = render.PopFilterMin  or NoopFilter
 
--- ===========================================================================
--- GM:OnUndo -- GMod sandbox gamemode/cl_init.lua:46
--- ===========================================================================
-local function UndoText( name, customtext )
-	if ( customtext and customtext ~= "" ) then return customtext end
-
-	-- GMod tries the "#Undone_<name>" token, then the "hint.undoneX" format.
-	-- language.GetPhrase returns the token unchanged when it is unknown, which
-	-- is exactly the test GMod uses.
-	local strId = "#Undone_" .. tostring( name )
-	if ( language and language.GetPhrase ) then
-		local ok, text = pcall( language.GetPhrase, strId )
-		if ( ok and type( text ) == "string" and text ~= strId ) then return text end
-	end
-
-	return "Undone " .. tostring( name )
-end
-
--- HL2SB: the engine delivers one undo TWICE.  Measured with hl2sb_hud_debug 1,
--- the OnUndo hook ran twice for every single undo (two "[HL2SB HUD] OnUndo:"
--- lines per key press), so this hook produced two notices.  undo.lua registers
--- exactly one net receiver, and lua/includes/modules/undo.lua now carries a
--- re-entrancy guard, so the duplication is below that layer (two receivers or a
--- double dispatch inside the net path).
---
--- Deduplicate here: an identical undo arriving within a quarter of a second is
--- the second half of one event.
-local flLastUndoTime = 0
-local strLastUndoText = nil
-
-hook.add( "OnUndo", "hl2sb_notification", function( name, customtext )
-	if ( notification == nil or notification.AddLegacy == nil ) then
-		Msg( "[HL2SB] OnUndo: notification.AddLegacy missing\n" )
-		return
-	end
-
-	local strText = UndoText( name, customtext )
-	local flNow = ( SysTime ~= nil and SysTime() ) or 0
-
-	if ( strText == strLastUndoText and ( flNow - flLastUndoTime ) < 0.25 ) then
-		return
-	end
-
-	flLastUndoTime = flNow
-	strLastUndoText = strText
-
-	-- GMod: self:AddNotify( text, NOTIFY_UNDO, 2 )
-	notification.AddLegacy( strText, NOTIFY_UNDO, 2 )
-
-	if ( surface and surface.PlaySound ) then
-		surface.PlaySound( "buttons/button15.wav" )
-	end
-end )
-
 -- GMod's sandbox exposes AddNotify on the gamemode so tools can post notices
--- (LimitHit / OnCleanup / hints).  Same one-liner as cl_notice.lua:2.
+-- (LimitHit / hints).  Same one-liner as cl_notice.lua:2 - kept as a fallback
+-- only: the deathmatch cl_init (the fork's base gamemode) already defines it
+-- for everything, so this never fires there.
 if ( _G.GM ~= nil and GM.AddNotify == nil ) then
 	function GM:AddNotify( str, type, length )
 		if ( notification and notification.AddLegacy ) then
@@ -119,37 +65,4 @@ if ( _G.GM ~= nil and GM.AddNotify == nil ) then
 	end
 end
 
-print( "[HL2SB] hl2sb_notification.lua loaded (GMod notification system)" )
-
--- ===========================================================================
--- HL2SB: drive the framework's "Think" hook on the CLIENT.
---
--- GMod fires "Think" every frame from its engine.  In this fork the ONLY
--- BEGIN_LUA_CALL_HOOK( "Think" ) in the whole tree is
---
---     game/shared/hl2mp/hl2mp_gamerules.cpp:467   -> CHL2MPRules::Think, SERVER side
---
--- so the client never fires it.  That is precisely why the undo notice played
--- its sound and never appeared:
---
---     notification.lua parks every new notice OFF-SCREEN
---         Panel.fx = ScrW() + NOTIF_START_X
---         Panel:SetPos( Panel.fx, Panel.fy )
---     and NotificationThink -- registered with
---         hook.Add( "Think", "NotificationThink", ... )
---     -- is what springs it into view, advances the fade, and finally removes
---     it (Panel:KillSelf()).
---
--- With no client Think every notice stays at x = ScrW() + 200 forever: visible
--- to nothing, audible in full.  HudViewportPaint already runs once per frame on
--- the client (it is what all three GMod-style HUDs draw from), so it carries
--- Think here.
---
--- TODO(engine): fire "Think" from the client frame loop
--- (ClientModeShared::Update / CHLClient::FrameStageNotify) and delete this
--- bridge -- a framework hook belongs in the frame loop, not on a HUD paint.
--- ===========================================================================
--- HL2SB (2026-09-24): the bridge below is GONE - "Think" now fires from the
--- engine frame loop itself (ClientModeShared::Update, once per client frame,
--- in-game only), together with "Tick".  GMod realm parity without piggybacking
--- on a HUD paint.
+print( "[HL2SB] hl2sb_notification.lua loaded (notification shims; popup lives in the gamemode)" )
