@@ -35,15 +35,16 @@
          registered hooks and then the gamemode method, so a hook plus an
          installed method adds every notice twice (two rows, different colours).
 
-      3. Fonts / sizes.  GMod draws the names with "ChatFont" and the icons with a
-         font it created itself ("HL2MPTypeDeath", tall 64).  The icon glyphs come
-         from a font created with surface.CreateFont + SetFontGlyphSet -- the
-         scheme font name "HL2MPTypeDeath" renders empty glyph boxes through
-         surface.SetFont -- and the names are drawn with an HFont resolved from
-         the scheme ChatFont, because draw.SimpleText builds its font from a
-         FAMILY name at a fixed 16px (draw.lua's GetFont), which is what made the
-         feed small and cramped.  See DEATH_HFONT and ICON_FONT, and the
-         hud_killfeed_* convars right above them.
+      3. Fonts / sizes (2026-09-29 GMod-parity pass).  GMod draws the names
+         with the scheme "ChatFont" at its NATIVE yres-banded height (17px at
+         1080p, 22 at 1200+, dropshadow) through draw.SimpleText ->
+         surface.SetFont, and the icon glyphs at the native 64px
+         "HL2MPTypeDeath" face, rows at icon_h*0.75, names 16px clear of the
+         icon.  Our surface measures scheme fonts but cannot render them, so
+         both faces are rebuilt with surface.CreateFont at EXACTLY those
+         sizes/flags (see DEATH_HFONT / ICON_FONT).  The previous port scaled
+         names x1.5, boosted the glyph ink to 48px and padded rows - all
+         removed; no tuning convars remain.
 
       4. Kill icon names.  GMod keys killicons by weapon / entity class
          (weapon_smg1, prop_physics).  The engine hands the Lua side HL2MP's
@@ -76,108 +77,71 @@ local team     = team
 local killicon = killicon
 
 -- ===========================================================================
--- HL2SB: 击杀播报的尺寸（又小又挤的根因 + 三个可调 convar）。
+-- HL2SB: 击杀播报尺寸 = GMod 真实渲染链（2026-09-29 对照 + 方案核对定案）。
 --
--- GMod 的图标字体 "HL2MPTypeDeath" 是 tall **64**
--- （D:\games\garrysmod\garrysmod\resource\ClientScheme.res:639-650），于是：
---   * 材质类图标（killicon.Add，Lua 武器/插件注册的图片，例如插件武器）
---     高 = 方案字体 64 * 0.75 = **48px**（宽按素材比例，见 killicon.lua:205-212）
---   * 字体类图标（引擎 mod_textures.txt 的武器字形，走 AddFont）
---     字形框 = **64px**（killicon.lua:202-204，不走 heightScale）
---   * 名字用方案字体 "ChatFont"，行距 = 图标框 * 0.75 = 48px
--- 我们这个移植为了绕开"方案字体画符号字形变空框"（见下面 ICON_FONT 的注释）
--- 把图标改成 Lua 自建字体，当初只给了 20px -> 图标框 20px（字形实际 ~11px）、
--- 行距 15px，比 16px 的名字还矮，所以又小又挤。
--- 名字那边还叠了一个坑：draw.SimpleText 是按"字族名 + 固定 16px"建字体的
--- （draw.lua 的 GetFont），传方案字体名会被当成字族去查，于是字既不随分辨率变、
--- 也不是方案里那一档。这里改成自己把方案字体的 HFont 解析出来再放大。
+-- GMod 的绘制（gamemodes/base/gamemode/cl_deathnotice.lua）：
+--   名字   draw.SimpleText(..., "ChatFont") -> surface.SetFont 走方案字体
+--          原生分档高度（GMod ClientScheme.res：1024-1199 tall=17、
+--          1200+ tall=22，dropshadow=1），没有任何缩放；
+--   图标   字体类图标 = 方案 "HL2MPTypeDeath"（HL2MP 字族、tall 64、
+--          weight 0、antialias+additive）原生字形；材质类图标
+--          adj_h = 64*0.75 = 48px（killicon.lua 本 fork 与 GMod 同款）；
+--   行距   y + 图标框 h * 0.75（GMod DrawDeath 原式）；
+--   间距   名字与图标左右各固定 16px。
 --
--- 三个 convar（改完重进地图生效；FCVAR_ARCHIVE，值会存进 config）：
---   hud_killfeed_icontall   图标字体字号（= GMod 的图标框 64；移植时写死 20）
---   hud_killfeed_textscale  名字字号 = 方案 ChatFont 的字高 * 这个倍数
---   hud_killfeed_rowpitch   行距 = max( 图标框, 名字字高 ) * 这个倍数
--- ⚠️ 材质类图标（Lua 武器的图片图标）的高度**不吃** hud_killfeed_icontall，
---    它由 resource/clientscheme.res 的 "HL2MPTypeDeath" 决定（GMod = 64 -> 48px）。
+-- 旧实现的三处偏离（就是用户报的"大小问题"）已全部移除：
+--   * 名字 ×1.5 缩放（1080p 方案 20px 被画成 30px）
+--   * 图标字形 ink 放大到 48px（GMod 就是 64px 字号的原生 ink）
+--   * 行距 max(h*0.75, 文字高)*1.1、间距 round(16*1.5)=24px
+-- 三个调优 convar（icontall/textscale/rowpitch）一并删除：值不在 config.cfg
+-- 里，代码默认值即生效，留着只会让下次调参又偏离 GMod。
+--
+-- 名字字体：本 fork 的 scheme 字体只能测量、不能经 surface 文本路径渲染
+-- （draw.lua 注释），所以 surface.CreateFont 复刻 ChatFont 的全部参数
+-- （家族/当前分档高度/weight700/dropshadow），字号取方案实测值不再放大。
 -- ===========================================================================
-local cv_icontall  = CreateConVar( "hud_killfeed_icontall", "64", FCVAR_ARCHIVE,
-	"HL2SB: kill feed icon font height in px (GMod 64, the old port used 20)" )
-local cv_textscale = CreateConVar( "hud_killfeed_textscale", "1.5", FCVAR_ARCHIVE,
-	"HL2SB: kill feed name scale (multiplies the scheme ChatFont height)" )
-local cv_rowpitch  = CreateConVar( "hud_killfeed_rowpitch", "1.1", FCVAR_ARCHIVE,
-	"HL2SB: kill feed row pitch = max( icon, text ) height * this" )
+local DEATH_SCHEME_FONT = "ChatFont"         -- GMod 的 kill feed 用的就是它
+local DEATH_FAMILY      = "Microsoft YaHei"  -- 方案里 ChatFont 的 "name"
+local FONTFLAG_DROPSHADOW = 0x080            -- ISurface.h; 方案 ChatFont dropshadow=1
 
-local function CvNumber( cv, fallback )
-	local v = cv and cv:GetFloat() or fallback
-	if ( !v or v <= 0 ) then return fallback end
-	return v
-end
-
-local ICON_TALL  = math.Round( CvNumber( cv_icontall,  64 ) )
-local TEXT_SCALE = CvNumber( cv_textscale, 1.5 )
-local ROW_PITCH  = CvNumber( cv_rowpitch,  1.1 )
-local NAME_GAP   = math.Round( 16 * TEXT_SCALE )   -- GMod 是固定 16
-
--- 名字的字体：surface.SetFont( 方案名 ) 会把方案字体解析成 HFont 并返回（Lua 自建
--- 字体优先、其次方案），拿到那一档的字高后，再按同样的字族建一个放大版的。
-local DEATH_SCHEME_FONT = "ChatFont"   -- GMod 的 kill feed 用的就是它
-local DEATH_FAMILY      = "Verdana"    -- 方案里 ChatFont 的 "name"
 local hSchemeFont = surface.SetFont( DEATH_SCHEME_FONT )
 local DEATH_BASE_TALL = 0
 if ( hSchemeFont ) then DEATH_BASE_TALL = surface.GetFontTall( hSchemeFont ) end
-if ( !DEATH_BASE_TALL or DEATH_BASE_TALL <= 0 ) then DEATH_BASE_TALL = 14 end
-local DEATH_TEXT_TALL = math.Round( DEATH_BASE_TALL * TEXT_SCALE )
-local DEATH_HFONT = draw.GetFont( DEATH_FAMILY, DEATH_TEXT_TALL, 700 )
-local DEATH_TEXT_H = DEATH_TEXT_TALL
-if ( DEATH_HFONT ) then DEATH_TEXT_H = surface.GetFontTall( DEATH_HFONT ) end
+if ( !DEATH_BASE_TALL or DEATH_BASE_TALL <= 0 ) then DEATH_BASE_TALL = 16 end
+
+local DEATH_HFONT = surface.CreateFont()
+surface.SetFontGlyphSet( DEATH_HFONT, DEATH_FAMILY, DEATH_BASE_TALL, 700, 0, 0,
+                         FONTFLAG_DROPSHADOW )
+local DEATH_TEXT_H = surface.GetFontTall( DEATH_HFONT )
+
+local NAME_GAP = 16   -- GMod 是固定 16px
 
 -- HL2SB: the kill icon glyphs.
 --
--- GMod passes the *name* of a font it created itself ("HL2MPTypeDeath") to
--- surface.SetFont.  Here that name is a client-scheme font, and looking it up
--- from Lua renders empty glyph boxes: LISurface.cpp's surface_SetFont resolves
--- it through CScheme::GetFont(name, false) (vgui2/src/Scheme.cpp:1401 -- note
--- that second argument is `proportional`, not "create if missing"), while the
--- engine's own HUD creates the face through the font manager --
--- hud.cpp:760/912 does GetFont( name, true ), and Scheme.cpp:942 does
--- SetFontGlyphSet( font, name, tall, ... ).
+-- GMod passes the *name* of a scheme font ("HL2MPTypeDeath") to
+-- surface.SetFont and draws the glyph natively at that size.  Our surface can
+-- measure scheme fonts but cannot render them through the text path (see
+-- draw.lua), so the face is rebuilt with surface.CreateFont +
+-- SetFontGlyphSet using the scheme block's exact parameters (resource/
+-- clientscheme.res "HL2MPTypeDeath": name HL2MP, tall 64, weight 0,
+-- antialias 1, additive 1).
 --
--- So create it the same way the engine does, and the same way the previous
--- hl2sb_deathnotice.lua did: surface.CreateFont() + SetFontGlyphSet().  That
--- returns a *font container*, which is what surface.GetTextSize /
--- surface.DrawSetTextFont (font.lua) accept, and it survives resolution
--- changes.  killicon.AddFont takes either a name or a handle for this reason.
+-- The old port boosted the glyph size until its ink reached 48px so engine
+-- and Lua-weapon icons lined up - an intentional deviation from GMod and one
+-- of the size mismatches reported 2026-09-29; removed.  Both icon kinds now
+-- render exactly as GMod does (font glyphs at the 64px face, material icons
+-- equalised by killicon.lua to 64*0.75=48px, same as GMod).
 --
--- FONTFLAG_ANTIALIAS | FONTFLAG_ADDITIVE = 0x110: the death fonts are additive
--- by design (resource/clientscheme.res marks them "additive" "1").
+-- FONTFLAG_ANTIALIAS | FONTFLAG_ADDITIVE = 0x110: the death fonts are
+-- additive by design (scheme marks them "additive" "1").
 local ICON_FONT_NAME = "HL2MP"     -- resource/hl2mp.ttf, the weapon pictograms
 local FONTFLAG_ANTIALIAS = 0x010
 local FONTFLAG_ADDITIVE  = 0x100
+local ICON_TALL = 64               -- scheme HL2MPTypeDeath tall (GMod identical)
 
--- 字高来自 hud_killfeed_icontall（默认 64 = GMod 的图标框；原来的移植写死 20）。
 local ICON_FONT = surface.CreateFont()
 surface.SetFontGlyphSet( ICON_FONT, ICON_FONT_NAME, ICON_TALL, 0, 0, 0,
                          FONTFLAG_ANTIALIAS + FONTFLAG_ADDITIVE )
-
--- HL2SB: 统一两类图标的高度。材质类图标（killicon.Add 注册的图片）在
--- killicon.lua 里被等高化到 fh = 图标框 * 0.75 = **48px**，而字体类图标保留了
--- GMod 的历史行为、按 hl2mp.ttf 字形的实际 ink 渲染（64px 字号下 ink 只有
--- ~35px，见 killicon.lua 里那句 "backwards compability" BUG 注释）——同一
--- 条击杀播报里就出现"引擎武器图标小、插件武器图标大"。这里把字形字号自动
--- 放大到 ink ≈ 48px，两类图标在播报里就一样高了（对 GMod 的有意偏离）。
-do
-	local FRAME = math.Round( ICON_TALL * 0.75 )
-	-- font.lua 的 surface.GetTextSize 直接收 fontcontainer（自动解包 .font），
-	-- 不要绕 surface.SetFont —— 那是给方案字体名用的，喂句柄会炸掉整个文件。
-	local _, inkH = surface.GetTextSize( ICON_FONT, "/" )   -- SMG 字形，代表性 ink
-	if ( inkH and inkH > 0 and inkH < FRAME ) then
-		local scaled = math.floor( ICON_TALL * FRAME / inkH + 0.5 )
-		local hBigger = surface.CreateFont()
-		surface.SetFontGlyphSet( hBigger, ICON_FONT_NAME,
-			math.min( scaled, ICON_TALL * 3 ), 0, 0, 0,
-			FONTFLAG_ANTIALIAS + FONTFLAG_ADDITIVE )
-		if ( hBigger ) then ICON_FONT = hBigger end
-	end
-end
 
 local hud_deathnotice_time = CreateConVar( "hud_deathnotice_time", "6", FCVAR_NONE, "Amount of time to show death notice (kill feed) for" )
 local cl_drawhud = GetConVar( "cl_drawhud" )
@@ -365,8 +329,9 @@ local function AddDeathNotice( self, attacker, team1, inflictor, victim, team2, 
 	table.insert( Deaths, Death )
 
 	-- HL2SB: cap the list (see hud_killfeed_max above) so a pile of simultaneous
-	-- deaths cannot stack an unreadable column.
-	local iMax = hud_killfeed_max and hud_killfeed_max:GetInt() or 4
+	-- deaths cannot stack an unreadable column.  Fallback 0 = unlimited = GMod
+	-- (its Deaths table is never capped); config.cfg pins 0 too.
+	local iMax = hud_killfeed_max and hud_killfeed_max:GetInt() or 0
 	if ( iMax > 0 ) then
 		while ( #Deaths > iMax ) do
 			table.remove( Deaths, 1 )
@@ -414,10 +379,9 @@ local function DrawDeath( x, y, death, time )
 	-- Draw VICTIM
 	DrawName( death.right, x + ( w / 2 ) + NAME_GAP, y + h / 2, death.color2, false )
 
-	-- 行距：GMod 的公式是 图标高 * 0.75，但我们的名字字号也不小，直接套会让两行
-	-- 叠在一起，所以先保证"至少放得下一行名字"，再乘 hud_killfeed_rowpitch 拉开。
-	local rowH = math.max( h * 0.75, DEATH_TEXT_H )
-	return math.ceil( y + rowH * ROW_PITCH )
+	-- 行距 = GMod 原式：图标框 h * 0.75（名字 ChatFont 原生高度本来就画在
+	-- 图标框里，不会叠行——2026-09-29 对齐后不再需要 max/rowpitch 补偿）。
+	return math.ceil( y + h * 0.75 )
 
 	-- Font killicons are too high when height corrected, and changing that is not backwards compatible
 	--return math.ceil( y + math.max( h, 28 ) )
