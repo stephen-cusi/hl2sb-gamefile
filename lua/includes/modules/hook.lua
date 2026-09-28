@@ -11,6 +11,8 @@ local ipairs = ipairs
 local Warning = dbg.Warning
 local tostring = tostring
 local pcall = pcall
+-- HL2SB (2026-09-28): xpcall for every callback site, with the handler below.
+local xpcall = xpcall
 -- HL2SB (2026-09-22): `module( "hook" )` below REPLACES this file's globals
 -- with the module table, so any standard global not captured here reads as
 -- nil inside every function defined after it.  ReportHookError used `type`
@@ -50,6 +52,24 @@ local function ReportHookError( strMessage )
     if ( ok and type( sTb ) == "string" ) then sTrace = sTb end
   end
   pcall( ReportError, strMessage, sTrace )
+end
+
+-- HL2SB (2026-09-28): xpcall message handler for hook callbacks.  A C
+-- function that indexes a nil stack slot raises "attempt to index a nil
+-- value" with NO file:line (C frames carry no line info), and a plain pcall
+-- only sees the message after the unwind -- debug.traceback then has nothing
+-- left to show.  That is how scp173's per-tick "SCP173_Think Failed:
+-- attempt to index a nil value" stayed unlocatable for a whole session.
+-- The handler runs on the LIVE stack, so the appended traceback names the C
+-- frame and its Lua caller.
+local function HookErrorHandler( strMessage )
+  local s = tostring( strMessage )
+  if ( traceback == nil ) then return s end
+  local ok, sTb = pcall( traceback, "", 2 )
+  if ( ok and type( sTb ) == "string" and sTb ~= "" ) then
+    return s .. "\n" .. sTb
+  end
+  return s
 end
 
 -- HL2SB: re-execution guard -- read this before touching anything below.
@@ -131,9 +151,9 @@ local function CallBody( strEventName, tGamemode, ... )
         if ( bDropKey ) then
           tHooks[ k ] = nil
         elseif ( bEntityKey ) then
-          tReturns = { pcall( v, k, ... ) }
+          tReturns = { xpcall( v, HookErrorHandler, k, ... ) }
         else
-          tReturns = { pcall( v, ... ) }
+          tReturns = { xpcall( v, HookErrorHandler, ... ) }
         end
         if ( not bDropKey ) then
         if ( tReturns[ 1 ] == false ) then
@@ -155,7 +175,7 @@ local function CallBody( strEventName, tGamemode, ... )
     if ( fn == nil ) then
       return nil
     else
-      tReturns = { pcall( fn, tGamemode, ... ) }
+      tReturns = { xpcall( fn, HookErrorHandler, tGamemode, ... ) }
       if ( tReturns[ 1 ] == false ) then
         Warning( "ERROR: GAMEMODE: '" .. tostring( strEventName ) .. "' Failed: " .. tostring( tReturns[ 2 ] ) .. "\n" )
         ReportHookError( tReturns[ 2 ] )
@@ -209,7 +229,7 @@ function call( strEventName, tGamemode, ... )
   -- that event would be refused for the rest of the level.  This also names the
   -- event in the error report, which the raw error path could not.
   tCallChain[ strEventName ] = true
-  local tRet = { pcall( CallBody, strEventName, tGamemode, ... ) }
+  local tRet = { xpcall( CallBody, HookErrorHandler, strEventName, tGamemode, ... ) }
   tCallChain[ strEventName ] = nil
 
   if ( tRet[ 1 ] == false ) then
@@ -292,9 +312,9 @@ function Run( strEventName, ... )
         if ( bDropKey ) then
           tHooks[ k ] = nil
         elseif ( bEntityKey ) then
-          tReturns = { pcall( v, k, ... ) }
+          tReturns = { xpcall( v, HookErrorHandler, k, ... ) }
         else
-          tReturns = { pcall( v, ... ) }
+          tReturns = { xpcall( v, HookErrorHandler, ... ) }
         end
         if ( not bDropKey ) then
         if ( tReturns[ 1 ] == false ) then
@@ -320,7 +340,7 @@ function Run( strEventName, ... )
   if ( tGamemode ~= nil ) then
     local fn = tGamemode[ strEventName ]
     if ( fn ~= nil ) then
-      tReturns = { pcall( fn, tGamemode, ... ) }
+      tReturns = { xpcall( fn, HookErrorHandler, tGamemode, ... ) }
       if ( tReturns[ 1 ] == false ) then
         Warning( "ERROR: GAMEMODE: '" .. tostring( strEventName ) .. "' Failed: " .. tostring( tReturns[ 2 ] ) .. "\n" )
         ReportHookError( tReturns[ 2 ] )
