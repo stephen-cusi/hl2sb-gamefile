@@ -5,5 +5,4 @@ example_addon
 firstpersonbody
 hitnumbers
 minecraft
-scp173
 windgrin_npc

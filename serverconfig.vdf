@@ -1,5 +1,9 @@
 "ServerConfig"
 {
-	"map"		"gm_construct"
+	"map"		"gm_flatgrass"
 	"mp_falldamage"		"0"
+	"gmod_maxammo"		"9999"
+	"sbox_weapons"		"0"
+	"sbox_godmode"		"0"
+	"gmod_suit"		"0"
 }

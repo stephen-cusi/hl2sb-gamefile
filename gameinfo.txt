@@ -56,6 +56,10 @@ FileSystem
 			// that the Lua loader enumerates, and placed after the hl2/hl2mp VPKs so
 			// first-party content keeps priority.
 			game				|all_source_engine_paths|garrysmod/fallbacks_dir.vpk
+			// GMod gamedepot CS:S content pack (GMod auto-mounts it via mountdepots.txt;
+			// no CS:S purchase needed). CS-themed workshop maps (gm_an_untold_story
+			// etc) reference materials/de_*, materials/cs_* and models/props/cs_*|de_*.
+			game				|all_source_engine_paths|sourceengine/content_cstrike_dir.vpk
 			platform			|all_source_engine_paths|platform/platform_misc.vpk
 
 			// Now search loose files.  We'll set the directory containing the gameinfo.txt file
@@ -112,7 +116,7 @@ FileSystem
 // the Lua loader enumerate GMod's own lua/ tree (thousands of files).  Only the VPKs
 // above are mounted: they carry materials/models/sounds/particles, and GMod's Lua is
 // not inside its VPKs.
-// 			game 				|all_source_engine_paths|garrysmod
+ 			game 				|all_source_engine_paths|garrysmod
 			platform			|all_source_engine_paths|platform
 
 			// Random files downloaded from gameservers go into a seperate directory, so
