@@ -1028,6 +1028,13 @@ end
 //*******************************************************//
 
 function SpawnMinecraftBlock( ply, hitEntity, blocktype, pos, rotation )
+	// HL2SB: this shared function used to run on the CLIENT too (SecondaryAttack
+	// fires both realms) - on GMod that client pass died on the server-only
+	// ENT:SetPlayer and stopped there; this fork binds Entity:SetPlayer, so the
+	// client pass walked deeper and then threw from BlockInit ("attempt to index
+	// a boolean value (local 'tr')" - a clientside NULL owner).  The networked
+	// block comes from the server anyway; keep this server-only.
+	if ( !SERVER ) then return end
 	ent = ents.Create( "minecraft_block" ) 
 	if not IsValid(ent) then print("SpawnMinecraftBlock() ent is not valid!!!") return end
 	ent:SetPlayer( ply )
