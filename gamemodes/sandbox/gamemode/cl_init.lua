@@ -43,3 +43,18 @@ function GM:CreateDefaultPanels()
     bor( FONTFLAG_ANTIALIAS, FONTFLAG_ADDITIVE, FONTFLAG_CUSTOM )
   )
 end
+
+
+-- HL2SB (2026-09-29): GMod's C context menu opt-in, verbatim from
+-- gamemodes/sandbox/gamemode/cl_spawnmenu.lua:27-39.  The menu itself is
+-- lua/autorun/client/hl2sb_contextmenu_gmod.lua; it asks these two gamemode
+-- methods before creating / opening (hook.Run falls back to GAMEMODE, see
+-- hook.lua).  GMod's base gamemode does not define them, so under any
+-- non-sandbox gamemode C stays inert exactly like GMod.
+function GM:ContextMenuEnabled()
+  return true
+end
+
+function GM:ContextMenuOpen()
+  return true
+end
