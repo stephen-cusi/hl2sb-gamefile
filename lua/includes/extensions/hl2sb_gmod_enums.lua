@@ -197,3 +197,71 @@ if ( FindMetaTable ~= nil ) then
 		end
 	end
 end
+
+------------------------------------------------------------------------------
+-- EF_* / MOVETYPE_* globals (2026-09-29): GMod publishes these engine bit
+-- enums as plain globals; HL2SB publishes the MEMBER VALUES only into
+-- _E.<lib> (END_LUA_SET_ENUM_LIB writes _E[lib] = table and does NOT set a
+-- global of that name) plus flat <lib>_<member> globals (MOVE_TYPE_NONE,
+-- ENTITY_EFFECT_BONE_MERGE) -- never GMod's own spellings MOVETYPE_NONE /
+-- EF_BONEMERGE.  Addon code written against GMod (gmod_hands.lua's
+-- SetMoveType( MOVETYPE_NONE ), AddEffects( EF_BONEMERGE or BONE_MERGE ),
+-- ...) therefore read nil, error mid-function and silently skip the rest of
+-- the setup: gmod_hands aborted AT SetMoveType, so movetype stayed non-NONE,
+-- IsFollowingEntity() was false, bone merge never ran, and the arms drew in
+-- bind pose at the spawn point (feet) -- visible only when the pitch put
+-- that spot in frustum.  Alias every member to its GMod global name here.
+-- Second iteration: gate on _E.<lib> (NOT on _G.<lib>, which does not exist).
+------------------------------------------------------------------------------
+
+local _E = rawget( _G, "_E" ) or {}
+local _EFF = rawget( _G, "EF" ) or _E.ENTITY_EFFECT or _E.EF
+if ( _EFF ~= nil ) then
+	if ( rawget( _G, "EF_BONEMERGE" ) == nil ) then EF_BONEMERGE = _EFF.BONE_MERGE end
+	if ( rawget( _G, "EF_BONEMERGE_FASTCULL" ) == nil ) then EF_BONEMERGE_FASTCULL = _EFF.BONE_MERGE_FAST_CULL end
+	if ( rawget( _G, "EF_BRIGHTLIGHT" ) == nil ) then EF_BRIGHTLIGHT = _EFF.BRIGHT_LIGHT end
+	if ( rawget( _G, "EF_DIMLIGHT" ) == nil ) then EF_DIMLIGHT = _EFF.DIM_LIGHT end
+	if ( rawget( _G, "EF_NOINTERP" ) == nil ) then EF_NOINTERP = _EFF.NO_INTERPOLATE end
+	if ( rawget( _G, "EF_NOSHADOW" ) == nil ) then EF_NOSHADOW = _EFF.NO_SHADOW end
+	if ( rawget( _G, "EF_NODRAW" ) == nil ) then EF_NODRAW = _EFF.NO_DRAW end
+	if ( rawget( _G, "EF_NORECEIVESHADOW" ) == nil ) then EF_NORECEIVESHADOW = _EFF.NO_RECEIVE_SHADOW end
+	if ( rawget( _G, "EF_ITEM_BLINK" ) == nil ) then EF_ITEM_BLINK = _EFF.ITEM_BLINK end
+	if ( rawget( _G, "EF_PARENT_ANIMATES" ) == nil ) then EF_PARENT_ANIMATES = _EFF.PARENT_ANIMATES end
+end
+
+local _MT = rawget( _G, "MOVETYPE" ) or _E.MOVE_TYPE or _E.MOVETYPE
+if ( _MT ~= nil ) then
+	if ( rawget( _G, "MOVETYPE_NONE" ) == nil ) then MOVETYPE_NONE = _MT.NONE end
+	if ( rawget( _G, "MOVETYPE_ISOMETRIC" ) == nil ) then MOVETYPE_ISOMETRIC = _MT.ISOMETRIC end
+	if ( rawget( _G, "MOVETYPE_WALK" ) == nil ) then MOVETYPE_WALK = _MT.WALK end
+	if ( rawget( _G, "MOVETYPE_STEP" ) == nil ) then MOVETYPE_STEP = _MT.STEP end
+	if ( rawget( _G, "MOVETYPE_FLY" ) == nil ) then MOVETYPE_FLY = _MT.FLY end
+	if ( rawget( _G, "MOVETYPE_FLYGRAVITY" ) == nil ) then MOVETYPE_FLYGRAVITY = _MT.FLY_GRAVITY end
+	if ( rawget( _G, "MOVETYPE_VPHYSICS" ) == nil ) then MOVETYPE_VPHYSICS = _MT.VPHYSICS end
+	if ( rawget( _G, "MOVETYPE_PUSH" ) == nil ) then MOVETYPE_PUSH = _MT.PUSH end
+	if ( rawget( _G, "MOVETYPE_NOCLIP" ) == nil ) then MOVETYPE_NOCLIP = _MT.NOCLIP end
+	if ( rawget( _G, "MOVETYPE_LADDER" ) == nil ) then MOVETYPE_LADDER = _MT.LADDER end
+	if ( rawget( _G, "MOVETYPE_OBSERVER" ) == nil ) then MOVETYPE_OBSERVER = _MT.OBSERVER end
+	if ( rawget( _G, "MOVETYPE_CUSTOM" ) == nil ) then MOVETYPE_CUSTOM = _MT.CUSTOM end
+	if ( rawget( _G, "MOVETYPE_LAST" ) == nil ) then MOVETYPE_LAST = _MT.LAST end
+end
+
+------------------------------------------------------------------------------
+-- RENDERGROUP_* globals (2026-09-29): same story as EF_*/MOVETYPE_* -- GMod
+-- publishes them as globals, HL2SB had none, so `ENT.RenderGroup =
+-- RENDERGROUP_TRANSLUCENT` (sent_ball) silently assigned nil and every
+-- scripted entity rendered in the default opaque group.  Values transcribed
+-- from public/engine/IClientLeafSystem.h RenderGroup_t (this engine's own
+-- numbering, which is what CBaseScripted::GetRenderGroup compares against):
+--   OPAQUE_STATIC_HUGE=0, OPAQUE_ENTITY_HUGE=1, OPAQUE_STATIC=6,
+--   OPAQUE_ENTITY=7, TRANSLUCENT_ENTITY=8, TWOPASS=9,
+--   VIEW_MODEL_OPAQUE=10, VIEW_MODEL_TRANSLUCENT=11, OPAQUE_BRUSH=12,
+--   OTHER=13.
+------------------------------------------------------------------------------
+
+if ( rawget( _G, "RENDERGROUP_STATIC" ) == nil ) then RENDERGROUP_STATIC = 0 end
+if ( rawget( _G, "RENDERGROUP_OPAQUE" ) == nil ) then RENDERGROUP_OPAQUE = 7 end
+if ( rawget( _G, "RENDERGROUP_TRANSLUCENT" ) == nil ) then RENDERGROUP_TRANSLUCENT = 8 end
+if ( rawget( _G, "RENDERGROUP_TWOPASS" ) == nil ) then RENDERGROUP_TWOPASS = 9 end
+if ( rawget( _G, "RENDERGROUP_VIEWMODEL" ) == nil ) then RENDERGROUP_VIEWMODEL = 10 end
+if ( rawget( _G, "RENDERGROUP_OTHER" ) == nil ) then RENDERGROUP_OTHER = 13 end
