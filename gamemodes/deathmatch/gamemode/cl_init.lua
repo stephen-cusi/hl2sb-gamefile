@@ -200,6 +200,10 @@ function GM:CalcView( ply, origin, angles, fov )
 		["fov"] = fov,
 	}
 
+	-- HL2SB (2026-09-29): GMod base order - the drive gets the view first
+	-- (gamemodes/base/gamemode/cl_init.lua:379), then the taunt camera.
+	if ( drive.CalcView( ply, view ) ) then return view end
+
 	TauntCam:CalcView( view, ply, ply:IsPlayingTaunt() )
 
 	return view
@@ -211,6 +215,11 @@ end
 -- (cmd:SetViewAngles/ClearButtons/ClearMovement); in_main.cpp copies the
 -- writable fields back into the real command after the hook returns.
 function GM:CreateMove( cmd )
+
+	-- HL2SB (2026-09-29): GMod's base CreateMove asks the drive system first
+	-- (cl_init.lua:655); a drive claims the command (return true) so the engine
+	-- stops applying the default player move.
+	if ( drive.CreateMove( cmd ) ) then return true end
 
 	local ply = LocalPlayer()
 

@@ -147,3 +147,94 @@ end
 
 function GM:VecWeaponRespawnSpot( pWeapon )
 end
+
+-- ===========================================================================
+-- HL2SB (2026-09-29): the noclip gate and the drive pump, verbatim from GMod.
+--
+--   GM:PlayerNoClip            = gamemodes/base/gamemode/player_shd.lua:93
+--   GM:Move / SetupMove / FinishMove / StartEntityDriving / EndEntityDriving /
+--   PlayerDriveAnimate         = gamemodes/base/gamemode/shared.lua:169-224
+--
+-- The hook name "PlayerNoClip" is slot 0x64 of GMod's lua_shared hook table
+-- (the fork's lua/src/hl2sb_hooks.c carries the same slot) and IS dispatched
+-- now: game/server/client.cpp CC_Player_NoClip asks the gamemode before
+-- toggling, and a false return vetoes the toggle.
+--
+-- Move / SetupMove / FinishMove are NOT dispatched yet - that needs the
+-- engine's playermove hooks plus a CMoveData Lua binding (GMod binds
+-- mv:SetOrigin/GetVelocity/KeyDown/... ).  They are defined verbatim so the
+-- moment the dispatch lands they behave exactly like GMod; until then they
+-- are dormant (a defined-but-never-called gamemode method is the GMod
+-- status-quo for any fork without drive-capable movement).
+-- ===========================================================================
+
+--[[---------------------------------------------------------
+	Name: gamemode:PlayerNoClip( player, bool )
+	Desc: Player pressed the noclip key, return true if
+		 the player is allowed to noclip, false to block
+-----------------------------------------------------------]]
+function GM:PlayerNoClip( pl, on )
+	if ( !on ) then return true end
+	-- Allow noclip if we're in single player and living
+	return game.SinglePlayer() && IsValid( pl ) && pl:Alive()
+
+end
+
+--[[---------------------------------------------------------
+   Name: gamemode:Move
+   This basically overrides the NOCLIP, PLAYERMOVE movement stuff.
+   It's what actually performs the move.
+   Return true to not perform any default movement actions. (completely override)
+-----------------------------------------------------------]]
+function GM:Move( ply, mv )
+
+	if ( drive.Move( ply, mv ) ) then return true end
+	if ( player_manager.RunClass( ply, "Move", mv ) ) then return true end
+
+end
+
+--[[---------------------------------------------------------
+-- Purpose: This is called pre player movement and copies all the data necessary
+--          from the player for movement. Copy from the usercmd to move.
+-----------------------------------------------------------]]
+function GM:SetupMove( ply, mv, cmd )
+
+	if ( drive.StartMove( ply, mv, cmd ) ) then return true end
+	if ( player_manager.RunClass( ply, "StartMove", mv, cmd ) ) then return true end
+
+end
+
+--[[---------------------------------------------------------
+   Name: gamemode:FinishMove( player, movedata )
+-----------------------------------------------------------]]
+function GM:FinishMove( ply, mv )
+
+	if ( drive.FinishMove( ply, mv ) ) then return true end
+	if ( player_manager.RunClass( ply, "FinishMove", mv ) ) then return true end
+
+end
+
+--[[---------------------------------------------------------
+	A player has started driving an entity
+-----------------------------------------------------------]]
+function GM:StartEntityDriving( ent, ply )
+
+	drive.Start( ply, ent )
+
+end
+
+--[[---------------------------------------------------------
+	A player has stopped driving an entity
+-----------------------------------------------------------]]
+function GM:EndEntityDriving( ent, ply )
+
+	drive.End( ply, ent )
+
+end
+
+--[[---------------------------------------------------------
+	To update the player's animation during a drive
+-----------------------------------------------------------]]
+function GM:PlayerDriveAnimate( ply )
+
+end

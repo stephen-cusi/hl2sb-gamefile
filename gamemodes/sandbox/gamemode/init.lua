@@ -26,6 +26,10 @@ local sbox_godmode = CreateConVar( "sbox_godmode", "0",
   { FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED, FCVAR_SERVER_CAN_EXECUTE },
   "If enabled, all players will be invincible" )
 
+local sbox_noclip = CreateConVar( "sbox_noclip", "1",
+  { FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED, FCVAR_SERVER_CAN_EXECUTE },
+  "If enabled, players are able to use noclip" )
+
 local function HL2SB_ApplyStartOptions()
   if ( file == nil or file.Read == nil ) then return end
 

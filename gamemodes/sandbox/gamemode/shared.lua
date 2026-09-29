@@ -121,3 +121,18 @@ function GM:WeaponShouldRespawn( pItem )
   pItem:AddSpawnFlags( 2^30 )
   -- return 2
 end
+
+-- HL2SB (2026-09-29): verbatim from GMod gamemodes/sandbox/gamemode/shared.lua:185.
+-- Consumed by the engine's PlayerNoClip hook dispatch (game/server/client.cpp
+-- CC_Player_NoClip); sbox_noclip is created in this gamemode's init.lua.
+function GM:PlayerNoClip( pl, on )
+
+	-- Don't allow if player is in vehicle
+	if ( !IsValid( pl ) || pl:InVehicle() || !pl:Alive() ) then return false end
+
+	-- Always allow to turn off noclip, and in single player
+	if ( !on || game.SinglePlayer() ) then return true end
+
+	return GetConVarNumber( "sbox_noclip" ) > 0
+
+end

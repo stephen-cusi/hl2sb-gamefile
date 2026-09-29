@@ -72,6 +72,13 @@ include( "util.lua" )
 -- away.
 include( "util/sql.lua" )
 
+-- HL2SB (2026-09-29): GMod's drive classes (camera / lamp free-move modes).
+-- GMod's own lua/includes/init.lua:40-41; its require("drive") above them is
+-- already satisfied here because the modules folder pass loads drive.lua
+-- BEFORE this init.lua runs.
+include( "drive/drive_base.lua" )
+include( "drive/drive_noclip.lua" )
+
 -- Everything below is CLIENT ONLY, and GMod's own bootstrap guards it the same
 -- way.  On the server these files do not merely no-op: derma/init.lua opens by
 -- indexing `surface` (nil server-side), so it throws before it ever reaches
@@ -376,7 +383,7 @@ if ( CLIENT and surface and vgui ) then
 				Msg( "[HL2SB]   Panel:ChildCount aliased\n" )
 			end
 
-			-- ⚠️ This engine binds SetFont on the LABEL metatable only
+			-- This engine binds SetFont on the LABEL metatable only
 			-- (lLabel.cpp:201) -- PanelMeta.SetFont is nil, so the guard must not
 			-- require it (the old SetFont wrapper above has been silently skipping
 			-- for the same reason).  Route through whatever SetFont the panel's own
@@ -806,12 +813,12 @@ if ( CLIENT and surface and vgui ) then
 			if ( pnl ~= nil and not pnl.HL2SBTooltipWired ) then
 				pnl.HL2SBTooltipWired = true
 
-				-- ⚠️ Tooltip panels never get wired: ChangeTooltip on a tooltip
+				-- Tooltip panels never get wired: ChangeTooltip on a tooltip
 				-- would RemoveTooltip() itself (the panel it walks with IS the
 				-- tooltip), so cursor enter/exit on the bubble would fight the
 				-- creator forever.
 				if ( not pnl.m_bIsTooltipPanel ) then
-					-- ⚠️ Capture the previous handlers from the REF TABLE ONLY.
+					-- Capture the previous handlers from the REF TABLE ONLY.
 					-- `pnl.OnCursorEntered` reads through the metatable, whose
 					-- entries are C dispatchers that call the Lua method back --
 					-- wrapping THAT made wrapper -> C -> wrapper -> C ... a C stack
