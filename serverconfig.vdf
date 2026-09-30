@@ -1,6 +1,6 @@
 "ServerConfig"
 {
-	"map"		"gm_flatgrass"
+	"map"		"sb_field"
 	"mp_falldamage"		"0"
 	"gmod_maxammo"		"9999"
 	"sbox_weapons"		"0"
