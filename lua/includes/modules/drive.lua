@@ -36,6 +36,71 @@ function Register( name, table, base )
 
 end
 
+-- HL2SB: the reference implements Player:SetDrivingEntity / GetDrivingEntity /
+-- IsDrivingEntity / Get( Set )DrivingMode as binary Player bindings backing this
+-- module.  This engine has no binding yet, so the same accessors are provided
+-- here over a weak table; the server side drives them through
+-- PlayerStartDriving/PlayerStopDriving below.  (The client half stays dormant
+-- until the CMoveData task wires the mode state over the wire.)
+local DrivingData = setmetatable( {}, { __mode = "k" } )
+
+local function DrivingTable( ply )
+	local t = DrivingData[ ply ]
+	if ( !t ) then
+		t = {}
+		DrivingData[ ply ] = t
+	end
+	return t
+end
+
+-- The install has to be retryable: module files load BEFORE the "Player"
+-- metatable exists, so a one-shot FindMetaTable here silently no-ops and every
+-- drive hook then errors on the missing methods.  InstallInstall runs now and
+-- again on the first drive call that still finds the methods missing.
+local function InstallPlayerMethods()
+
+	local playerMeta = FindMetaTable and FindMetaTable( "Player" ) or nil
+	if ( !playerMeta ) then
+		return false
+	end
+
+	function playerMeta:SetDrivingEntity( ent, modeid )
+		local t = DrivingTable( self )
+		t.ent = ent
+		t.modeid = modeid or 0
+	end
+
+	function playerMeta:GetDrivingEntity()
+		return DrivingTable( self ).ent
+	end
+
+	function playerMeta:IsDrivingEntity()
+		local t = DrivingData[ self ]
+		return ( t ~= nil and t.ent ~= nil )
+	end
+
+	function playerMeta:GetDrivingMode()
+		local t = DrivingData[ self ]
+		return ( t and t.modeid ) or 0
+	end
+
+	function playerMeta:SetDrivingMode( modeid )
+		DrivingTable( self ).modeid = modeid or 0
+	end
+
+	return true
+
+end
+
+local bPlayerMethodsInstalled = InstallPlayerMethods()
+
+local function EnsurePlayerMethods()
+	if ( not bPlayerMethodsInstalled ) then
+		bPlayerMethodsInstalled = InstallPlayerMethods()
+	end
+	return bPlayerMethodsInstalled
+end
+
 function PlayerStartDriving( ply, ent, mode )
 
 	local method = Type[mode]
@@ -55,10 +120,12 @@ end
 
 function GetMethod( ply )
 
+	EnsurePlayerMethods()
+
 	--
 	-- Not driving, return immediately
 	--
-	if ( !ply:IsDrivingEntity() ) then return end
+	if ( !ply.IsDrivingEntity or !ply:IsDrivingEntity() ) then return end
 
 	local ent = ply:GetDrivingEntity()
 	local modeid = ply:GetDrivingMode()

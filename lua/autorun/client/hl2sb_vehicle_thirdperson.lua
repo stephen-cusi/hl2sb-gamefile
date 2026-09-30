@@ -118,6 +118,7 @@ local lineTrace = { start = Vector( 0, 0, 0 ), endpos = Vector( 0, 0, 0 ) }
 -- gamemode overriding the hook would run, and it is the reference if it ever moves to Lua.
 function M.CalcVehicleView( veh, ply, view )
 	if not M.GetThirdPersonMode( veh ) then
+		state[ veh ] = nil
 		return view
 	end
 
@@ -125,6 +126,20 @@ function M.CalcVehicleView( veh, ply, view )
 	local vecForward = view.angles:Forward()
 
 	local vecTarget = view.origin - vecForward * flRadius
+
+	-- HL2SB: blend the camera into position instead of snapping when the
+	-- mode is toggled or the vehicle moves violently; approach per frame like
+	-- the engine view smoothing does.
+	local s = slot( veh )
+	if s.smoothedOrigin == nil then
+		s.smoothedOrigin = Vector( vecTarget.x, vecTarget.y, vecTarget.z )
+	else
+		local flBlend = math.min( FrameTime() * 10.0, 1.0 )
+		s.smoothedOrigin.x = s.smoothedOrigin.x + ( vecTarget.x - s.smoothedOrigin.x ) * flBlend
+		s.smoothedOrigin.y = s.smoothedOrigin.y + ( vecTarget.y - s.smoothedOrigin.y ) * flBlend
+		s.smoothedOrigin.z = s.smoothedOrigin.z + ( vecTarget.z - s.smoothedOrigin.z ) * flBlend
+		vecTarget = s.smoothedOrigin
+	end
 
 	-- GMod filters props and vehicles here; util.TraceHull is only present if the
 	-- implementation shipped it, so fall back to a plain ray when it is missing.
@@ -222,3 +237,24 @@ if ccAdd then
 		M.ToggleThirdPerson( veh )
 	end, "Toggle the vehicle third person camera." )
 end
+
+-- GMod toggles third person from GM:VehicleMove when IN_DUCK is pressed while
+-- driving (gamemodes/base/gamemode/init.lua).  HL2SB exposes no CMoveData to
+-- Lua, so the same trigger is edge-detected here: ctrl while seated toggles,
+-- which is the key the reference behaviour binds to duck.
+local KEY_DUCK = KEY_CONTROL_LEFT or KEY_LCONTROL
+local bWasDuckDown = false
+hook.Add( "Think", "hl2sb_veh3rd_ducktoggle", function()
+	local ply = LocalPlayer and LocalPlayer() or nil
+	if not ply then
+		bWasDuckDown = false
+		return
+	end
+
+	local bDown = input and input.IsKeyDown and input.IsKeyDown( KEY_DUCK )
+	local bCursor = vgui and vgui.CursorVisible and vgui.CursorVisible()
+	if bDown and not bWasDuckDown and ply.InVehicle and ply:InVehicle() and not bCursor then
+		M.ToggleThirdPerson( ply:GetVehicle() )
+	end
+	bWasDuckDown = bDown and true or false
+end )

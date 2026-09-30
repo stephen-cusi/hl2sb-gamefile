@@ -22,7 +22,7 @@
 --     field (what the anim probe reads) is used instead.
 --===========================================================================--
 
--- ⚠️ HL2SB: GMod tests FL_ANIMDUCKING here, but THIS fork's HL2 movement code
+-- HL2SB NOTE: GMod tests FL_ANIMDUCKING here, but THIS fork's HL2 movement code
 -- never sets that flag - only the cstrike game code does (gamemovement.cpp only
 -- ever does AddFlag( FL_DUCKING ), in FinishDuck/FinishUnDuck).  Testing
 -- FL_ANIMDUCKING returned false for every crouch, so this branch never ran and
@@ -372,7 +372,7 @@ function GM:CalcMainActivity( ply, velocity )
 
 end
 
--- ⚠️ HL2SB: GMod's original table derives the HL2MP activity arithmetically
+-- HL2SB NOTE: GMod's original table derives the HL2MP activity arithmetically
 -- (IdleActivity + 1/2/3/4/5/6/9).  That assumes GMod's engine enum order
 --
 --     ACT_HL2MP_IDLE, ACT_HL2MP_WALK, ACT_HL2MP_RUN, ACT_HL2MP_IDLE_CROUCH,
