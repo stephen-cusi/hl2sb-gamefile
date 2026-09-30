@@ -40,9 +40,15 @@ end
 -----------------------------------------------------------]]
 function SWEP:DrawWeaponSelection( x, y, wide, tall, alpha )
 
-	-- Set us up the texture
+	-- Set us up the texture.  WepSelectIcon is either a texture id (number)
+	-- or a Material() userdata; each has its own surface binding
+	-- (SetTexture / SetMaterial).
 	surface.SetDrawColor( 255, 255, 255, alpha )
-	surface.SetTexture( self.WepSelectIcon )
+	if ( type( self.WepSelectIcon ) == "number" ) then
+		surface.SetTexture( self.WepSelectIcon )
+	else
+		pcall( surface.SetMaterial, self.WepSelectIcon )
+	end
 
 	-- Lets get a sin wave to make it bounce
 	local fsin = 0

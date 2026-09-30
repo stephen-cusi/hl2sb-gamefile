@@ -117,3 +117,22 @@ AccessorFunc( SWEP, "fNPCMaxBurst",		"NPCMaxBurst" )
 AccessorFunc( SWEP, "fNPCFireRate",		"NPCFireRate" )
 AccessorFunc( SWEP, "fNPCMinRestTime",	"NPCMinRest" )
 AccessorFunc( SWEP, "fNPCMaxRestTime",	"NPCMaxRest" )
+
+--[[---------------------------------------------------------
+	Name: GetNPCBurstSettings
+	Desc: How an NPC uses this weapon: min/max bullets per burst and the
+		delay between shots (seconds).  Backs the AccessorFunc fields
+		above; unset fields come back nil and the engine keeps its own
+		defaults for them.
+-----------------------------------------------------------]]
+function SWEP:GetNPCBurstSettings()
+	return self:GetNPCMinBurst(), self:GetNPCMaxBurst(), self:GetNPCFireRate()
+end
+
+--[[---------------------------------------------------------
+	Name: GetNPCRestTimes
+	Desc: Min/max time an NPC rests between bursts (seconds).
+-----------------------------------------------------------]]
+function SWEP:GetNPCRestTimes()
+	return self:GetNPCMinRest(), self:GetNPCMaxRest()
+end

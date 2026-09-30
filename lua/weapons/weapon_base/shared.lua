@@ -334,7 +334,24 @@ function SWEP:SetHoldType( t )
 	-- GMod hold types are matched case-insensitively ("Pistol" == "pistol").
 	t = string.lower( t or "normal" )
 	self.HoldType = t
-	self.m_acttable = HoldTypeActtables[ t ] or HoldTypeActtables[ "normal" ]
+
+	local rows = HoldTypeActtables[ t ] or HoldTypeActtables[ "normal" ]
+
+	-- HL2SB (2026-09-30): the engine translates through at most
+	-- LUA_MAX_WEAPON_ACTIVITIES (32) rows (weapon_hl2mpbase_scriptedweapon.h
+	-- ActivityList); rows past that are dead for the C++ walk.  Truncate to
+	-- exactly those 32 so the Lua-side TranslateActivity (sh_anim.lua) can
+	-- never answer with a row the engine itself cannot see: with the full
+	-- 37-row table, the ACT_RANGE_ATTACK1 row (row 37 for the smg/ar2
+	-- families) was invisible to C++ but visible to Lua, and the fire-
+	-- gesture path (Weapon_SetActivity( Weapon_TranslateActivity(
+	-- ACT_RANGE_ATTACK1 ))) started playing the range-attack sequence on the
+	-- viewmodel after every shot -- a second, wrong animation.
+	self.m_acttable = { }
+	for i = 1, math.min( #rows, 32 ) do
+		self.m_acttable[ i ] = rows[ i ]
+	end
+
 	return self.HoldType
 end
 
