@@ -185,9 +185,36 @@ local STOCK_NPC_NAMES = {
 
 for _, group in ipairs( STOCK_NPCS ) do
 	for _, class in ipairs( group.classes ) do
-		local nm = STOCK_NPC_NAMES[ class ] or class
-		list.Set( "NPC", class, { Name = nm, PrintName = nm, Class = class, Category = group.cat } )
+		-- GMod's AddNPC (lua/autorun/base_npcs.lua): the registered Name is
+		-- the "#class" token and the language table resolves it -- that is
+		-- what makes every built-in NPC read in the UI language everywhere
+		-- (spawn tab, kill feed, undo).  STOCK_NPC_NAMES stays as the
+		-- display fallback for when the properties are unavailable.
+		list.Set( "NPC", class, { Name = "#" .. class, PrintName = "#" .. class, Class = class, Category = group.cat } )
 	end
+end
+
+-- Resolve a (possibly "#token") registration name for DISPLAY: the language
+-- table first (lua/includes/modules/language.lua loads GMod's
+-- resource/localization/<lang>/entities.properties, which names every
+-- built-in HL2 NPC / weapon / prop / ammo in the UI language), then the old
+-- English stock spellings, then the raw string.  The registrations keep the
+-- raw token -- only display resolves, exactly like GMod.
+local function ResolveStockName( name, class )
+	class = tostring( class or "" )
+	if ( name ~= nil and name ~= "" and string.sub( name, 1, 1 ) == "#" ) then
+		if ( _G.language ~= nil and language.GetPhrase ~= nil ) then
+			local ok, phrase = pcall( language.GetPhrase, name )
+			if ( ok and phrase ~= nil and phrase ~= "" and string.sub( phrase, 1, 1 ) ~= "#" ) then
+				return phrase
+			end
+		end
+		return STOCK_NPC_NAMES[ class ] or name
+	end
+	if ( name ~= nil and name ~= "" ) then
+		return name
+	end
+	return STOCK_NPC_NAMES[ class ] or class
 end
 
 -- ---------------------------------------------------------------------------
@@ -255,7 +282,9 @@ local function CollectEntities()
 				if ( e ) then
 					e.spawnname    = tostring( spawnname )
 					e.iconOverride = ( istable( data ) and isstring( data.IconOverride ) ) and data.IconOverride or nil
-					e.name     = tostring( ( istable( data ) and data.PrintName ) or spawnname )
+					-- GMod registrations carry "#token" PrintNames (game_hl2.lua);
+					-- resolve them for display in the UI language
+					e.name     = ResolveStockName( tostring( ( istable( data ) and data.PrintName ) or spawnname ), tostring( spawnname ) )
 					e.category = ( istable( data ) and isstring( data.Category ) and data.Category ~= "" ) and data.Category or nil
 					e.model    = ( istable( data ) and isstring( data.Model ) ) and data.Model or ""
 					e.cat      = "entity"
@@ -292,18 +321,20 @@ local function CollectWeapons()
 	if ( weapon ~= nil and weapon.getweapons ) then
 		local ok, all = pcall( weapon.getweapons )
 		if ( ok and istable( all ) ) then
-			for class, w in pairs( all ) do
-				if ( istable( w ) and w.Spawnable ~= false ) then
-					local e, key = NewEntry( class )
-					if ( e ) then
-						e.name     = tostring( w.PrintName or class )
-						e.category = ( isstring( w.Category ) and w.Category ~= "" ) and w.Category or "Other"
-						e.model    = firstModel( w.WorldModel, w.ViewModel )
-						e.cat      = "weapon"
-						byKey[ key ] = e
+				for class, w in pairs( all ) do
+					if ( istable( w ) and w.Spawnable ~= false ) then
+						local e, key = NewEntry( class )
+						if ( e ) then
+							-- SWEP PrintNames are frequently "#token"s (GMod
+							-- addons localise them through entities.properties)
+							e.name     = ResolveStockName( tostring( w.PrintName or class ), tostring( class ) )
+							e.category = ( isstring( w.Category ) and w.Category ~= "" ) and w.Category or "Other"
+							e.model    = firstModel( w.WorldModel, w.ViewModel )
+							e.cat      = "weapon"
+							byKey[ key ] = e
+						end
 					end
 				end
-			end
 		end
 	end
 
@@ -312,7 +343,7 @@ local function CollectWeapons()
 			if ( istable( w ) and isstring( w.ClassName ) and w.Spawnable ~= false ) then
 				local e, key = NewEntry( w.ClassName )
 				if ( e ) then
-					e.name      = tostring( w.PrintName or w.ClassName )
+					e.name      = ResolveStockName( tostring( w.PrintName or w.ClassName ), tostring( w.ClassName ) )
 					e.category  = ( isstring( w.Category ) and w.Category ~= "" ) and w.Category or "Half-Life 2"
 					e.model     = firstModel( w.WorldModel, w.ViewModel )
 					e.spawnname = tostring( w.ClassName )
@@ -350,7 +381,9 @@ local function CollectNPCs()
 			-- produced "unknown entity type" server-side.
 			if ( istable( data ) ) then
 				local e = {
-					name       = tostring( data.Name or spawnname ),
+					-- stock registrations carry "#class" token Names; resolve
+					-- for display in the UI language (GMod resolves at draw)
+					name       = ResolveStockName( tostring( data.Name or spawnname ), tostring( data.Class or spawnname ) ),
 					class      = tostring( data.Class or spawnname ),
 					key        = "n:" .. tostring( spawnname ),
 					model      = ( isstring( data.Model ) ) and data.Model or "",
@@ -373,7 +406,7 @@ local function CollectNPCs()
 		for _, class in ipairs( group.classes ) do
 			local e, key = NewEntry( class )
 			if ( e and byKey[ key ] == nil ) then
-				e.name     = class
+				e.name     = ResolveStockName( "#" .. class, class )
 				e.category = group.cat
 				e.cat      = "npc"
 				byKey[ key ] = e

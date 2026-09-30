@@ -9,6 +9,7 @@ local tonumber = tonumber
 local math = math
 local utf8 = utf8
 local _Color = Color
+local language = language	-- loads before markup (modules pass is alphabetical)
 
 local MarkupObject = {}
 MarkupObject.__index = MarkupObject
@@ -169,6 +170,13 @@ local function CheckTextOrTag( p )
 
 		local text_block = {}
 		text_block.text = p
+		-- GMod resolves "#token" text through the localization system when
+		-- the markup is parsed (weapon_base's info box feeds it
+		-- "#entityinfo.author" and friends).  Unknown tokens come back
+		-- unchanged, so nothing else shifts.
+		if ( string.sub( p, 1, 1 ) == "#" and language ~= nil and language.GetPhrase ~= nil ) then
+			text_block.text = language.GetPhrase( p )
+		end
 		text_block.colour = colour_stack[ #colour_stack ]
 		text_block.font = font_stack[ #font_stack ]
 		table.insert( blocks, text_block )

@@ -76,14 +76,35 @@ local function FromRegistries( class )
 			-- owns the name.  A reskin pack that reuses the class
 			-- (gi_hutao_* -> npc_combine_s) must not steal it; those are only
 			-- consulted when no exact entry exists.
+			--
+			-- GMod's stock registrations carry "#token" names
+			-- (base_npcs.lua: Name = "#" .. class) and the language table
+			-- resolves them per UI language; an unresolved token falls
+			-- through to the next source instead of printing raw.
 			local exact = npcs[ class ]
 			if ( exact ~= nil and exact.Name ~= nil and exact.Name ~= "" ) then
-				return exact.Name
+				if ( string.sub( exact.Name, 1, 1 ) ~= "#" ) then
+					return exact.Name
+				end
+				if ( _G.language ~= nil and language.GetPhrase ~= nil ) then
+					local phrase = language.GetPhrase( exact.Name )
+					if ( phrase ~= nil and phrase ~= "" and string.sub( phrase, 1, 1 ) ~= "#" ) then
+						return phrase
+					end
+				end
 			end
 
 			for _, t in pairs( npcs ) do
 				if ( t ~= nil and t.Class == class and t.Name ~= nil and t.Name ~= "" ) then
-					return t.Name
+					if ( string.sub( t.Name, 1, 1 ) ~= "#" ) then
+						return t.Name
+					end
+					if ( _G.language ~= nil and language.GetPhrase ~= nil ) then
+						local phrase = language.GetPhrase( t.Name )
+						if ( phrase ~= nil and phrase ~= "" and string.sub( phrase, 1, 1 ) ~= "#" ) then
+							return phrase
+						end
+					end
 				end
 			end
 		end
