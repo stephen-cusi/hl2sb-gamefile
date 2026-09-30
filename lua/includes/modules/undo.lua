@@ -630,6 +630,15 @@ local function CC_UndoNum( ply, command, args )
 
 end
 
-concommand.Add( "undo",			CC_UndoLast, nil, "", { FCVAR_DONTRECORD } )
-concommand.Add( "gmod_undo",	CC_UndoLast, nil, "", { FCVAR_DONTRECORD } )
-concommand.Add( "gmod_undonum",	CC_UndoNum, nil, "", { FCVAR_DONTRECORD } )
+-- HL2SB: server realm only.  GMod registers these on both realms, but its
+-- engine routes the client bind to the server anyway; this engine's shared
+-- command registry is first-come-first-served, so a client-side registration
+-- would shadow the server one and the undo command then ran with a NULL or
+-- empty player (undo.lua "UniqueID on bad self (NULL entity)" spam and a dead
+-- key).  Server-only keeps every route (host bind, forwarded client command,
+-- the gmod_undonum DoClick) resolving to the issuing player.
+if SERVER then
+	concommand.Add( "undo",			CC_UndoLast, nil, "", { FCVAR_DONTRECORD } )
+	concommand.Add( "gmod_undo",	CC_UndoLast, nil, "", { FCVAR_DONTRECORD } )
+	concommand.Add( "gmod_undonum",	CC_UndoNum, nil, "", { FCVAR_DONTRECORD } )
+end

@@ -36,7 +36,23 @@ end
 function GM:AllowDamage( pVictim, info )
 end
 
-function GM:CanEnterVehicle( pPlayer, pVehicle, nRole )
+-- GMod base gamemode defaults (base/gamemode/player.lua:552-580), replacing
+-- this fork's self-made GM:CanEnterVehicle stub: the C++ now dispatches the
+-- real hook names (CanPlayerEnterVehicle / PlayerEnteredVehicle from the
+-- EnterVehicle wrapper, CanExitVehicle from the vehicle exit gates,
+-- PlayerLeaveVehicle at the end of the leave transition).
+function GM:CanPlayerEnterVehicle( ply, vehicle, role )
+	return true
+end
+
+function GM:PlayerEnteredVehicle( ply, vehicle, role )
+end
+
+function GM:CanExitVehicle( vehicle, passenger )
+	return true
+end
+
+function GM:PlayerLeaveVehicle( ply, vehicle )
 end
 
 function GM:CanHavePlayerItem( pPlayer, pItem )
