@@ -12,8 +12,8 @@
     list.  The window is the same: a DHorizontalDivider with a DModelPanel
     preview on the left and a DPropertySheet on the right holding
 
-        Model       quick filter box + a DPanelSelect of SpawnIcons, one per
-                    player model, grouped by category
+        Model       quick filter box + a TEXT LIST (category headers + one
+                    clickable text row per model), enhanced-selector style
         Colors      two DColorMixers (player colour / weapon colour)
         Bodygroups  DNumSliders, one per bodygroup plus a skin slider
 
@@ -44,8 +44,11 @@
       * SetDefaultColorFromConVar.  GMod writes panel.HSV:SetDefaultColor;
         this fork's DColorMixer exposes the same idea as SetDefaultColor.
 
-      * SpawnIcon population is batched a few per frame (each SetModel loads
-        and renders a .mdl; ~100 in one frame froze the game for seconds).
+      * The Model page is a text list (user request: "our menu only needs the
+        text-list form of the enhanced playermodel selector addons").  No
+        SpawnIcons -> no .mdl loads at open time, the list fills instantly and
+        the whole SpawnIcon streaming/viewport-culling machinery is unused
+        here (it still serves the spawnmenu).
 
       * UpdateFromControls writes each mixer's own convar behind a
         bUpdatingFromConvars guard (GMod writes BOTH convars from BOTH
@@ -184,8 +187,40 @@ list.Set( "DesktopWindows", "PlayerEditor", {
 		SearchBar:SetUpdateOnType( true )
 		SearchBar:SetPlaceholderText( Phrase( "#spawnmenu.quick_filter" ) )
 
-		local PanelSelect = modelListPnl:Add( "DPanelSelect" )
-		PanelSelect:Dock( FILL )
+		-- Text list (enhanced-selector style): category headers + one clickable
+		-- text row per model.  Selected row = the DButton selected marker.
+		local ListScroll = modelListPnl:Add( "DScrollPanel" )
+		ListScroll:Dock( FILL )
+
+		local ListRows = {}
+		local ListHeaders = {}
+		local selectedName = nil
+
+		-- forward declaration: the row clicks below fire it long after the
+		-- window is built, but the local must exist at closure creation
+		local UpdateFromConvars
+
+		local function SetSelectedRow( row )
+			for _, r in ipairs( ListRows ) do
+				r.m_bSelected = false
+			end
+			selectedName = row and row.playermodel or nil
+			if ( row ~= nil ) then row.m_bSelected = true end
+		end
+
+		local function ApplyModel( info )
+			-- what DPanelSelect used to do: write the convar, then run the
+			-- OnActivePanelChanged reset+refresh
+			RunConsoleCommand( "cl_playermodel", info.model )
+
+			-- DELTA: a full row of zeros -- GMod writes "0", but the fork's server
+			-- reads that as "bodygroup 0 = 0" and keeps the rest of the old model's
+			-- bodygroups; it walks the string until it runs out.
+			RunConsoleCommand( "cl_playerbodygroups", "0 0 0 0 0 0 0 0" )
+			RunConsoleCommand( "cl_playerskin", "0" )
+
+			timer.Simple( 0.1, function() UpdateFromConvars() end )
+		end
 
 		local categorized = {}
 
@@ -193,10 +228,19 @@ list.Set( "DesktopWindows", "PlayerEditor", {
 		--- built before the models/player scan (hl2sb_playermodels.lua) has finished;
 		--- the hook below re-pulls when the scan announces its rebuild.
 		local function PopulateModelList()
-			if ( not IsValid( PanelSelect ) or not IsValid( SearchBar ) ) then return end
+			if ( not IsValid( ListScroll ) or not IsValid( SearchBar ) ) then return end
 
-			PanelSelect:CleanList()
-			categorized = {}
+			ListScroll:GetCanvas():Clear()
+			ListRows = {}
+			ListHeaders = {}
+
+			-- first fill ever: highlight the model the convar already holds
+			if ( selectedName == nil ) then
+				local cur = GetConVarString( "cl_playermodel" )
+				for name, info in pairs( GetModelList() ) do
+					if ( info.model == cur ) then selectedName = name end
+				end
+			end
 
 			for name, info in pairs( GetModelList() ) do
 				local catName = Phrase( info.category or "#spawnmenu.category.other" )
@@ -205,110 +249,64 @@ list.Set( "DesktopWindows", "PlayerEditor", {
 				table.insert( categorized[ catName ], { title = Phrase( info.title ), model = info.model, name = name } )
 			end
 
-			-- DELTA: cells stream in a few per frame instead of ~100 SpawnIcon:SetModel()
-			-- calls in one frame (each loads and renders a .mdl).  The LABELS go
-			-- through the same queue, because the queue must create cells in the
-			-- display order -- labels created first and icons appended later would
-			-- pile every category heading at the top of the list.
-			local queue = {}
+			-- Text rows are cheap (no .mdl loads), so the old few-per-frame
+			-- streaming timer is gone; a per-entry pcall stays - one broken
+			-- entry must not kill the rest of the fill.
+			local canvas = ListScroll:GetCanvas()
 
 			for catName, items in SortedPairs( categorized ) do
 
-				queue[ #queue + 1 ] = { label = catName }
+				local okHdr, errHdr = pcall( function()
+					local label = vgui.Create( "DLabel", canvas )
+					label:SetText( catName )
+					label:SetFont( "DermaLarge" )
+					label:SetTall( 32 )
+					label:Dock( TOP )
+					label:SetDark( true )
+					ListHeaders[ #ListHeaders + 1 ] = label
+				end )
+				if ( not okHdr ) then
+					Msg( "[HL2SB] model list header failed: " .. tostring( errHdr ) .. "\n" )
+				end
 
 				for _, info in SortedPairsByMemberValue( items, "title" ) do
-					queue[ #queue + 1 ] = { info = info }
-				end
 
-			end
-
-			local TIMER = "HL2SB_PlayerModelIcons"
-
-			if ( timer.Exists ~= nil and timer.Exists( TIMER ) ) then
-				timer.Remove( TIMER )
-			end
-
-			local pos = 0
-			local fillErrors = 0
-
-			timer.Create( TIMER, 0, 0, function()
-				if ( not IsValid( PanelSelect ) ) then
-					timer.Remove( TIMER )
-					return
-				end
-
-				local batch = 0
-
-				while ( batch < 4 and pos < #queue ) do
-					pos = pos + 1
-					batch = batch + 1
-
-					local item = queue[ pos ]
-
-					-- HL2SB: one broken entry must not kill the fill timer --
-					-- the engine removes an erroring timer outright, which used
-					-- to truncate the whole list after the failing item (the
-					-- "there is no Other category" report).
 					local okItem, errItem = pcall( function()
+						local row = vgui.Create( "DButton", canvas )
+						row:SetText( info.title )
+						row:SetContentAlignment( 4 )
+						row:SetTextInset( 6, 0 )
+						row:SetTall( 20 )
+						row:Dock( TOP )
+						row.playermodel = info.name
+						row.model_path = info.model
+						row.row_title = info.title
+						if ( row.playermodel == selectedName ) then row.m_bSelected = true end
 
-						if ( item.label ) then
-
-							local label = vgui.Create( "DLabel" )
-							label:SetFont( "DermaLarge" )
-							label:SetText( item.label )
-							label:SetTall( 32 )
-							label:SetDark( true )
-							label:SizeToContentsX()
-							label.m_strLineState = "ownline"
-							PanelSelect:AddPanel( label )
-							label.DoClick = function() end -- Unselectable
-
-						else
-
-							local info = item.info
-
-							local icon = vgui.Create( "SpawnIcon" )
-							icon:SetModel( info.model )
-							icon:SetSize( 64, 64 )
-							icon:SetTooltip( info.title )
-							icon.playermodel = info.name
-							icon.model_path = info.model
-							icon.OpenMenu = function( button )
-								local menu = DermaMenu()
-								menu:AddOption( Phrase( "#spawnmenu.menu.copy" ), function() SetClipboardText( info.model ) end )
-									:SetIcon( "icon16/page_copy.png" )
-								menu:Open()
-							end
-
-							-- DELTA: GMod passes { cl_playermodel = info.name }; this fork's server
-							-- reads cl_playermodel as a model path, so the path goes in.
-							PanelSelect:AddPanel( icon, { cl_playermodel = info.model } )
-
+						row.DoClick = function()
+							SetSelectedRow( row )
+							ApplyModel( info )
 						end
+
+						row.DoRightClick = function()
+							local menu = DermaMenu()
+							menu:AddOption( Phrase( "#spawnmenu.menu.copy" ), function() SetClipboardText( info.model ) end )
+								:SetIcon( "icon16/page_copy.png" )
+							menu:Open()
+						end
+
+						ListRows[ #ListRows + 1 ] = row
 					end )
 
 					if ( not okItem ) then
-						fillErrors = fillErrors + 1
-						if ( fillErrors == 1 ) then
-							Msg( "[HL2SB] model list entry failed: " .. tostring( errItem ) .. "\n" )
-						end
+						Msg( "[HL2SB] model list entry failed: " .. tostring( errItem ) .. "\n" )
 					end
 				end
+			end
 
-				if ( pos >= #queue ) then
-					timer.Remove( TIMER )
+			Msg( "[HL2SB] model list filled: " .. tostring( #ListRows ) .. " models\n" )
 
-					Msg( "[HL2SB] model list filled: " .. tostring( #queue ) .. " entries, "
-						.. tostring( fillErrors ) .. " failed\n" )
-
-					-- Icons that arrived after the last keystroke need the filter applied.
-					if ( SearchBar.OnValueChange ~= nil ) then
-						SearchBar.OnValueChange( SearchBar, SearchBar:GetText() or "" )
-					end
-				end
-			end )
-
-			-- Re-apply the search filter: freshly built items are all visible.
+			-- Re-apply the search filter to the fresh rows.
 			if ( SearchBar.OnValueChange ~= nil ) then
 				SearchBar.OnValueChange( SearchBar, SearchBar:GetText() or "" )
 			end
@@ -325,22 +323,23 @@ list.Set( "DesktopWindows", "PlayerEditor", {
 		SearchBar.OnValueChange = function( _, str )
 			str = string.lower( str or "" )
 
-			for _, pnl in pairs( PanelSelect:GetItems() ) do
-				if ( pnl.playermodel == nil ) then
-					pnl:SetVisible( str == "" )
-					continue
-				end
-
-				if ( not string.find( string.lower( pnl.playermodel ), str, 1, true )
-					and not string.find( string.lower( pnl.model_path ), str, 1, true )
-					and not string.find( string.lower( pnl:GetTooltip() or "" ), str, 1, true ) ) then
-					pnl:SetVisible( false )
+			for _, row in ipairs( ListRows ) do
+				if ( str == ""
+					or string.find( string.lower( row.playermodel or "" ), str, 1, true )
+					or string.find( string.lower( row.model_path or "" ), str, 1, true )
+					or string.find( string.lower( row.row_title or "" ), str, 1, true ) ) then
+					row:SetVisible( true )
 				else
-					pnl:SetVisible( true )
+					row:SetVisible( false )
 				end
 			end
 
-			PanelSelect:InvalidateLayout()
+			-- headers carry no model text; they only make sense unfiltered
+			for _, hdr in ipairs( ListHeaders ) do
+				hdr:SetVisible( str == "" )
+			end
+
+			ListScroll:InvalidateLayout()
 		end
 
 		sheet:AddSheet( Phrase( "#smwidget.model" ), modelListPnl, "icon16/user.png" )
@@ -486,7 +485,9 @@ list.Set( "DesktopWindows", "PlayerEditor", {
 		--- value into its convar ("opening the menu changes my colour").
 		local bUpdatingFromConvars = false
 
-		local function UpdateFromConvars()
+		-- (declared as a local up in the Model-page block so the list rows can
+		-- fire it; assigned here, where its whole dependency set exists)
+		UpdateFromConvars = function()
 
 			if ( not IsValid( mdl ) ) then return end
 
@@ -531,19 +532,8 @@ list.Set( "DesktopWindows", "PlayerEditor", {
 		plycol.ValueChanged = function() UpdateFromControls( plycol ) end
 		wepcol.ValueChanged = function() UpdateFromControls( wepcol ) end
 
-		function PanelSelect:OnActivePanelChanged( old, new )
-
-			if ( old ~= new ) then -- Only reset if we changed the model
-				-- DELTA: a full row of zeros -- GMod writes "0", but the fork's server
-				-- reads that as "bodygroup 0 = 0" and keeps the rest of the old model's
-				-- bodygroups; it walks the string until it runs out.
-				RunConsoleCommand( "cl_playerbodygroups", "0 0 0 0 0 0 0 0" )
-				RunConsoleCommand( "cl_playerskin", "0" )
-			end
-
-			timer.Simple( 0.1, function() UpdateFromConvars() end )
-
-		end
+		-- (the old PanelSelect:OnActivePanelChanged reset+refresh moved into the
+		-- text list's ApplyModel; there is no icon grid anymore)
 
 		-- Hold to rotate
 
