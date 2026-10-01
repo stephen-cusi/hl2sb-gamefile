@@ -134,9 +134,9 @@ local cube = vgui.Create( "DColorCube" )
 Check( IsValid( cube ) and cube.Knob ~= nil, "vgui.Create(DColorCube) with knob" )
 cube:SetSize( 100, 100 )
 cube:SetColor( Color( 0, 255, 0 ) )
--- GetRGB is a COLOR (HSVToColor's return), so the fields are .r/.g/.b
+-- GetRGB is a COLOR (HSVToColor's return): 0-255 components, .r/.g/.b
 local out = cube:GetRGB()
-Check( out ~= nil and Approx( out.g, 1 ) and Approx( out.r, 0 ),
+Check( out ~= nil and Approx( out.g, 255 ) and Approx( out.r, 0 ),
 	"SetColor(green) -> RGB stays green" )
 Check( Approx( cube:GetSlideX(), 0 ) and Approx( cube:GetSlideY(), 0 ),
 	"full saturation/value -> slide 0/0" )
