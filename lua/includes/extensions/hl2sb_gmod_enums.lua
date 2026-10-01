@@ -265,3 +265,21 @@ if ( rawget( _G, "RENDERGROUP_TRANSLUCENT" ) == nil ) then RENDERGROUP_TRANSLUCE
 if ( rawget( _G, "RENDERGROUP_TWOPASS" ) == nil ) then RENDERGROUP_TWOPASS = 9 end
 if ( rawget( _G, "RENDERGROUP_VIEWMODEL" ) == nil ) then RENDERGROUP_VIEWMODEL = 10 end
 if ( rawget( _G, "RENDERGROUP_OTHER" ) == nil ) then RENDERGROUP_OTHER = 13 end
+
+------------------------------------------------------------------------------
+-- MATERIAL_CULLMODE_* globals (2026-10-02): GMod publishes them as globals for
+-- render.CullMode (GM:PostDrawViewModel flips to CW around hands:DrawModel for
+-- ViewModelFlip weapons).  Values = this engine's MaterialCullMode_t
+-- (public/materialsystem/imaterialsystem.h: CCW=0, CW=1).
+------------------------------------------------------------------------------
+
+if ( rawget( _G, "MATERIAL_CULLMODE_CCW" ) == nil ) then MATERIAL_CULLMODE_CCW = 0 end
+if ( rawget( _G, "MATERIAL_CULLMODE_CW" ) == nil ) then MATERIAL_CULLMODE_CW = 1 end
+
+------------------------------------------------------------------------------
+-- vector_origin / angle_zero globals (2026-10-02): GMod exposes both as
+-- constants; gmod_hands.lua uses them verbatim (AttachToViewmodel, OnRemove).
+------------------------------------------------------------------------------
+
+if ( rawget( _G, "vector_origin" ) == nil ) then vector_origin = Vector( 0, 0, 0 ) end
+if ( rawget( _G, "angle_zero" ) == nil ) then angle_zero = QAngle( 0, 0, 0 ) end

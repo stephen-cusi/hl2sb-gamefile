@@ -221,16 +221,10 @@ function meta:SetupHands( spec_ply )
 
 	local hands = ents.Create( "gmod_hands" )
 	if ( IsValid( hands ) ) then
-		-- HL2SB delta (Spawn BEFORE DoSetup): this fork's CBaseScripted::Spawn
-		-- applies the GMod anim-SENT engine defaults (solid/movetype VPHYSICS,
-		-- the measured sent_ball state) right before ENT:Initialize.  GMod has
-		-- no such Spawn-time defaults, so its DoSetup-then-Spawn order ends at
-		-- AttachToViewmodel's SetMoveType( MOVETYPE_NONE ); here that value is
-		-- overridden afterwards, and a non-NONE movetype makes
-		-- IsFollowingEntity() ( EF_BONEMERGE + MOVETYPE_NONE + moveparent )
-		-- fail silently -- the arms render unmerged, in their own bind pose,
-		-- i.e. invisible in first person.  Spawning first lets DoSetup's
-		-- SetMoveType be the final word.
+		-- This fork's ents.Create defers ENT:Initialize to :Spawn() (GMod
+		-- initializes at create time), so Spawn runs first and DoSetup's
+		-- AttachToViewmodel (SetMoveType MOVETYPE_NONE + EF_BONEMERGE onto the
+		-- viewmodel) is the final word either way.
 		hands:Spawn()
 		hands:DoSetup( self, spec_ply )
 	end

@@ -122,6 +122,14 @@ if ( CLIENT ) then
       check( "client hands parented to the viewmodel", IsValid( h:GetParent() ) )
       print( string.format( "[hands ..] client hands: ent=%s class=%s model=%s",
         tostring( h:EntIndex() ), tostring( h:GetClassname() ), tostring( h:GetModel() ) ) )
+    -- 2026-10-02: render-group contract + GMod globals the verbatim script needs
+    check( "hands RenderGroup is OTHER (13)", h:GetRenderGroup and h:GetRenderGroup() == RENDERGROUP_OTHER )
+    check( "MATERIAL_CULLMODE_CCW global", MATERIAL_CULLMODE_CCW == 0 )
+    check( "MATERIAL_CULLMODE_CW global", MATERIAL_CULLMODE_CW == 1 )
+    check( "render.CullMode callable", render ~= nil and render.CullMode ~= nil )
+    check( "vector_origin global", vector_origin ~= nil )
+    check( "angle_zero global", angle_zero ~= nil )
+    check( "GM:OnViewModelChanged wired", GAMEMODE.OnViewModelChanged ~= nil )
     end
     print( string.format( "[hands test] %d passed, %d failed", passed, failed ) )
   end )
@@ -130,6 +138,35 @@ if ( CLIENT ) then
   check( "GM:PostDrawViewModel wired", GAMEMODE.PostDrawViewModel ~= nil )
 
   return -- client summary prints in the timer above
+end
+
+-- 2026-10-02: SetTransmitWithParent/GetTransmitWithParent roundtrip + DeleteOnRemove
+do
+  local ply2 = nil
+  if ( player and player.GetAll ) then ply2 = player.GetAll()[1] end
+  if ( ply2 == nil ) then ply2 = findPlayer() end
+  if ( ply2 ~= nil and IsValid( ply2 ) ) then
+    local h = ply2:GetHands()
+    if ( h ~= nil and IsValid( h ) ) then
+      local before = h:GetTransmitWithParent()
+      h:SetTransmitWithParent( true )
+      check( "SetTransmitWithParent(true) reads back true (server)", h:GetTransmitWithParent() == true )
+      h:SetTransmitWithParent( false )
+      check( "SetTransmitWithParent(false) reads back false (server)", h:GetTransmitWithParent() == false )
+      h:SetTransmitWithParent( before )
+    end
+
+    local a = ents.Create( "prop_physics" )
+    local b = ents.Create( "prop_physics" )
+    if ( a ~= nil and IsValid( a ) and b ~= nil and IsValid( b ) ) then
+      a:Spawn()
+      b:Spawn()
+      a:DeleteOnRemove( b )
+      a:Remove()
+      -- UTIL_Remove defers to the frame tail; both flags should be set now.
+      check( "DeleteOnRemove: victim marked for deletion with owner", b:IsValid() == false or b:IsMarkedForDeletion and b:IsMarkedForDeletion() )
+    end
+  end
 end
 
 print( string.format( "[hands test] %d passed, %d failed", passed, failed ) )

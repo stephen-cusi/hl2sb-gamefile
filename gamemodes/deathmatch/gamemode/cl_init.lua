@@ -280,10 +280,11 @@ function GM:PostDrawViewModel( vm, ply, wep, flags )
 
 			if ( not hook.Call( "PreDrawPlayerHands", self, hands, vm, ply, wep, flags ) ) then
 
-				-- HL2SB: GMod flips to back-face culling for ViewModelFlip
-				-- weapons here (render.CullMode is not bound in this fork);
-				-- the arms draw with the default winding either way.
+				-- GMod base cl_init.lua:611 - a ViewModelFlip weapon mirrors the
+				-- viewmodel, so the hands draw with inverted winding.
+				if ( wep.ViewModelFlip ) then render.CullMode( MATERIAL_CULLMODE_CW ) end
 				hands:DrawModel( flags )
+				render.CullMode( MATERIAL_CULLMODE_CCW )
 
 			end
 

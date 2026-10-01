@@ -51,6 +51,21 @@ function GM:PlayerSetHandsModel( pl, ent )
 
 end
 
+--[[---------------------------------------------------------
+	Name: gamemode:OnViewModelChanged()
+	Desc: Called when the player's viewmodel model changes.  GMod base
+	 shared.lua:251 verbatim - forwards to the player class's
+	 PLAYER:ViewModelChanged hook point.
+-----------------------------------------------------------]]
+function GM:OnViewModelChanged( vm, old, new )
+
+	local ply = vm:GetOwner()
+	if ( IsValid( ply ) ) then
+		player_manager.RunClass( ply, "ViewModelChanged", vm, old, new )
+	end
+
+end
+
 GM.Name       = "Deathmatch"
 GM.Homepage   = "http://www.steampowered.com/"
 GM.Developer  = "Valve"
