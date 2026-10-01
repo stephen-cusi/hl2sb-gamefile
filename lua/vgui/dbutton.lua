@@ -73,10 +73,20 @@ function PANEL:IsEnabled()
 end
 
 --- GMod: DButton:IsDown() -- "Returns whether the button is currently held down."
---- (GMod's own dbutton.lua:26 reads its `Depressed` field; this control tracks
---- the same state as m_bDepressed.)  DHorizontalScroller:Think polls it.
+--- (GMod's own dbutton.lua:26 reads its `Depressed` field; see SetDepressedState
+--- below - ported GMod controls read the field directly, DSlider's knob logic
+--- being the reason it exists.)
 function PANEL:IsDown()
-	return self.m_bDepressed == true
+	return self.Depressed == true
+end
+
+--- GMod's engine writes the `Depressed` field on the panel's Lua table on
+--- press/release; this fork keeps the state in m_bDepressed, so both are set
+--- together (verbatim GMod code reads .Depressed - dslider.lua's IsEditing
+--- and the skin's PaintSliderKnob states).
+function PANEL:SetDepressedState( b )
+	self.m_bDepressed = b and true or false
+	self.Depressed = self.m_bDepressed
 end
 
 --- GMod: DButton derives from DLabel, so GetContentSize / SizeToContents come along
@@ -115,7 +125,7 @@ function PANEL:OnMousePressed( code )
 
 	if ( not self.m_bEnabled ) then return end
 
-	self.m_bDepressed = true
+	self:SetDepressedState( true )
 	self.m_bHover = true
 
 	-- Without the capture, releasing the button outside the panel never reaches
@@ -146,7 +156,7 @@ end
 
 function PANEL:OnMouseReleased( code )
 	local wasDepressed = self.m_bDepressed
-	self.m_bDepressed = false
+	self:SetDepressedState( false )
 	self:MouseCapture( false )
 
 	-- The drag has to be resolved FIRST: while dragging, the cursor is normally no
@@ -175,7 +185,7 @@ function PANEL:OnMouseReleased( code )
 end
 
 function PANEL:OnMouseCaptureLost()
-	self.m_bDepressed = false
+	self:SetDepressedState( false )
 end
 
 --- GMod's default click does nothing; scripts overwrite this field.

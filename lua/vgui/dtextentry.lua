@@ -118,9 +118,18 @@ function PANEL:SetText( strText )
 	self:OnTextChanged()
 end
 
---- GMod's SetText/GetText/SetValue/GetValue/SetReadOnly/SetMultiline are bound
---- engine-side (public/lua/vgui_controls/lTextEntry.cpp + the SetValue /
---- SetReadOnly aliases added with this framework); nothing to shim here.
+--- GMod's SetText/GetText are engine bindings here; SetValue/GetValue are NOT -
+--- the old comment claimed an engine alias that a binding-table grep never
+--- finds (lPanel.cpp / lTextEntry.cpp carry neither).  GMod's TextEntry engine
+--- method is what the ported DNumSlider calls on its TextArea, so it lives
+--- here: SetValue writes the text exactly like SetText.
+function PANEL:SetValue( strText )
+	self:SetText( strText )
+end
+
+function PANEL:GetValue()
+	return self:GetText()
+end
 
 --- GMod: DTextEntry:SetFont( name ) / GetFont() -- GMod's pair is an AccessorFunc on
 --- m_FontName plus `SetFontInternal` in the scheme pass (dtextentry.lua:37/105).  Here the

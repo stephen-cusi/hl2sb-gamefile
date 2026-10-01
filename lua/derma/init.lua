@@ -198,13 +198,12 @@ InstallConVar( "DCheckBox",
 	function( pnl, new ) pnl:SetChecked( tonumber( new ) ~= 0 or new == "true" ) end,
 	{ name = "OnCheckButtonChecked", write = function( pnl ) return pnl:GetChecked() and "1" or "0" end } )
 
-InstallConVar( "DNumSlider",
-	function( pnl, new ) local v = tonumber( new ); if ( v ) then pnl:SetValue( v ) end end,
-	{ name = "SetValue", write = function( pnl ) return pnl:GetValue() end } )
-
-InstallConVar( "DSlider",
-	function( pnl, new ) local v = tonumber( new ); if ( v ) then pnl:SetValue( v ) end end,
-	{ name = "SetValue", write = function( pnl ) return pnl:GetValue() end } )
+-- DNumSlider / DSlider are NOT installed here anymore: both are verbatim GMod
+-- ports now and carry their own convar plumbing (DNumSlider:SetConVar ->
+-- Scratch + TextArea, DSlider's SetConVarX/SetConVarY with its own Think
+-- polling).  The installer used to overwrite their ConVarChanged with the
+-- (name, old, new) push shape, which broke the GMod (newValue, cvarName)
+-- contract those files implement.
 
 InstallConVar( "DTextEntry",
 	function( pnl, new ) pnl:SetText( new ) end,

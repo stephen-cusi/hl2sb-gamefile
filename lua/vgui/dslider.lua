@@ -1,252 +1,303 @@
---[[ DSlider -- float slider, now with GMod's two-axis API (original implementation).
+--[[ DSlider -- GMod's two-axis slider, ported from its lua/vgui/dslider.lua
+	(280 lines) essentially line for line.
 
-	Wiki: https://wiki.facepunch.com/gmod/DSlider
-	  "A multidirectional slider than has the ability to be locked to X or y axis."
-	  Parent: DPanel.
-	  Methods: SetSlideX / GetSlideX / SetSlideY / GetSlideY /
-	           SetLockX / GetLockX / SetLockY / GetLockY /
-	           SetDragging / GetDragging / OnValueChanged( slider )
+	What "verbatim" keeps: the Knob child DButton (the grip is a real panel with
+	its own Depressed/Hovered press states, middle-click reset and its own
+	cursor forwarding), TrapInside, the TranslateValues hook, per-axis ConVar
+	binding (SetConVarX/SetConVarY with Think polling), the two-argument
+	OnValueChanged( x, y ), SetEnabled propagating to the Knob, and the retired
+	SetImage/SetImageColor stubs (GMod addons call them; the stubs keep them
+	harmless).
 
-	⚠️ History: this fork's slider was written as a 1-D "float 0..1" control with
-	`SetValue`/`GetValue`/`SetXPos`, and DNumSlider is built on those.  GMod's DSlider is
-	2-D (slide X *and* Y, both 0..1, with the classic "smooth" grip), and DColorCube
-	derives from it - so the two-axis API is added here while the old names keep working:
-	`SetValue`/`GetValue` are SlideX, and `OnValueChanged` is still called as
-	`( slider, value )` because that is what the in-tree callers expect (a GMod script
-	that writes `function slider:OnValueChanged()` still works - trailing arguments are
-	ignored in Lua).
-
-	The grip is drawn by the skin when it knows how (PaintSlider / PaintNumberSlider);
-	otherwise a plain grip is drawn so the control is always visible.
+	Fork notes (the only deltas from the GMod file):
+	  * The previous in-tree rewrite (a knobless 1-D slider with SetValue /
+	    SetXPos) is replaced wholesale; DNumSlider / DColorCube are ported to
+	    GMod's shapes in their own files, which is what consumes the new API.
+	  * `Depressed` on the Knob is maintained by our DButton (GMod's engine
+	    writes the field C-side; this fork keeps it Lua-side).
+	  * The knob graphic comes from the skin (PaintSliderKnob, added to
+	    lua/skins/hl2sb_default.lua).  derma.SkinHook is a no-op when the skin
+	    lacks the hook, matching GMod.
+	  * GLua spellings (|| and !=) are kept - the fork's Lua dialect supports
+	    them (llex.c).
 --]]
 
 local PANEL = {}
 
-local GRIP_W = 12
+AccessorFunc( PANEL, "m_fSlideX", "SlideX" )
+AccessorFunc( PANEL, "m_fSlideY", "SlideY" )
+
+AccessorFunc( PANEL, "m_iLockX", "LockX" )
+AccessorFunc( PANEL, "m_iLockY", "LockY" )
+
+AccessorFunc( PANEL, "Dragging", "Dragging" )
+AccessorFunc( PANEL, "m_bTrappedInside", "TrapInside" )
+
+Derma_Hook( PANEL, "Paint", "Paint", "Slider" )
 
 function PANEL:Init()
+
 	self:SetMouseInputEnabled( true )
-	self:SetDrawBackground( false )
 
-	self.m_flSlideX = 0
-	self.m_flSlideY = 0
-	self.m_bHeld = false
+	self:SetSlideX( 0.5 )
+	self:SetSlideY( 0.5 )
 
-	-- GMod: nil = free on that axis
-	self.m_bLockX = nil
-	self.m_bLockY = nil
+	self.Knob = vgui.Create( "DButton", self )
+	self.Knob:SetText( "" )
+	self.Knob:SetSize( 15, 15 )
+	self.Knob:NoClipping( true )
+	self.Knob.Paint = function( panel, w, h ) derma.SkinHook( "Paint", "SliderKnob", panel, w, h ) end
+	self.Knob.OnCursorMoved = function( panel, x, y )
+		x, y = panel:LocalToScreen( x, y )
+		x, y = self:ScreenToLocal( x, y )
+		self:OnCursorMoved( x, y )
+	end
+
+	self.Knob.OnMousePressed = function( panel, mcode )
+		if ( mcode == MOUSE_MIDDLE ) then
+			self:ResetToDefaultValue()
+			return
+		end
+
+		DButton.OnMousePressed( panel, mcode )
+	end
+
+	-- Why is this set by default?
+	self:SetLockY( 0.5 )
+
 end
 
--------------------------------------------------------------------------------
--- axis accessors
--------------------------------------------------------------------------------
-function PANEL:SetSlideX( f )
-	if ( self.m_bLockX ~= nil and self.m_bLockX ~= false ) then return end
-
-	f = math.Clamp( tonumber( f ) or 0, 0, 1 )
-	if ( f == self.m_flSlideX ) then return end
-
-	self.m_flSlideX = f
-	self:OnValueChanged( f )
-end
-
-function PANEL:GetSlideX()
-	return self.m_flSlideX
-end
-
-function PANEL:SetSlideY( f )
-	if ( self.m_bLockY ~= nil and self.m_bLockY ~= false ) then return end
-
-	f = math.Clamp( tonumber( f ) or 0, 0, 1 )
-	if ( f == self.m_flSlideY ) then return end
-
-	self.m_flSlideY = f
-	self:OnValueChanged( f )
-end
-
-function PANEL:GetSlideY()
-	return self.m_flSlideY
-end
-
-function PANEL:SetLockX( b ) self.m_bLockX = b end
-function PANEL:GetLockX() return self.m_bLockX end
-function PANEL:SetLockY( b ) self.m_bLockY = b end
-function PANEL:GetLockY() return self.m_bLockY end
-
-function PANEL:SetDragging( b ) self.m_bHeld = b and true or false end
-function PANEL:GetDragging() return self.m_bHeld end
-
---- GMod: DSlider:SetNotches( n ) / SetNotchColor( col ) -- the little tick marks along the
---- groove ("How many notches to draw on the slider").  DNumSlider calls SetNotches for every
---- integer step, which is what makes its rows look like GMod's instead of a bare bar.
-function PANEL:SetNotches( n ) self.m_iNotches = tonumber( n ) end
-function PANEL:GetNotches() return self.m_iNotches end
-function PANEL:SetNotchColor( col ) self.m_colNotch = col end
-function PANEL:GetNotchColor() return self.m_colNotch end
-
---- GMod: DSlider:IsEditing() -- "Returns whether the slider is being dragged"
---- (its dslider.lua:50 is `return self.Dragging || self.Knob.Depressed`).  The
---- DNumSlider editor and DProperty_Float's row painter both read it.
+--
+-- We we currently editing?
+--
 function PANEL:IsEditing()
-	return self.m_bHeld == true
+
+	return self.Dragging || self.Knob.Depressed
+
 end
 
---- GMod's event: called whenever either axis changes.  Overridable; the default keeps
---- the old DNumSlider contract alive by passing the new value as the second argument.
-function PANEL:OnValueChanged( flValue )
+function PANEL:ResetToDefaultValue()
+
+	-- Override me
+	local x, y = self:TranslateValues( 0.5, 0.5 )
+	self:SetSlideX( x )
+	self:SetSlideY( y )
+
 end
 
--------------------------------------------------------------------------------
--- the 1-D names the fork already had (kept: DNumSlider is written against them)
--------------------------------------------------------------------------------
-function PANEL:SetValue( flVal )
-	flVal = math.Clamp( tonumber( flVal ) or 0, 0, 1 )
-	if ( flVal == self.m_flSlideX ) then return end
+function PANEL:SetBackground( img )
 
-	self.m_flSlideX = flVal
-	self:OnValueChanged( flVal )
-end
-
-function PANEL:GetValue()
-	return self.m_flSlideX
-end
-
---- the old "x pixels -> value" helper, now also moving the grip visually
-function PANEL:SetXPos( x )
-	self:SetValue( ( ( x or 0 ) - GRIP_W / 2 ) / math.max( 1, self:GetWide() - GRIP_W ) )
-end
-
--------------------------------------------------------------------------------
--- interaction
--------------------------------------------------------------------------------
---- Local cursor position, with the ScreenToLocal fallback (Panel:CursorPos may answer
---- only one value - see the note in DAlphaBar).
-local function CursorPos( pnl )
-	local x, y = pnl:CursorPos()
-
-	if ( y == nil ) then
-		x, y = pnl:ScreenToLocal( gui.MouseX(), gui.MouseY() )
+	if ( !self.BGImage ) then
+		self.BGImage = vgui.Create( "DImage", self )
 	end
 
-	return x or 0, y or 0
+	self.BGImage:SetImage( img )
+	self:InvalidateLayout()
+
 end
 
-function PANEL:UpdateFromCursor()
-	local x, y = CursorPos( self )
-	local w, h = self:GetSize()
-
-	if ( self.m_bLockX == nil or self.m_bLockX == false ) then
-		self:SetSlideX( ( x - GRIP_W / 2 ) / math.max( 1, w - GRIP_W ) )
-	end
-
-	if ( self.m_bLockY == nil or self.m_bLockY == false ) then
-		self:SetSlideY( y / math.max( 1, h ) )
-	end
-end
-
-function PANEL:OnMousePressed( code )
-	if ( code ~= MOUSE_LEFT ) then return end
-	-- GMod refuses the drag on a disabled slider (dslider.lua:113-115); without
-	-- this a SetEnabled( false ) DNumSlider row still dragged and wrote its convar
-	if ( self.IsEnabled and not self:IsEnabled() ) then return end
-
-	self.m_bHeld = true
-	self:MouseCapture( true )
-	self:UpdateFromCursor()
+function PANEL:SetEnabled( b )
+	self.Knob:SetEnabled( b )
+	FindMetaTable( "Panel" ).SetEnabled( self, b ) -- There has to be a better way!
 end
 
 function PANEL:OnCursorMoved( x, y )
-	if ( self.m_bHeld ) then self:UpdateFromCursor() end
+
+	if ( !self.Dragging && !self.Knob.Depressed ) then return end
+
+	local w, h = self:GetSize()
+	local iw, ih = self.Knob:GetSize()
+
+	if ( self.m_bTrappedInside ) then
+
+		w = w - iw
+		h = h - ih
+
+		x = x - iw * 0.5
+		y = y - ih * 0.5
+
+	end
+
+	x = math.Clamp( x, 0, w ) / w
+	y = math.Clamp( y, 0, h ) / h
+
+	if ( self.m_iLockX ) then x = self.m_iLockX end
+	if ( self.m_iLockY ) then y = self.m_iLockY end
+
+	x, y = self:TranslateValues( x, y )
+
+	self:SetSlideX( x )
+	self:SetSlideY( y )
+
+	self:InvalidateLayout()
+
 end
 
-function PANEL:OnMouseReleased( code )
-	self.m_bHeld = false
+function PANEL:OnMousePressed( mcode )
+
+	if ( !self:IsEnabled() ) then return true end
+
+	-- When starting dragging with not pressing on the knob.
+	self.Knob.Hovered = true
+
+	self:SetDragging( true )
+	self:MouseCapture( true )
+
+	local x, y = self:CursorPos()
+	self:OnCursorMoved( x, y )
+
+end
+
+function PANEL:OnMouseReleased( mcode )
+
+	if ( !self.Dragging ) then return end
+
+	-- This is a hack. Panel.Hovered is not updated when dragging a panel (Source's dragging, not Lua Drag'n'drop)
+	self.Knob.Hovered = vgui.GetHoveredPanel() == self.Knob
+
+	self:SetDragging( false )
 	self:MouseCapture( false )
+
 end
 
-function PANEL:OnMouseCaptureLost()
-	self.m_bHeld = false
-end
+function PANEL:PerformLayout()
 
-function PANEL:OnThink()
-	if ( self.m_bHeld ) then self:UpdateFromCursor() end
-end
+	local w, h = self:GetSize()
+	local iw, ih = self.Knob:GetSize()
 
--------------------------------------------------------------------------------
--- paint
--------------------------------------------------------------------------------
-function PANEL:Paint( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
+	if ( self.m_bTrappedInside ) then
 
-	-- a skin that implements PaintSlider owns the look; else the built-in grip below
-	if ( derma.SkinHook( "Paint", "Slider", self, w, h ) ) then
-		self:DrawGrip( w, h )
-		return
+		w = w - iw
+		h = h - ih
+		self.Knob:SetPos( ( self.m_fSlideX || 0 ) * w, ( self.m_fSlideY || 0 ) * h )
+
+	else
+
+		self.Knob:SetPos( ( self.m_fSlideX || 0 ) * w - iw * 0.5, ( self.m_fSlideY || 0 ) * h - ih * 0.5 )
+
 	end
 
-	self:DrawGrip( w, h )
-end
-
---- The grip of a normal slider: a groove across the panel with a 12px grip on it.
----
---- ⚠️ 2026-09-17: this used to choose between this bar and the 2-D box below with
---- `m_bLockX == nil and m_bLockY == nil` - i.e. "free on both axes".  That is the DEFAULT
---- of every DSlider (Init sets both to nil), so it was true for every slider in the tree,
---- and DNumSlider's slider was drawn as the box: a 12x12 square with no groove
---- (seen in the player model selector's Bodygroups tab - "the slider looks broken").
---- GMod's own DNumSlider locks the Y axis (`self.Slider:SetLockY( 0.5 )`,
---- dnumslider.lua:Init) and its DSlider is always drawn as a track with a knob, so the
---- box is now an explicit opt-in used only by DColorCube (DrawBoxGrip below).
-function PANEL:DrawGrip( w, h )
-	local gx = math.floor( self.m_flSlideX * ( w - GRIP_W ) )
-	local cy = math.floor( h / 2 )
-
-	surface.DrawSetColor( 70, 70, 70, 255 )
-	surface.DrawFilledRect( 0, cy - 2, w, cy + 2 )
-
-	-- GMod's notches (its skin's Colours.NumSliderNotch is Color( 0, 0, 0, 100 ))
-	if ( self.m_iNotches and self.m_iNotches >= 1 ) then
-		local col = self.m_colNotch or Color( 0, 0, 0, 100 )
-
-		surface.DrawSetColor( col.r or 0, col.g or 0, col.b or 0, col.a or 100 )
-
-		for i = 0, math.floor( self.m_iNotches ) do
-			local x = math.floor( ( i / self.m_iNotches ) * ( w - 1 ) )
-
-			surface.DrawFilledRect( x, cy - 4, x + 1, cy + 4 )
-		end
+	if ( self.BGImage ) then
+		self.BGImage:StretchToParent( 0, 0, 0, 0 )
+		self.BGImage:SetZPos( -10 )
 	end
 
-	surface.DrawSetColor( 200, 200, 200, 255 )
-	surface.DrawFilledRect( gx, 0, gx + GRIP_W, h )
+	-- In case m_fSlideX/m_fSlideY changed multiple times a frame, we do this here
+	self:ConVarChanged( self.m_fSlideX, self.m_strConVarX )
+	self:ConVarChanged( self.m_fSlideY, self.m_strConVarY )
+
 end
 
---- The 2-D grip: a small circle outline, for a picker where both axes mean something
---- (DColorCube: saturation on X, value on Y).  GMod's DColorCube uses the
---- "vgui/minixhair" image for its knob - a circle - and this fork kept drawing a square.
---- There is no surface.DrawCircle binding here, so the ring is dotted in with small
---- squares; at 12 px the two are indistinguishable.
-function PANEL:DrawBoxGrip( w, h )
-	local cx = self.m_flSlideX * ( w - GRIP_W ) + GRIP_W * 0.5
-	local cy = math.Clamp( self.m_flSlideY * h, GRIP_W * 0.5, h - GRIP_W * 0.5 )
-	local radius = GRIP_W * 0.5
-	local steps = 24
+function PANEL:Think()
 
-	for pass = 1, 2 do
-		local col = ( pass == 1 ) and Color( 0, 0, 0, 220 ) or Color( 255, 255, 255, 255 )
-		local r = ( pass == 1 ) and radius or ( radius - 1 )
+	self:ConVarXNumberThink()
+	self:ConVarYNumberThink()
 
-		surface.DrawSetColor( col.r, col.g, col.b, col.a )
-
-		for i = 0, steps - 1 do
-			local angle = ( i / steps ) * math.pi * 2
-			local px = math.floor( cx + math.cos( angle ) * r )
-			local py = math.floor( cy + math.sin( angle ) * r )
-
-			surface.DrawFilledRect( px, py, px + 1, py + 1 )
-		end
-	end
 end
 
-derma.DefineControl( "DSlider", "HL2SB two-axis slider", PANEL, "DPanel" )
+function PANEL:SetSlideX( i )
+	self.m_fSlideX = i
+	self:OnValuesChangedInternal()
+end
+
+function PANEL:SetSlideY( i )
+	self.m_fSlideY = i
+	self:OnValuesChangedInternal()
+end
+
+function PANEL:GetDragging()
+	return self.Dragging || self.Knob.Depressed
+end
+
+function PANEL:OnValueChanged( x, y )
+
+	-- For override
+
+end
+
+function PANEL:OnValuesChangedInternal()
+
+	self:OnValueChanged( self.m_fSlideX, self.m_fSlideY )
+	self:InvalidateLayout()
+
+end
+
+function PANEL:TranslateValues( x, y )
+
+	-- Give children the chance to manipulate the values..
+	return x, y
+
+end
+
+-- ConVars
+function PANEL:SetConVarX( strConVar )
+	self.m_strConVarX = strConVar
+end
+function PANEL:SetConVarY( strConVar )
+	self.m_strConVarY = strConVar
+end
+function PANEL:ConVarChanged( newValue, cvar )
+
+	if ( !cvar || cvar:len() < 2 ) then return end
+
+	GetConVar( cvar ):SetFloat( newValue )
+
+	-- Prevent extra convar loops
+	if ( cvar == self.m_strConVarX ) then self.m_strConVarXValue = GetConVarNumber( self.m_strConVarX ) end
+	if ( cvar == self.m_strConVarY ) then self.m_strConVarYValue = GetConVarNumber( self.m_strConVarY ) end
+
+end
+function PANEL:ConVarXNumberThink()
+
+	if ( !self.m_strConVarX || #self.m_strConVarX < 2 ) then return end
+
+	local numValue = GetConVarNumber( self.m_strConVarX )
+
+	-- In case the convar is a "nan"
+	if ( numValue != numValue ) then return end
+	if ( self.m_strConVarXValue == numValue ) then return end
+
+	self.m_strConVarXValue = numValue
+	self:SetSlideX( self.m_strConVarXValue )
+
+end
+function PANEL:ConVarYNumberThink()
+
+	if ( !self.m_strConVarY || #self.m_strConVarY < 2 ) then return end
+
+	local numValue = GetConVarNumber( self.m_strConVarY )
+
+	-- In case the convar is a "nan"
+	if ( numValue != numValue ) then return end
+	if ( self.m_strConVarYValue == numValue ) then return end
+
+	self.m_strConVarYValue = numValue
+	self:SetSlideY( self.m_strConVarYValue )
+
+end
+
+-- Deprecated
+AccessorFunc( PANEL, "NumSlider", "NumSlider" )
+AccessorFunc( PANEL, "m_iNotches", "Notches" )
+
+function PANEL:SetImage( strImage )
+	-- RETIRED
+end
+
+function PANEL:SetImageColor( color )
+	-- RETIRED
+end
+
+function PANEL:SetNotchColor( color )
+
+	self.m_cNotchClr = color
+
+end
+
+function PANEL:GetNotchColor()
+
+	return self.m_cNotchClr || self:GetSkin().colNumSliderNotch
+
+end
+
+derma.DefineControl( "DSlider", "", PANEL, "Panel" )

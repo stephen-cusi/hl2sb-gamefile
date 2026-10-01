@@ -388,19 +388,71 @@ function SKIN:PaintMaximizeButton( pnl, w, h )
 	CaptionGlyph( pnl, w, h, bMax and "2" or "1", nil, col( self, "Text" ) )
 end
 
---[[ Slider -------------------------------------------------------------------]]
+--[[ Slider -------------------------------------------------------------------
+
+	GMod's default skin splits the slider in two: PaintSlider draws only the
+	track (groove + notches - the knob is NOT part of it), and PaintSliderKnob
+	paints the DSlider's Knob child button with its Depressed/Hovered states.
+	DNumSlider routes through the "NumSlider" hook name (Derma_Hook in its
+	Init), which lands on PaintNumSlider below.
+-----------------------------------------------------------------------------]]
+
+-- GMod's GetNotchColor falls back to skin.colNumSliderNotch (dslider.lua:274);
+-- our dark-theme notch is the label colour at low alpha, matching what the old
+-- in-tree DNumSlider:ApplySchemeSettings used to feed SetNotchColor.
+SKIN.colNumSliderNotch = Color( 255, 255, 255, 60 )
 
 function SKIN:PaintSlider( pnl, w, h )
 	local c = col( self, "Slider" )
+	local cy = math.floor( h / 2 )
 	surface.DrawSetColor( c.r, c.g, c.b, c.a )
-	surface.DrawFilledRect( 0, math.floor( h / 2 ) - 2, w, 4 )
+	surface.DrawFilledRect( 0, cy - 2, w, 4 )
 
-	local gc = col( self, "SliderGrip" )
-	surface.DrawSetColor( gc.r, gc.g, gc.b, gc.a )
-	local gw = 12
-	local t = pnl.GetValue and pnl:GetValue() or 0
-	local gx = math.floor( ( w - gw ) * math.Clamp( t, 0, 1 ) )
-	surface.DrawFilledRect( gx, 0, gw, h )
+	local notches = pnl.GetNotches and pnl:GetNotches() or nil
+	if ( not notches or notches < 1 ) then return end
+
+	local nc = pnl.GetNotchColor and pnl:GetNotchColor() or nil
+	nc = nc or self.colNumSliderNotch
+	surface.DrawSetColor( nc.r, nc.g, nc.b, nc.a )
+
+	notches = math.floor( notches )
+	for i = 0, notches do
+		local x = math.floor( ( i / notches ) * math.max( 1, w - 2 ) )
+		surface.DrawFilledRect( x, cy - 5, 2, 10 )
+	end
+end
+
+function SKIN:PaintSliderKnob( pnl, w, h )
+	-- GMod textures the knob with Disabled/Down/Hover/Normal states
+	-- (skins/default.lua:924-936); this theme draws the same four states as
+	-- filled rects with a border.
+	local c
+
+	if ( pnl.IsEnabled and not pnl:IsEnabled() ) then
+		c = col( self, "Slider" )
+	elseif ( pnl.Depressed ) then
+		c = col( self, "SliderGrip" )
+	elseif ( pnl.Hovered ) then
+		c = Color( math.min( ( col( self, "SliderGrip" ).r + 40 ), 255 ),
+		           math.min( ( col( self, "SliderGrip" ).g + 40 ), 255 ),
+		           math.min( ( col( self, "SliderGrip" ).b + 40 ), 255 ),
+		           col( self, "SliderGrip" ).a )
+	else
+		c = col( self, "SliderGrip" )
+	end
+
+	surface.DrawSetColor( c.r, c.g, c.b, c.a )
+	surface.DrawFilledRect( 0, 0, w, h )
+
+	local bc = Color( 0, 0, 0, 180 )
+	surface.DrawSetColor( bc.r, bc.g, bc.b, bc.a )
+	surface.DrawOutlinedRect( 0, 0, w, h )
+end
+
+-- The DNumSlider hook name ("NumSlider") and the old in-tree name both land
+-- on the plain track: the knob paints itself as a child panel.
+function SKIN:PaintNumSlider( pnl, w, h )
+	self:PaintSlider( pnl, w, h )
 end
 
 function SKIN:PaintNumberSlider( pnl, w, h )

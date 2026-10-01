@@ -515,6 +515,22 @@ function meta:IsOurChild( child )
 end
 
 --[[---------------------------------------------------------
+	Name: DrawFilledRect / DrawOutlinedRect
+	Desc: GMod's Panel:DrawFilledRect() / Panel:DrawOutlinedRect() - fill or
+	      outline the panel's full rect in panel space.  The verbatim
+	      DColorCube paints itself through these; the engine meta here does
+	      not carry the names (GMod's 162-entry shared table does).
+-----------------------------------------------------------]]
+function meta:DrawFilledRect()
+	surface.DrawFilledRect( 0, 0, self:GetWide(), self:GetTall() )
+end
+
+function meta:DrawOutlinedRect()
+	surface.DrawOutlinedRect( 0, 0, self:GetWide(), self:GetTall() )
+end
+
+
+--[[---------------------------------------------------------
 	Name: HasChildren
 	Desc: True when this panel has at least one child
 -----------------------------------------------------------]]

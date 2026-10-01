@@ -1,202 +1,353 @@
---[[ DNumSlider -- labelled numeric slider with editable value (original). --]]
+--[[ DNumSlider -- GMod's labelled numeric slider, ported from its
+	lua/vgui/dnumslider.lua (324 lines) essentially line for line.
+
+	The value lives in the DNumberScratch ("Scratch", docked inside the label
+	area); the DSlider is a view over it (TranslateValues ->
+	TranslateSliderValues -> SetValue), the text entry edits it, and every
+	change refreshes the other two plus the bound convars.  The slider is
+	Dock( FILL ) / 16px tall with TrapInside, so the whole row area between
+	label and text entry is a drag target - that, plus the Knob, is what makes
+	GMod's rows feel grabbable.  The previous in-tree rewrite gave the slider
+	a 12px strip in a 50px row with no knob, which is the usable-width half of
+	issue 37.
+
+	Fork notes (deltas from the GMod file):
+	  * The convar plumbing lua/derma/init.lua used to install onto this class
+	    is removed from its list - this file carries GMod's own SetConVar path
+	    (Scratch + TextArea) instead.
+	  * TextArea:SetValue is a shim added to DTextEntry.lua (GMod's TextEntry
+	    engine method; this fork's engine lacks that name).
+	  * SetDark exists in GMod's file; it is what our player-model selector
+	    and DForm already call.
+--]]
 
 local PANEL = {}
 
+AccessorFunc( PANEL, "m_fDefaultValue", "DefaultValue" )
+
 function PANEL:Init()
-	self:SetDrawBackground( false )
 
-	self.m_flMin = 0
-	self.m_flMax = 1
-	self.m_flValue = 0
-	self.m_iDecimals = 2
+	self.TextArea = self:Add( "DTextEntry" )
+	self.TextArea:Dock( RIGHT )
+	self.TextArea:SetPaintBackground( false )
+	self.TextArea:SetWide( 45 )
+	self.TextArea:SetNumeric( true )
+	self.TextArea.OnChange = function( textarea, val ) self:SetValue( self.TextArea:GetText() ) end
+	-- Causes automatic clamp to min/max, disabled for now. TODO: Enforce this with a setter/getter?
+	--self.TextArea.OnEnter = function( textarea, val ) textarea:SetText( self.Scratch:GetTextValue() ) end -- Update the text
 
-	self.m_Label = vgui.Create( "DLabel", self, "Label" )
-	self.m_Slider = vgui.Create( "DSlider", self, "Slider" )
-	self.m_Entry = vgui.Create( "DTextEntry", self, "Entry" )
+	self.Slider = self:Add( "DSlider", self )
+	self.Slider:SetLockY( 0.5 )
+	self.Slider.TranslateValues = function( slider, x, y ) return self:TranslateSliderValues( x, y ) end
+	self.Slider:SetTrapInside( true )
+	self.Slider:Dock( FILL )
+	self.Slider:SetHeight( 16 )
+	self.Slider.ResetToDefaultValue = function( s )
+		self:ResetToDefaultValue()
+	end
+	Derma_Hook( self.Slider, "Paint", "Paint", "NumSlider" )
 
-	-- GMod: dnumslider.lua:Init -- `self.Slider:SetLockY( 0.5 )`.  It is not decoration:
-	-- a DSlider with both axes free is drawn as a 2-D *box* grip (DSlider:DrawBoxGrip) and
-	-- has no groove, which is exactly how this row looked broken in the player model
-	-- selector's Bodygroups tab (2026-09-17).  Locking Y makes it the horizontal slider
-	-- GMod shows, and stops a drag from writing a Y value nothing reads.
-	self.m_Slider:SetLockY( 0.5 )
+	-- Prevent Mouse3/4/5 from sliding the slider.
+	-- Done this way to not touch the base class, which could affect addons
+	local KnobOnMousePressed = self.Slider.Knob.OnMousePressed
+	self.Slider.Knob.OnMousePressed = function( panel, btnId )
+		if ( btnId == MOUSE_RIGHT ) then
+			self:DoRightClick()
+			return true
+		end
+		if ( btnId != MOUSE_LEFT && btnId != MOUSE_MIDDLE ) then return true end
 
-	-- GMod also gives the value box no chrome and a numeric filter
-	-- (dnumslider.lua: `self.TextArea:SetPaintBackground( false )`, `:SetNumeric( true )`).
-	-- Without the first one this fork painted the DTextEntry skin behind "1" - a black box
-	-- in the middle of a dark row.
-	self.m_Entry:SetPaintBackground( false )
-	self.m_Entry:SetNumeric( true )
+		KnobOnMousePressed( panel, btnId )
+	end
+	local SliderOnMousePressed = self.Slider.OnMousePressed
+	self.Slider.OnMousePressed = function( panel, btnId )
+		if ( btnId == MOUSE_RIGHT ) then
+			self:DoRightClick()
+			return true
+		end
+		if ( btnId != MOUSE_LEFT ) then return true end
 
-
-	-- GMod's names for the same three panels (see SetDark/IsEditing below)
-	self.Label = self.m_Label
-	self.Slider = self.m_Slider
-	self.TextArea = self.m_Entry
-
-	self.m_bEnabled = true
-
-	self.m_Slider.OnValueChanged = function( _, flVal )
-		self:SetValue( flVal, true )
+		SliderOnMousePressed( panel, btnId )
 	end
 
-	self.m_Entry.OnEnter = function( pnl )
-		local fl = tonumber( pnl:GetValue() )
-		if ( fl ) then self:SetValue( fl ) end
-	end
+	self.Label = vgui.Create ( "DLabel", self )
+	self.Label:Dock( LEFT )
+	self.Label:SetMouseInputEnabled( true )
+
+	self.Scratch = self.Label:Add( "DNumberScratch" )
+	self.Scratch:SetImageVisible( false )
+	self.Scratch:Dock( FILL )
+	self.Scratch.OnValueChanged = function() self:ValueChanged( self.Scratch:GetFloatValue() ) end
+
+	self:SetTall( 32 )
+
+	self:SetMin( 0 )
+	self:SetMax( 1 )
+	self:SetDecimals( 2 )
+	self:SetText( "" )
+	self:SetValue( 0.5 )
+
+	--
+	-- You really shouldn't be messing with the internals of these controls from outside..
+	-- .. but if you are, this might stop your code from fucking us both.
+	--
+	self.Wang = self.Scratch
+
 end
 
---- GMod: DNumSlider:ApplySchemeSettings() -- "Copy the color of the label to the slider
---- notches and the text entry" (dnumslider.lua:135-150).  It is what makes the notch marks
---- and the value text readable on the fork's dark theme (GMod's default is the label
---- colour with alpha 100 for the notches).
+function PANEL:DoRightClick()
+
+	local m = DermaMenu()
+	if ( self:GetDefaultValue() ) then m:AddOption( "#tool.reset_to_default", function() self:ResetToDefaultValue() end ):SetIcon( "icon16/arrow_rotate_clockwise.png" ) end
+	m:AddOption( "#spawnmenu.menu.copy", function() SetClipboardText( self:GetValue() ) end ):SetIcon( "icon16/page_copy.png" )
+	m:Open()
+
+end
+
+function PANEL:SetMinMax( min, max )
+	self.Scratch:SetMin( tonumber( min ) )
+	self.Scratch:SetMax( tonumber( max ) )
+	self:UpdateNotches()
+	self:ValueChanged( self:GetValue() ) -- Update slider positon for the new range
+end
+
 function PANEL:ApplySchemeSettings()
-	local col = nil
 
-	if ( self.m_Label ) then
-		col = self.m_Label.GetTextStyleColor and self.m_Label:GetTextStyleColor()
-		if ( not col and self.m_Label.GetTextColor ) then col = self.m_Label:GetTextColor() end
-	end
+	self.Label:ApplySchemeSettings()
 
-	if ( not col ) then return end
+	-- Copy the color of the label to the slider notches and the text entry
+	local col = self.Label:GetTextStyleColor()
+	if ( self.Label:GetTextColor() ) then col = self.Label:GetTextColor() end
 
-	if ( self.m_Entry and self.m_Entry.SetTextColor ) then self.m_Entry:SetTextColor( col ) end
+	self.TextArea:SetTextColor( col )
 
-	if ( self.m_Slider and self.m_Slider.SetNotchColor ) then
-		self.m_Slider:SetNotchColor( Color( col.r or 255, col.g or 255, col.b or 255, 100 ) )
-	end
+	local color = table.Copy( col )
+	color.a = 100 -- Fade it out a bit so it looks right
+	self.Slider:SetNotchColor( color )
+
 end
-
-function PANEL:SetText( strLabel )
-	self.m_Label:SetText( strLabel )
-end
-
-function PANEL:GetText()
-	return self.m_Label:GetText()
-end
-
---[[ GMod's DNumSlider exposes its parts under plain names, and lua/vgui/
-	prop_float.lua moves them around:
-
-		ctrl.Scratch:SetParent( ctrl:GetRow().Label )   -- drag-to-change
-		ctrl.Label:SetVisible( false )
-		ctrl.TextArea:Dock( LEFT )
-		ctrl.Slider:DockMargin( 0, 3, 8, 3 )
-
-	This fork stores them as m_Label / m_Slider / m_Entry, so the GMod names are
-	aliased to those.  GMod's Scratch is a DNumberScratch, which is not ported yet
-	(lua/vgui/DNumberScratch.lua), so `Scratch` stays nil until it is - prop_float
-	guards for that. ]]
 
 function PANEL:SetDark( b )
-	if ( self.m_Label.SetDark ) then self.m_Label:SetDark( b ) end
+	self.Label:SetDark( b )
+	self:ApplySchemeSettings()
 end
 
-function PANEL:IsEditing()
-	-- GMod: `return self.Scratch:IsEditing() || self.TextArea:IsEditing() ||
-	-- self.Slider:IsEditing()` (dnumslider.lua:179).  Without DNumberScratch the
-	-- first term is skipped; the other two are what make DProperty_Float notify
-	-- while the slider is being dragged (DSlider:IsEditing -> the drag state).
-	return ( self.m_Slider.IsEditing and self.m_Slider:IsEditing() )
-		or self.m_Entry:HasFocus() == true
+function PANEL:GetMin()
+	return self.Scratch:GetMin()
 end
 
-function PANEL:SetEnabled( b )
-	self.m_bEnabled = b ~= false
-
-	if ( self.m_Entry.SetEnabled ) then self.m_Entry:SetEnabled( self.m_bEnabled ) end
-	if ( self.m_Slider.SetEnabled ) then self.m_Slider:SetEnabled( self.m_bEnabled ) end
+function PANEL:GetMax()
+	return self.Scratch:GetMax()
 end
 
-function PANEL:IsEnabled()
-	return self.m_bEnabled ~= false
+function PANEL:GetRange()
+	return self:GetMax() - self:GetMin()
 end
 
--- GMod coerces the ends to numbers (dnumslider.lua:130-148) and re-clamps the
--- current value; the old bare store left m_flValue outside a re-ranged slider.
-function PANEL:SetMin( v )
-	self.m_flMin = tonumber( v ) or 0
+function PANEL:ResetToDefaultValue()
+	if ( !self:GetDefaultValue() ) then return end
+	self:SetValue( self:GetDefaultValue() )
+end
+
+function PANEL:SetMin( min )
+
+	if ( !min ) then min = 0 end
+
+	self.Scratch:SetMin( tonumber( min ) )
 	self:UpdateNotches()
-	self:SetValue( self.m_flValue )
+	self:ValueChanged( self:GetValue() ) -- Update slider positon for the new range
+
 end
 
-function PANEL:SetMax( v )
-	self.m_flMax = tonumber( v ) or 0
+function PANEL:SetMax( max )
+
+	if ( !max ) then max = 0 end
+
+	self.Scratch:SetMax( tonumber( max ) )
 	self:UpdateNotches()
-	self:SetValue( self.m_flValue )
-end
-function PANEL:GetMin() return self.m_flMin end
-function PANEL:GetMax() return self.m_flMax end
+	self:ValueChanged( self:GetValue() ) -- Update slider positon for the new range
 
---- GMod: DNumSlider:UpdateNotches() -- "the slider draws a notch for every value it can
---- take" (dnumslider.lua:289-300, which caps the count at a quarter of the width so a wide
---- range does not turn the groove into a solid bar).
-function PANEL:UpdateNotches()
-	if ( not self.m_Slider or not self.m_Slider.SetNotches ) then return end
-
-	local range = ( self.m_flMax or 0 ) - ( self.m_flMin or 0 )
-
-	self.m_Slider:SetNotches( nil )
-
-	if ( range < self:GetWide() / 4 ) then
-		self.m_Slider:SetNotches( range )
-	else
-		self.m_Slider:SetNotches( self:GetWide() / 4 )
-	end
 end
 
---- GMod: DNumSlider:SetMinMax( min, max ) -- one call for both ends (DForm's
---- NumSlider row uses it; the fork only had the two setters).
-function PANEL:SetMinMax( min, max )
-	self:SetMin( min )
-	self:SetMax( max )
-end
+function PANEL:SetValue( val )
 
-function PANEL:SetDecimals( i ) self.m_iDecimals = i; self:UpdateNotches() end
+	val = math.Clamp( tonumber( val ) || 0, self:GetMin(), self:GetMax() )
 
-function PANEL:SetValue( flVal, bFromSlider )
-	flVal = math.Clamp( flVal or 0, self.m_flMin, self.m_flMax )
+	if ( self:GetValue() == val ) then return end
 
-	-- GMod early-outs an unchanged value (dnumslider.lua:154): without this the
-	-- drag at a rail end spams OnValueChanged + convar writes every frame
-	if ( flVal == self.m_flValue and not bFromSlider ) then return end
+	self.Scratch:SetValue( val ) -- This will also call ValueChanged
 
-	self.m_flValue = flVal
+	self:ValueChanged( self:GetValue() ) -- In most cases this will cause double execution of OnValueChanged
 
-	if ( not bFromSlider ) then
-		self.m_Slider:SetValue( ( flVal - self.m_flMin ) / math.max( 1e-9, self.m_flMax - self.m_flMin ) )
-	end
-
-	self.m_Entry:SetText( string.format( "%." .. ( self.m_iDecimals or 2 ) .. "f", flVal ) )
-
-	if ( self.OnValueChanged ) then
-		local ok, err = pcall( self.OnValueChanged, self, flVal )
-		if ( not ok ) then Warning( "DNumSlider:OnValueChanged failed: " .. tostring( err ) .. "\n" ) end
-	end
 end
 
 function PANEL:GetValue()
-	return self.m_flValue
+	return self.Scratch:GetFloatValue()
 end
 
-function PANEL:PerformLayout( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
-
-	local labelW = math.floor( w * 0.35 )
-	local entryW = 56
-
-	self.m_Label:SetPos( 0, math.floor( ( h - 14 ) / 2 ) )
-	self.m_Label:SetSize( labelW, 14 )
-
-	self.m_Entry:SetPos( w - entryW, math.floor( ( h - 18 ) / 2 ) )
-	self.m_Entry:SetSize( entryW, 18 )
-
-	self.m_Slider:SetPos( labelW + 4, math.floor( h / 2 ) - 6 )
-	self.m_Slider:SetSize( math.max( 20, w - labelW - entryW - 12 ), 12 )
-
-	-- the notch cap in UpdateNotches depends on the width, so re-run it here
+function PANEL:SetDecimals( d )
+	self.Scratch:SetDecimals( d )
 	self:UpdateNotches()
+	self:ValueChanged( self:GetValue() ) -- Update the text
 end
 
-derma.DefineControl( "DNumSlider", "HL2SB number slider", PANEL, "DPanel" )
+function PANEL:GetDecimals()
+	return self.Scratch:GetDecimals()
+end
+
+--
+-- Are we currently changing the value?
+--
+function PANEL:IsEditing()
+
+	return self.Scratch:IsEditing() || self.TextArea:IsEditing() || self.Slider:IsEditing()
+
+end
+
+function PANEL:IsHovered()
+
+	return self.Scratch:IsHovered() || self.TextArea:IsHovered() || self.Slider:IsHovered() || vgui.GetHoveredPanel() == self
+
+end
+
+function PANEL:PerformLayout()
+
+	self.Label:SetWide( self:GetWide() / 2.4 )
+
+end
+
+function PANEL:SetConVar( cvar )
+	self.Scratch:SetConVar( cvar )
+	self.TextArea:SetConVar( cvar )
+end
+
+function PANEL:SetText( text )
+	self.Label:SetText( text )
+end
+
+function PANEL:GetText()
+	return self.Label:GetText()
+end
+
+function PANEL:ValueChanged( val )
+
+	val = math.Clamp( tonumber( val ) || 0, self:GetMin(), self:GetMax() )
+
+	if ( self.TextArea != vgui.GetKeyboardFocus() ) then
+		self.TextArea:SetValue( self.Scratch:GetTextValue() )
+	end
+
+	self.Slider:SetSlideX( self.Scratch:GetFraction() )
+
+	self:OnValueChanged( val )
+	self:SetCookie( "slider_val", val )
+
+end
+
+function PANEL:LoadCookies()
+
+	self:SetValue( self:GetCookie( "slider_val" ) )
+
+end
+
+function PANEL:OnValueChanged( val )
+
+	-- For override
+
+end
+
+function PANEL:TranslateSliderValues( x, y )
+
+	self:SetValue( self.Scratch:GetMin() + ( x * self.Scratch:GetRange() ) )
+
+	return self.Scratch:GetFraction(), y
+
+end
+
+function PANEL:GetTextArea()
+
+	return self.TextArea
+
+end
+
+function PANEL:UpdateNotches()
+
+	local range = self:GetRange()
+	self.Slider:SetNotches( nil )
+
+	if ( range < self:GetWide() / 4 ) then
+		return self.Slider:SetNotches( range )
+	else
+		self.Slider:SetNotches( self:GetWide() / 4 )
+	end
+
+end
+
+function PANEL:SetEnabled( b )
+	self.TextArea:SetEnabled( b )
+	self.Slider:SetEnabled( b )
+	self.Scratch:SetEnabled( b )
+	self.Label:SetEnabled( b )
+	FindMetaTable( "Panel" ).SetEnabled( self, b ) -- There has to be a better way!
+end
+
+function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
+
+	local ctrl = vgui.Create( ClassName )
+	ctrl:SetWide( 200 )
+	ctrl:SetMin( 1 )
+	ctrl:SetMax( 10 )
+	ctrl:SetText( "Example Slider!" )
+	ctrl:SetDecimals( 0 )
+
+	PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )
+
+end
+
+derma.DefineControl( "DNumSlider", "Menu Option Line", table.Copy( PANEL ), "Panel" )
+
+-- No example for this fella
+PANEL.GenerateExample = nil
+
+function PANEL:PostMessage( name, _, val )
+
+	if ( name == "SetInteger" ) then
+		if ( val == "1" ) then
+			self:SetDecimals( 0 )
+		else
+			self:SetDecimals( 2 )
+		end
+	end
+
+	if ( name == "SetLower" ) then
+		self:SetMin( tonumber( val ) )
+	end
+
+	if ( name == "SetHigher" ) then
+		self:SetMax( tonumber( val ) )
+	end
+
+	if ( name == "SetValue" ) then
+		self:SetValue( tonumber( val ) )
+	end
+
+end
+
+function PANEL:PerformLayout()
+
+	self.Scratch:SetVisible( false )
+	self.Label:SetVisible( false )
+
+	self.Slider:StretchToParent( 0, 0, 0, 0 )
+	self.Slider:SetSlideX( self.Scratch:GetFraction() )
+
+end
+
+function PANEL:SetActionFunction( func )
+
+	self.OnValueChanged = function( pnl, val ) func( pnl, "SliderMoved", val, 0 ) end
+
+end
+
+-- Compat
+derma.DefineControl( "Slider", "Backwards Compatibility", PANEL, "Panel" )
