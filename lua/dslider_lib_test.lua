@@ -67,7 +67,9 @@ slider:OnMousePressed( MOUSE_LEFT )
 Check( slider:GetDragging() == true, "press starts dragging" )
 Check( slider:IsEditing() == true, "IsEditing while dragging" )
 slider:OnMouseReleased( MOUSE_LEFT )
-Check( slider:GetDragging() == false, "release stops dragging" )
+-- GMod's GetDragging is `Dragging || Knob.Depressed` - all-falsy returns NIL,
+-- so the idle check is a falsy test, never an == false one.
+Check( not slider:GetDragging(), "release stops dragging" )
 
 slider:SetSlideX( 0 )
 slider:SetSlideY( 0.1 )
@@ -109,7 +111,7 @@ num:SetValue( 7 )
 Check( Approx( num:GetValue(), 7 ), "SetValue 7" )
 Check( Approx( num.Slider:GetSlideX(), 0.7 ), "slider fraction 0.7" )
 Check( nRowFired >= 1 and Approx( nRowVal, 7 ), "row OnValueChanged fired" )
-Check( num:IsEditing() == false, "not editing while idle" )
+Check( not num:IsEditing(), "not editing while idle" )
 
 -- drag path: TranslateValues -> TranslateSliderValues -> value change
 num.Slider:SetSize( 200, 16 )
@@ -132,8 +134,9 @@ local cube = vgui.Create( "DColorCube" )
 Check( IsValid( cube ) and cube.Knob ~= nil, "vgui.Create(DColorCube) with knob" )
 cube:SetSize( 100, 100 )
 cube:SetColor( Color( 0, 255, 0 ) )
+-- GetRGB is a COLOR (HSVToColor's return), so the fields are .r/.g/.b
 local out = cube:GetRGB()
-Check( out ~= nil and Approx( out.y, 1 ) and Approx( out.x, 0 ),
+Check( out ~= nil and Approx( out.g, 1 ) and Approx( out.r, 0 ),
 	"SetColor(green) -> RGB stays green" )
 Check( Approx( cube:GetSlideX(), 0 ) and Approx( cube:GetSlideY(), 0 ),
 	"full saturation/value -> slide 0/0" )
