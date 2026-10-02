@@ -1,7 +1,17 @@
 
 local mat_MotionBlur = Material( "pp/motionblur" )
 local mat_Screen = Material( "pp/fb" )
-local tex_MotionBlur = render.GetMoBlurTex0()
+-- HL2SB delta: render targets cannot be created while the lua state is still
+-- initializing -- the file-scope GetMoBlurTex0() answered nil at load and the
+-- upvalue kept it forever, so every DrawMotionBlur died on
+-- PushRenderTarget( nil ) (tarkov_hud's RenderScreenspaceEffects hook errored
+-- every frame).  Fetch lazily on first use instead; skip the frame if the
+-- target still cannot be created.
+local tex_MotionBlur = nil
+local function GetMoBlurTex()
+	tex_MotionBlur = tex_MotionBlur or render.GetMoBlurTex0()
+	return tex_MotionBlur
+end
 
 --[[---------------------------------------------------------
 	Register the convars that will control this effect
@@ -17,6 +27,9 @@ local LastDraw = 0
 function DrawMotionBlur( addalpha, drawalpha, delay )
 
 	if ( drawalpha == 0 ) then return end
+
+	tex_MotionBlur = GetMoBlurTex()
+	if ( tex_MotionBlur == nil ) then return end
 
 	-- Copy the backbuffer to the screen effect texture
 	render.UpdateScreenEffectTexture()

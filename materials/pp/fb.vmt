@@ -1,9 +1,6 @@
-"UnlitGeneric"
+"GMODScreenspace"
 {
 	"$basetexture" "_rt_FullFrameFB"
-	"$ignorez" "1"
-	"$writez" "0"
-	"$translucent" "1"
+	"$texturealpha" "0"
 	"$vertexalpha" "1"
-	"$vertexcolor" "1"
 }
