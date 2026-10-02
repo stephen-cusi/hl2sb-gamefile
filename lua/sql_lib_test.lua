@@ -85,7 +85,9 @@ Check( rb[1].val == "9007199254740993", "big int beyond double -> string" )
 -- QueryRow / QueryValue / IndexExists / Begin-Commit
 Check( sql.QueryRow( "SELECT * FROM sql_test_t WHERE id = 1" ).name == "it's", "QueryRow" )
 Check( sql.QueryRow( "SELECT * FROM sql_test_t WHERE id = 999" ) == nil, "QueryRow empty -> nil" )
-Check( sql.QueryValue( "SELECT COUNT(*) FROM sql_test_t" ) == "2", "QueryValue returns string" )
+-- count only the rows this test controls: the database persists between
+-- runs, so an absolute COUNT(*) drifts once earlier runs left rows behind
+Check( sql.QueryValue( "SELECT COUNT(*) FROM sql_test_t WHERE id IN ( 1, 2 )" ) == "2", "QueryValue returns string" )
 sql.Query( "DROP INDEX IF EXISTS idx_sql_test" )
 sql.Query( "CREATE INDEX idx_sql_test ON sql_test_t(score)" )
 Check( sql.IndexExists( "idx_sql_test" ) == true, "IndexExists" )
