@@ -49,6 +49,16 @@ end
 function GM:HudViewportPaint()
 end
 
+-- GMod base gamemode cl_init.lua:266 同款（原文 2026-10-02 移植）。GMod 的
+-- lua/postprocess/*.lua（pp_colormod / pp_motionblur / pp_toytown ...）在
+-- RenderScreenspaceEffects 里先问它再画；本分叉的无后处理黑名单语义与
+-- GMod 相同：全部放行。
+function GM:PostProcessPermitted( str )
+
+	return true
+
+end
+
 -- HL2SB (2026-09-26): GMod base gamemode 的 GM:HUDPaint 原文
 -- （GMod gamemodes/base/gamemode/cl_init.lua:80-86）。拾取条画在
 -- cl_hudpickup.lua；hook.Run 在无钩子返回非 nil 时派发 gamemode 方法

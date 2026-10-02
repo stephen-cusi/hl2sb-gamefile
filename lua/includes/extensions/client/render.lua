@@ -193,3 +193,11 @@ function render.Model( tbl, ent )
 	end
 
 end
+
+-- HL2SB (2026-10-02) GMod compat: capability query used by GMod's
+-- lua/postprocess/toytown.lua (and stock addons) before drawing.  This fork
+-- is DX9-class only, which already satisfies the pixel-shader 2.0 bar, so
+-- the answer is always true.
+function render.SupportsPixelShaders_2_0()
+	return true
+end
