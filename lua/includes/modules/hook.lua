@@ -214,6 +214,28 @@ local tCallChain = {}
 local tReportedReentry = {}
 
 function call( strEventName, tGamemode, ... )
+  -- HL2SB (2026-10-02): per-frame hot path.  The engine fires several hook
+  -- events per frame with NO registered hooks and NO gamemode method (the HUD
+  -- element poll "HudElementShouldDraw" alone is one dispatch per element per
+  -- frame).  CallBody answers nil for that case, but reaching it costs an
+  -- xpcall wrapper, a results-table allocation and the re-entrancy bookkeeping
+  -- below - pure garbage-collector churn on the render path.  Answer with no
+  -- results directly (that is how CallBody's empty answer reaches callers --
+  -- through the xpcall round-trip it arrives as ZERO results, not as a nil
+  -- value).  Exactly equivalent to CallBody: no snapshot is taken
+  -- when the event has no hooks, and a gamemode slot that is present but not
+  -- nil (even a non-function like false) still falls through to the full body
+  -- so the error report stays identical.
+  if ( tHooks[ strEventName ] == nil ) then
+    local fnGamemode = nil
+    if ( type( tGamemode ) == "table" ) then
+      fnGamemode = tGamemode[ strEventName ]
+    end
+    if ( fnGamemode == nil ) then
+      return  -- bare return: CallBody's empty answer reaches callers as NO results
+    end
+  end
+
   if ( tCallChain[ strEventName ] ) then
     if ( not tReportedReentry[ strEventName ] ) then
       tReportedReentry[ strEventName ] = true

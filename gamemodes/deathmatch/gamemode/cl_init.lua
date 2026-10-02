@@ -43,11 +43,15 @@ end
 function GM:HideClientUI()
 end
 
-function GM:HudElementShouldDraw( pElementName )
-end
-
-function GM:HudViewportPaint()
-end
+-- HL2SB (2026-10-02): the empty GM:HudElementShouldDraw / GM:HudViewportPaint
+-- stubs were removed, not kept.  Both events are engine-dispatched EVERY frame
+-- (HudElementShouldDraw once per HUD element, HudViewportPaint once per frame
+-- from the scripted viewport), and hook.Call's gamemode fallback xpcalls the
+-- gamemode method whenever the slot exists -- an empty stub turned that into a
+-- dead function call plus a results-table allocation per element per frame.
+-- An ABSENT slot answers nil from hook.call's fast path, which is the same
+-- result the stub produced; hook.Add("HudElementShouldDraw"/"HudViewportPaint")
+-- consumers (timer.lua's client tick, the death notice, ...) are unaffected.
 
 -- GMod base gamemode cl_init.lua:266 同款（原文 2026-10-02 移植）。GMod 的
 -- lua/postprocess/*.lua（pp_colormod / pp_motionblur / pp_toytown ...）在
