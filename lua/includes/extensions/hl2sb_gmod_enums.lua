@@ -283,3 +283,14 @@ if ( rawget( _G, "MATERIAL_CULLMODE_CW" ) == nil ) then MATERIAL_CULLMODE_CW = 1
 
 if ( rawget( _G, "vector_origin" ) == nil ) then vector_origin = Vector( 0, 0, 0 ) end
 if ( rawget( _G, "angle_zero" ) == nil ) then angle_zero = QAngle( 0, 0, 0 ) end
+
+------------------------------------------------------------------------------
+-- HUD_PRINT_* globals: GMod publishes the Entity:PrintMessage routing types
+-- as globals.  hitnumbers' client toggle passes HUD_PRINTTALK verbatim, and
+-- with the enum undefined the whole concommand died on a bad argument.
+------------------------------------------------------------------------------
+
+if ( rawget( _G, "HUD_PRINTNOTIFY" ) == nil ) then HUD_PRINTNOTIFY = 1 end
+if ( rawget( _G, "HUD_PRINTCONSOLE" ) == nil ) then HUD_PRINTCONSOLE = 2 end
+if ( rawget( _G, "HUD_PRINTTALK" ) == nil ) then HUD_PRINTTALK = 3 end
+if ( rawget( _G, "HUD_PRINTCENTER" ) == nil ) then HUD_PRINTCENTER = 4 end

@@ -4,5 +4,4 @@
 enhanced_playermodel_selector
 example_addon
 firstpersonbody
-hitnumbers
 windgrin_npc
