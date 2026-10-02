@@ -25,7 +25,7 @@ local EngineSetFont = TextEntryMeta and TextEntryMeta.SetFont
 	which is what DLabelEditable and every GMod addon text entry expects to end an
 	edit with, and DComboBox/DNumberWang build on it too.
 
-	⚠️ The engine now dispatches the whole surface itself (Paint / PerformLayout /
+	The engine now dispatches the whole surface itself (Paint / PerformLayout /
 	OnThink / OnSetFocus+OnGetFocus / OnKillFocus+OnLoseFocus / mouse / cursor / keys;
 	game/client/lua/scripted_controls/lTextEntry.h), and it announces that with the
 	global HL2SB_TEXTENTRY_DISPATCH, set while the TextEntry Lua library is opened.
@@ -82,7 +82,7 @@ function PANEL:Init()
 	--     self:SetPaintBackgroundEnabled( false )
 	--     self:SetFont( "DermaDefault" )
 	--
-	-- ⚠️ The *background* one cannot be copied here.  In this tree the engine's TextEntry
+	-- The *background* one cannot be copied here.  In this tree the engine's TextEntry
 	-- draws the text ITSELF, inside PaintBackground() (vgui2/vgui_controls/TextEntry.cpp:638
 	-- - its opaque fill is commented out at :657), and Panel::PaintTraverse only calls
 	-- PaintBackground() while PAINT_BACKGROUND_ENABLED is set
@@ -147,6 +147,23 @@ function PANEL:GetFont()
 	return self.m_strFont
 end
 
+--- GMod: TextEntry's engine SetTextColor / GetTextColor pair.  GMod's DNumSlider
+--- copies its label colour onto the text entry in ApplySchemeSettings, so the
+--- verbatim port calls this on every row.  This engine has no such binding and
+--- paints the entry's text from GetFgColor (vgui2/vgui_controls/TextEntry.cpp),
+--- so the colour is stored and pushed through SetFGColor.  ApplySchemeSettings
+--- below re-applies it for the same reason it re-applies the font there: the
+--- engine's scheme pass overwrites the fg colour from "TextEntry.TextColor".
+function PANEL:SetTextColor( col )
+	self.m_colText = col
+
+	if ( self.SetFGColor ) then self:SetFGColor( col ) end
+end
+
+function PANEL:GetTextColor()
+	return self.m_colText
+end
+
 --- GMod: DTextEntry:ApplySchemeSettings() -- `self:SetFontInternal( self.m_FontName )` +
 --- the skin hook.  LTextEntry runs the ENGINE's pass first and then this hook
 --- (game/client/lua/scripted_controls/lTextEntry.h), and that engine pass resets both the
@@ -155,6 +172,7 @@ end
 function PANEL:ApplySchemeSettings()
 	self:SetFont( self.m_strFont )
 	if ( self.SetBGColor ) then self:SetBGColor( 0, 0, 0, 0 ) end
+	if ( self.m_colText and self.SetFGColor ) then self:SetFGColor( self.m_colText ) end
 
 	-- GMod takes the selection/cursor colours from its skin too
 	-- (colTextEntryTextHighlight / colTextEntryTextCursor); this engine paints them
