@@ -12,9 +12,17 @@
                         The addon list is a wheel-scrollable viewport (clipped
                         canvas child, painted scrollbar thumb) - every addon is
                         reachable however long the list is.  A GMod-style info
-                        card on the right shows the selected addon's title,
+                        card beside the list shows the selected addon's title,
                         author, type, mount state, path and description; the
                         card follows the row you toggle.
+
+      TOUCH  (system.IsAndroid())  the PLAIN front end with phone metrics, the
+                        same switch the derma skin's hl2sb_touch_ui default
+                        uses: the dialog fills the screen in ONE column (list
+                        on top, the info card as a bottom sheet), rows are 40px
+                        with a 20px font, and the scrollbar strip is 24px wide
+                        and drag-scrollable (mouse capture keeps the drag alive
+                        outside the strip - a phone has no wheel).
 
       DERMA  (opt-in)   the GMod-style window (DFrame/DScrollPanel/
                         DCheckBoxLabel).  Available with the console command
@@ -63,12 +71,19 @@ local Say = ( type( print ) == "function" and print ) or function() end
 MOUSE_LEFT  = MOUSE_LEFT  or ( _E and _E.MOUSE_LEFT )  or 107
 MOUSE_RIGHT = MOUSE_RIGHT or ( _E and _E.MOUSE_RIGHT ) or 108
 
+-- Touch layout switch: the same default the derma skin's hl2sb_touch_ui
+-- convar uses (system.IsAndroid(); never IsLinux - that is also true on
+-- desktop).  The menu realm opens the Systems lib for exactly this
+-- (luasrc_init_gameui); without it the desktop layout runs.
+local TOUCH = ( system and system.IsAndroid and system.IsAndroid() ) and true or false
+
 local STR = {
     Title      = "插件管理",
     Hint       = "取消勾选的插件不会被挂载。修改立即生效；已进入地图时则在下次启动生效。",
     Hint2      = "滚轮滚动列表，点击行看信息",
     Empty      = "addons/ 目录中没有找到插件",
     Stats      = "共 %d 个插件，已启用 %d 个",
+    StatsTouch = "，点击行看信息卡",
     EnableAll  = "启用全部",
     DisableAll = "禁用全部",
     Refresh    = "刷新",
@@ -86,8 +101,9 @@ local STR = {
 -- owns its fonts; luaL_checkfont accepts the NAME).
 -- ---------------------------------------------------------------------------
 
-local FONT_TEXT = "HL2SB_MenuText"
+local FONT_TEXT  = "HL2SB_MenuText"
 local FONT_TITLE = "HL2SB_MenuTitle"
+local FONT_ROW   = TOUCH and "HL2SB_MenuTextTouch" or FONT_TEXT
 local m_FontsReady = false
 
 local function MakeFonts()
@@ -95,6 +111,9 @@ local function MakeFonts()
 
     surface.CreateFont( FONT_TEXT, { font = "Microsoft YaHei", size = 15, weight = 500, extended = true } )
     surface.CreateFont( FONT_TITLE, { font = "Microsoft YaHei", size = 17, weight = 800, extended = true } )
+    if ( TOUCH ) then
+        surface.CreateFont( FONT_ROW, { font = "Microsoft YaHei", size = 20, weight = 500, extended = true } )
+    end
     m_FontsReady = true
 end
 
@@ -136,6 +155,15 @@ local function FillRect( x, y, w, h )
 end
 
 -- ---------------------------------------------------------------------------
+-- metrics
+-- ---------------------------------------------------------------------------
+
+local ROW_H     = TOUCH and 40 or 26
+local M         = TOUCH and 10 or 14
+local SB_W      = TOUCH and 24 or 12   -- scrollbar strip inside the list column
+local DIALOG_W  = 680                  -- desktop window width (touch fills the screen)
+
+-- ---------------------------------------------------------------------------
 -- state
 -- ---------------------------------------------------------------------------
 
@@ -143,13 +171,6 @@ local m_Frame        = nil
 local m_Filter       = ""
 local m_Status       = nil
 local m_UseDerma     = false        -- opt-in: hl2sb_addons_derma
-
-local ROW_H     = 26
-local DIALOG_W  = 680
-local M         = 14
-local LIST_W    = 330            -- left column: search + scrollable list
-local SB_W      = 8              -- scrollbar strip inside the list column
-local VIEW_H    = 340            -- viewport height (rows visible via scroll)
 
 -- ---------------------------------------------------------------------------
 -- the addons
@@ -425,6 +446,43 @@ local function OpenPlain()
         if ( not disabled[ entry.key ] ) then enabledCount = enabledCount + 1 end
     end
 
+    -- Screen size for the touch layout (menu realm has ScrW/ScrH via
+    -- gmod_globals, but the surface binding is the direct source here).
+    local scrW, scrH = 1280, 720
+    if ( surface and surface.GetScreenSize ) then
+        local w2, h2 = surface.GetScreenSize()
+        if ( w2 and w2 > 0 and h2 and h2 > 0 ) then scrW, scrH = w2, h2 end
+    end
+
+    -- Column geometry: two columns on the desktop (list left, card right); a
+    -- single column on touch screens (list on top, card as a bottom sheet).
+    local fw, listW, cardX, cardW, cardH, listH, searchW
+    if ( TOUCH ) then
+        fw      = math.max( 480, scrW - 24 )
+        listW   = fw - M * 2
+        cardX   = M
+        cardW   = listW
+        cardH   = 170
+        searchW = listW - 86
+    else
+        fw      = DIALOG_W
+        listW   = 330
+        cardX   = M + listW + 16
+        cardW   = fw - M - cardX
+        cardH   = 340
+        searchW = 250
+    end
+
+    -- The touch window fills the screen; the list gets whatever is left after
+    -- the header stack, the card sheet and the button bar reserve theirs.
+    if ( TOUCH ) then
+        local frameH = math.max( 360, scrH - 32 )
+        listH = frameH - ( 30 + 42 + 32 + 26 ) - 8 - cardH - 8 - 26 - 8 - 26 - M
+    else
+        listH = 340
+    end
+    listH = math.max( listH, ROW_H * 4 )
+
     -- Every control that gets an explicit position is recorded here, because in this
     -- (GameUI) state SetSize() takes effect immediately but SetPos() does not: positions
     -- are only applied by a vgui layout pass.  ReassertPositions() replays the table
@@ -444,7 +502,7 @@ local function OpenPlain()
         if ( lbl == nil ) then return nil end
         if ( lbl.SetWrap ) then lbl:SetWrap( true ) end
         lbl:SetText( text or "" )
-        ApplyFont( lbl, FONT_TEXT )
+        ApplyFont( lbl, FONT_ROW )
         Colour( lbl, COL_TEXT )
         return Record( lbl, x, y, w, h or 20 )
     end
@@ -453,14 +511,14 @@ local function OpenPlain()
         if ( not vgui.Button ) then return nil end
         local btn = vgui.Button( frame, "addons_" .. cmd, text, frame, cmd )
         if ( btn == nil ) then return nil end
-        ApplyFont( btn, FONT_TEXT )
+        ApplyFont( btn, FONT_ROW )
         return Record( btn, x, y, w, h )
     end
 
     -- ---- scroll state (per open; shared with the closures below) -----------
     local canvasH   = #rows * ROW_H
     local scroll    = 0
-    local maxScroll = math.max( 0, canvasH - VIEW_H )
+    local maxScroll = math.max( 0, canvasH - listH )
     local selectedKey = nil
 
     local viewport = nil
@@ -477,25 +535,26 @@ local function OpenPlain()
         end
     end
 
+    local function SetScroll( v )
+        local nv = math.max( 0, math.min( v, maxScroll ) )
+        if ( nv != scroll ) then
+            scroll = nv
+            ScrollApply()
+        end
+    end
+
     local function ScrollBy( delta )
         if ( maxScroll <= 0 ) then return end
-        local before = scroll
-        scroll = scroll - delta * 40
-        if ( scroll < 0 ) then scroll = 0 end
-        if ( scroll > maxScroll ) then scroll = maxScroll end
-        if ( scroll != before ) then ScrollApply() end
+        SetScroll( scroll - delta * 40 )
     end
 
     -- ---- layout: every block reserves its space, in order -------------------
-    -- The layout measures from DIALOG_W, NOT from frame:GetWide().  An earlier
-    -- version "adapted to the real width" and committed it at the end with
-    -- SetSize( fw, y ): before the frame has laid out, GetWide() answers
-    -- something small (the panel's default), so that logic SHRANK the window to
-    -- a strip and every line of text ran into the next.
-    local fw     = DIALOG_W
-    local innerW = DIALOG_W - M * 2
-    local cardX  = M + LIST_W + 16
-    local cardW  = fw - M - cardX
+    -- The layout measures from the computed width, NOT from frame:GetWide().
+    -- An earlier version "adapted to the real width" and committed it at the
+    -- end with SetSize( fw, y ): before the frame has laid out, GetWide()
+    -- answers something small (the panel's default), so that logic SHRANK the
+    -- window to a strip and every line of text ran into the next.
+    local innerW = fw - M * 2
     local y      = 30
 
     NewLabel( frame, M, y, innerW, STR.Hint, 36 )  -- two wrapped lines
@@ -505,14 +564,18 @@ local function OpenPlain()
     if ( vgui.TextEntry ) then
         search = vgui.TextEntry( frame, "addonsSearch" )
         if ( search.SetText ) then search:SetText( m_Filter or "" ) end
-        ApplyFont( search, FONT_TEXT )
-        Record( search, M, y, 250, 24 )
-        NewButton( STR.Filter, M + 258, y, 70, 24, "applyfilter" )
+        ApplyFont( search, FONT_ROW )
+        Record( search, M, y, searchW, 24 )
+        NewButton( STR.Filter, M + searchW + 8, y, 70, 24, "applyfilter" )
     end
     y = y + 32
 
-    NewLabel( frame, M, y, LIST_W, string.format( STR.Stats, #addons, enabledCount ), 20 )
-    NewLabel( frame, cardX, y, cardW, STR.Hint2, 20 )
+    local statsText = string.format( STR.Stats, #addons, enabledCount )
+    if ( TOUCH ) then statsText = statsText .. STR.StatsTouch end
+    NewLabel( frame, M, y, listW, statsText, 20 )
+    if ( not TOUCH ) then
+        NewLabel( frame, cardX, y, cardW, STR.Hint2, 20 )
+    end
     y = y + 26
 
     local rowsTop = y
@@ -522,28 +585,68 @@ local function OpenPlain()
     -- so rows pushed above the top are not drawn (vgui2 clips children to the
     -- parent chain while painting).
     viewport = vgui.Panel( frame, "addonsViewport" )
-    Record( viewport, M, rowsTop, LIST_W, VIEW_H )
+    Record( viewport, M, rowsTop, listW, listH )
     viewport.OnMouseWheeled = function( pnl, delta ) ScrollBy( delta ) end
 
+    -- ---- the scrollbar (painted thumb; drag-scrollable) ----------------------
     local scrollbar = vgui.Panel( viewport, "addonsScrollbar" )
-    Record( scrollbar, LIST_W - SB_W, 0, SB_W, VIEW_H )
+    Record( scrollbar, listW - SB_W, 0, SB_W, listH )
+
+    local dragging = false
+    local dragY    = nil
+
+    scrollbar.OnMousePressed = function( pnl, code )
+        if ( code != MOUSE_LEFT or maxScroll <= 0 ) then return end
+        dragging = true
+        dragY = nil
+        -- keep the drag alive when the finger leaves the strip
+        if ( surface and surface.EnableMouseCapture ) then
+            surface.EnableMouseCapture( pnl, true )
+        end
+    end
+
+    scrollbar.OnCursorMoved = function( pnl, x, y )
+        if ( not dragging or maxScroll <= 0 ) then return end
+        if ( dragY == nil ) then dragY = y return end
+        -- thumb pixels -> content pixels: the full track maps onto maxScroll
+        local track = math.max( 1, listH - 40 )
+        SetScroll( scroll + ( y - dragY ) * ( canvasH / track ) )
+        dragY = y
+    end
+
+    scrollbar.OnMouseReleased = function( pnl, code )
+        if ( dragging and surface and surface.EnableMouseCapture ) then
+            surface.EnableMouseCapture( pnl, false )
+        end
+        dragging = false
+        dragY = nil
+    end
+
+    local scrollbarPainted = false
     scrollbar.Paint = function( pnl, w, h )
         if ( maxScroll <= 0 or canvasH <= 0 or DrawFilledRect == nil ) then return end
-        DrawSetColor( 255, 255, 255, 16 )
-        FillRect( w - 3, 1, 3, h - 2 )
-        local track = h - 4
-        local thumbH = math.max( 28, math.floor( track * h / ( h + maxScroll ) ) )
-        local thumbY = 2 + math.floor( ( track - thumbH ) * ( scroll / maxScroll ) + 0.5 )
-        DrawSetColor( 150, 150, 150, 210 )
-        FillRect( w - 3, thumbY, 3, thumbH )
+        local barW = TOUCH and 12 or 5
+        if ( not scrollbarPainted ) then
+            scrollbarPainted = true
+            Say( string.format( "[HL2SB] addonsdialog: scrollbar thumb painting (%d rows, panel %dx%d, thumb %dpx, maxScroll %d)",
+                #rows, w, h, barW, maxScroll ) )
+        end
+        DrawSetColor( 255, 255, 255, 24 )
+        FillRect( w - barW - 3, 1, barW + 3, h - 2 )
+        local track = h - 6
+        local thumbH = math.max( TOUCH and 64 or 36, math.floor( track * h / ( h + maxScroll ) ) )
+        local thumbY = 3 + math.floor( ( track - thumbH ) * ( scroll / maxScroll ) + 0.5 )
+        DrawSetColor( 180, 180, 180, 235 )
+        FillRect( w - barW - 2, thumbY, barW, thumbH )
     end
 
     canvas = vgui.Panel( viewport, "addonsCanvas" )
-    Record( canvas, 0, 0, LIST_W - SB_W - 4, math.max( canvasH, VIEW_H ) )
+    Record( canvas, 0, 0, listW - SB_W - 4, math.max( canvasH, listH ) )
 
     -- ---- the info card (GMod-style: details beside the list) ----------------
     local card = vgui.Panel( frame, "addonsCard" )
-    Record( card, cardX, rowsTop, cardW, VIEW_H )
+    local cardY = TOUCH and ( rowsTop + listH + 8 ) or rowsTop
+    Record( card, cardX, cardY, cardW, cardH )
     card.PaintBackground = function( pnl )
         if ( DrawFilledRect == nil ) then return end
         local w, h = pnl:GetWide(), pnl:GetTall()
@@ -563,11 +666,19 @@ local function OpenPlain()
         return Record( lbl, 10, y2, cardW - 20, h )
     end
 
-    local cardName   = NewCardLabel( 10, 40, COL_TITLE, FONT_TITLE )
-    local cardMeta   = NewCardLabel( 54, 18, COL_DIM )
-    local cardAuthor = NewCardLabel( 74, 18, COL_TEXT )
-    local cardPath   = NewCardLabel( 94, 18, COL_DIM )
-    local cardDesc   = NewCardLabel( 118, VIEW_H - 128, COL_TEXT )
+    -- the touch sheet is shorter: compact label rows
+    local nameY, nameH, metaY, authY, pathY, descY
+    if ( TOUCH ) then
+        nameY, nameH, metaY, authY, pathY, descY = 6, 32, 40, 58, 76, 96
+    else
+        nameY, nameH, metaY, authY, pathY, descY = 10, 40, 54, 74, 94, 118
+    end
+
+    local cardName   = NewCardLabel( nameY, nameH, COL_TITLE, FONT_TITLE )
+    local cardMeta   = NewCardLabel( metaY, 18, COL_DIM )
+    local cardAuthor = NewCardLabel( authY, 18, COL_TEXT )
+    local cardPath   = NewCardLabel( pathY, 18, COL_DIM )
+    local cardDesc   = NewCardLabel( descY, cardH - descY - 8, COL_TEXT )
 
     local function TrimDesc( s )
         if ( s == nil ) then return nil end
@@ -610,7 +721,7 @@ local function OpenPlain()
         -- wheel input over the row also lands here (CheckButton forwards
         -- "MouseWheeled" up the parent chain into this LPanel's dispatcher).
         local wrap = vgui.Panel( canvas, "addonsRow_" .. i )
-        Record( wrap, 0, ( i - 1 ) * ROW_H, LIST_W - SB_W - 4, ROW_H )
+        Record( wrap, 0, ( i - 1 ) * ROW_H, listW - SB_W - 4, ROW_H )
         wrap.OnMouseWheeled = function( pnl, delta ) ScrollBy( delta ) end
         wrap.Paint = function( pnl, w, h )
             if ( entry.key != selectedKey or DrawFilledRect == nil ) then return end
@@ -623,9 +734,9 @@ local function OpenPlain()
         local cb = nil
         if ( vgui.CheckButton ) then cb = vgui.CheckButton( wrap, "addon_" .. i, DisplayName( entry ) ) end
         if ( cb ~= nil ) then
-            Record( cb, 0, 0, LIST_W - SB_W - 4, ROW_H )
+            Record( cb, 0, 0, listW - SB_W - 4, ROW_H )
             cb:SetSelected( not disabled[ entry.key ] )
-            ApplyFont( cb, FONT_TEXT )
+            ApplyFont( cb, FONT_ROW )
             cb.OnCheckButtonChecked = function( btn )
                 -- keep the snapshot current so the card shows the live state
                 disabled[ entry.key ] = not btn:IsChecked()
@@ -636,12 +747,12 @@ local function OpenPlain()
     end
 
     if ( #rows == 0 ) then
-        NewLabel( viewport, 6, 4, LIST_W - SB_W - 16, STR.Empty, 20 )
+        NewLabel( viewport, 6, 4, listW - SB_W - 16, STR.Empty, 20 )
     end
     ShowCard( rows[ 1 ] )   -- nil shows the hint text
 
     -- ---- status + button bar -------------------------------------------------
-    local statusY = rowsTop + VIEW_H + 8
+    local statusY = TOUCH and ( cardY + cardH + 8 ) or ( rowsTop + listH + 8 )
     m_Status = NewLabel( frame, M, statusY, innerW, "", 20 )
     y = statusY + 26
 
@@ -654,15 +765,15 @@ local function OpenPlain()
     -- ---- the frame itself ---------------------------------------------------
     -- Set the size and KEEP it: the requested width and the height the layout
     -- just computed.
-    frame:SetSize( DIALOG_W, y )
+    frame:SetSize( fw, y )
     frame:MoveToCenterOfScreen()
 
     -- children are laid out once here; a border resize would leave them behind
     -- (big blank areas), so the frame is not resizable
     if ( frame.SetSizeable ) then frame:SetSizeable( false ) end
 
-    Say( string.format( "[HL2SB] addonsdialog: %d addons, %d filtered, viewport %dpx (canvas %dpx, scroll max %d)",
-        #addons, #rows, VIEW_H, canvasH, maxScroll ) )
+    Say( string.format( "[HL2SB] addonsdialog: %s layout %dx%d, %d addons (%d filtered), list %dpx (canvas %dpx, scroll max %d)",
+        TOUCH and "touch" or "desktop", fw, y, #addons, #rows, listH, canvasH, maxScroll ) )
 
     frame.OnCommand = function( self, cmd )
         -- the scripted dispatcher may pass the command as arg 1 or 2
@@ -734,7 +845,7 @@ local function OpenPlain()
     -- Last word on the size: activating runs the scheme/layout pass, and the
     -- window must not end up smaller than what everything above was laid out
     -- for (that is exactly how it once collapsed into a strip).
-    frame:SetSize( DIALOG_W, y )
+    frame:SetSize( fw, y )
 
     return frame
 end
