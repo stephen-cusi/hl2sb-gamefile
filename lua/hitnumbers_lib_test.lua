@@ -93,13 +93,27 @@ if ( SERVER ) then
 	hook.Add( "PostEntityTakeDamage", "hdn_test_probe", function( ent, dmg, took ) end )
 	CHECK( hook.GetTable()[ "EntityTakeDamage" ] ~= nil, "EntityTakeDamage registerable" )
 	CHECK( hook.GetTable()[ "PostEntityTakeDamage" ] ~= nil, "PostEntityTakeDamage registerable" )
-
-	-- dmginfo metatype: the shared CTakeDamageInfo table must be reachable
-	-- through a fake dispatch (hook.Call keeps the gamemode fallback path).
-	local okDmg = pcall( hook.Call, "PostEntityTakeDamage", GAMEMODE, ply, nil, true )
-	CHECK( okDmg or ply == nil, "PostEntityTakeDamage hook.Call survives nil dmginfo" )
 	hook.Remove( "EntityTakeDamage", "hdn_test_probe" )
 	hook.Remove( "PostEntityTakeDamage", "hdn_test_probe" )
+
+	-- Real dispatch: build a genuine CTakeDamageInfo and fire both damage
+	-- hooks in the engine's order (record-then-spawn).  The LIVE hitnumbers
+	-- hooks run; with a player as target and attacker the indicator is
+	-- net-messaged straight back to this client -- watch for a floating -25.
+	-- Never dispatch a nil dmginfo: the addon indexes it immediately and
+	-- hook.lua's error path then REMOVES its hook for the whole session.
+	if ( ply ~= nil and isfunction( DamageInfo ) ) then
+		local dmg = DamageInfo()
+		dmg:SetDamage( 25 )
+		dmg:SetAttacker( ply )
+		dmg:SetDamageType( DMG_CLUB )
+		hook.Call( "EntityTakeDamage", GAMEMODE, ply, dmg )
+		hook.Call( "PostEntityTakeDamage", GAMEMODE, ply, dmg, true )
+		CHECK( ply.hdn_lastHealth ~= nil, "hdn record hook ran (lastHealth set)" )
+		print( "[info] dispatched a real 25-dmg DMG_CLUB event - a -25 indicator should float over you now" )
+	else
+		CHECK( false, "DamageInfo constructor available" )
+	end
 
 else
 

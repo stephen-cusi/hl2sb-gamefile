@@ -190,7 +190,11 @@ end
 local function GVarCoerce( typ, s )
 	if typ == "i" then return math_floor( tonumber( s ) or 0 )
 	elseif typ == "f" then return tonumber( s ) or 0
-	elseif typ == "b" then return s == "1"
+	-- The wire sends Lua's tostring(v): booleans arrive as "true"/"false"
+	-- (never "1").  Accept both spellings - the "1" form is what the int
+	-- path would send if a bool ever rode it - or every synced boolean
+	-- decodes false on the client (hitnumbers' ShowSign/IgnoreZ family).
+	elseif typ == "b" then return s == "true" or s == "1"
 	end
 	return s
 end
