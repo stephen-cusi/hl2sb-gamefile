@@ -3,5 +3,6 @@
 # otherwise on the next start.
 enhanced_playermodel_selector
 example_addon
-firstpersonbody
+menu
+tarkov_hud
 windgrin_npc
