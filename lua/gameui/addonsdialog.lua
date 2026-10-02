@@ -3,15 +3,33 @@
 
     Two front ends, same engine work behind both:
 
-      PLAIN  (default)  engine controls (Frame/Label/Button/CheckButton/TextEntry)
-                        with an explicit CJK font, a layout computed in one
-                        place, text colours and no resizable borders.  This is
-                        the one that reliably paints in the menu realm, and the
-                        main menu is Source UI territory anyway.
+      PLAIN  (default)  engine controls (Frame/Label/Button/CheckButton/TextEntry
+                        plus plain LPanel containers) with an explicit CJK font,
+                        a layout computed in one place, text colours and no
+                        resizable borders.  This is the one that reliably paints
+                        in the menu realm, and the main menu is Source UI
+                        territory anyway.
+                        The addon list is a wheel-scrollable viewport (clipped
+                        canvas child, painted scrollbar thumb) - every addon is
+                        reachable however long the list is.  A GMod-style info
+                        card on the right shows the selected addon's title,
+                        author, type, mount state, path and description; the
+                        card follows the row you toggle.
 
       DERMA  (opt-in)   the GMod-style window (DFrame/DScrollPanel/
                         DCheckBoxLabel).  Available with the console command
                         `hl2sb_addons_derma`, which toggles it and reopens.
+
+    Scrolling in the menu realm
+    ---------------------------
+    The realm has no layout pump, so geometry lands only through the
+    HL2SB_MenuLayout() pass.  The viewport scroll works the same way: the wheel
+    handler changes the canvas' recorded position (SetPos( 0, -scroll )) and
+    then drives HL2SB_MenuLayout( viewport ) to apply it natively.  Wheel input
+    over a CheckButton row reaches the viewport because Panel forwards
+    "MouseWheeled" up the parent chain into the wrapper's Lua OnMouseWheeled.
+    Children are painted clipped to their parent chain, so the rows pushed
+    above the viewport are simply not drawn.
 
     What "disabling" does
     ---------------------
@@ -48,15 +66,17 @@ MOUSE_RIGHT = MOUSE_RIGHT or ( _E and _E.MOUSE_RIGHT ) or 108
 local STR = {
     Title      = "插件管理",
     Hint       = "取消勾选的插件不会被挂载。修改立即生效；已进入地图时则在下次启动生效。",
+    Hint2      = "滚轮滚动列表，点击行看信息",
     Empty      = "addons/ 目录中没有找到插件",
+    Stats      = "共 %d 个插件，已启用 %d 个",
     EnableAll  = "启用全部",
     DisableAll = "禁用全部",
     Refresh    = "刷新",
     Close      = "关闭",
     Filter     = "筛选",
-    Prev       = "上一页",
-    Next       = "下一页",
-    AppliedNow     = "✓ 已立即生效",
+    NoDesc     = "（没有描述信息）",
+    CardEmpty  = "点击左侧的插件行，在这里显示插件信息。",
+    AppliedNow     = "已立即生效",
     AppliedRestart = "已在地图中：已保存，下次启动生效",
 }
 
@@ -102,6 +122,19 @@ local COL_WARN  = Color and Color( 255, 165, 0 ) or nil
 local COL_OK    = Color and Color( 140, 255, 140 ) or nil
 local COL_DIM   = Color and Color( 175, 175, 175 ) or nil
 
+-- engine-name surface draws: the surface lib here spells them DrawSetColor /
+-- DrawFilledRect / DrawOutlinedRect (GMod's SetDrawColor/DrawRect aliases are
+-- a client-realm extension and may not exist in the menu state).
+local DrawSetColor     = surface and surface.DrawSetColor or nil
+local DrawFilledRect   = surface and surface.DrawFilledRect or nil
+local DrawOutlinedRect = surface and surface.DrawOutlinedRect or nil
+
+-- engine DrawFilledRect takes corner coordinates
+local function FillRect( x, y, w, h )
+    if ( DrawFilledRect == nil ) then return end
+    DrawFilledRect( x, y, x + w, y + h )
+end
+
 -- ---------------------------------------------------------------------------
 -- state
 -- ---------------------------------------------------------------------------
@@ -112,8 +145,11 @@ local m_Status       = nil
 local m_UseDerma     = false        -- opt-in: hl2sb_addons_derma
 
 local ROW_H     = 26
-local DIALOG_W  = 470
-local PAGE_SIZE = 14
+local DIALOG_W  = 680
+local M         = 14
+local LIST_W    = 330            -- left column: search + scrollable list
+local SB_W      = 8              -- scrollbar strip inside the list column
+local VIEW_H    = 340            -- viewport height (rows visible via scroll)
 
 -- ---------------------------------------------------------------------------
 -- the addons
@@ -175,7 +211,28 @@ local function ReadGmaInfo( gmaName )
     return title, author, desc
 end
 
-local m_GmaInfo = {}    -- archive file name -> { title = , author = , desc = }
+-- Folder addons may carry GMod's addon.json (title/author/description/type).
+-- A real JSON parser is overkill for a metadata card; scanning the flat
+-- "key": "value" string fields covers every key this dialog shows.
+local function ReadAddonJson( name )
+    if ( not file.Open ) then return nil end
+    local f = file.Open( "addons/" .. name .. "/addon.json", "r", "MOD" )
+    if ( not f ) then return nil end
+
+    local n = f:Size()
+    local text = ( n and n > 0 ) and f:Read( n ) or nil
+    f:Close()
+    if ( not text or text == "" ) then return nil end
+
+    local out = {}
+    for key, val in text:gmatch( '"([%w_]+)"%s*:%s*"(.-)"' ) do
+        out[ key:lower() ] = val:gsub( '\\(.)', '%1' )
+    end
+    return out
+end
+
+local m_GmaInfo  = {}    -- archive file name -> { title = , author = , desc = }
+local m_JsonInfo = {}    -- folder name -> parsed addon.json string fields
 
 local function ListAddons()
     local out = {}
@@ -184,7 +241,20 @@ local function ListAddons()
 
     for _, name in ipairs( dirs or {} ) do
         if ( name:sub( 1, 1 ) != "." ) then
-            out[ #out + 1 ] = { name = name, key = name:lower(), isGma = false }
+            local entry = { name = name, key = name:lower(), isGma = false }
+
+            -- addon.json metadata, cached per dialog session
+            local info = m_JsonInfo[ name ]
+            if ( info == nil ) then
+                info = ReadAddonJson( name ) or {}
+                m_JsonInfo[ name ] = info
+            end
+            entry.title     = info.title
+            entry.author    = info.author
+            entry.addonType = info.type
+            entry.desc      = info.description or info.desc
+
+            out[ #out + 1 ] = entry
         end
     end
 
@@ -211,10 +281,10 @@ local function ListAddons()
     return out
 end
 
--- What a row shows: GMod style title (by author) when the archive carries it,
--- otherwise the file/folder name.
+-- What a row shows: GMod style title (by author) when the addon carries one
+-- (gma header or addon.json), otherwise the file/folder name.
 local function DisplayName( entry )
-    if ( entry.isGma and entry.title ) then
+    if ( entry.title and entry.title != "" and entry.title:lower() != entry.name:lower() ) then
         local s = entry.title
         if ( entry.author and entry.author != "" ) then
             s = s .. "  -  " .. entry.author
@@ -340,8 +410,8 @@ local function OpenPlain()
 
     -- Size the frame BEFORE the children: the layout below measures against the
     -- frame's REAL width, so a frame that ignores the request cannot push the
-    -- right-hand column past its edge (that is what "the menu overlaps" looks
-    -- like from outside).  The height is re-asserted after the layout math.
+    -- right-hand column past its edge.  The height is re-asserted after the
+    -- layout math.
     frame:SetTitle( STR.Title )
     frame:SetSize( DIALOG_W, 480 )
     frame:MoveToCenterOfScreen()
@@ -356,101 +426,224 @@ local function OpenPlain()
     end
 
     -- Every control that gets an explicit position is recorded here, because in this
-    -- (GameUI) state the dbg dump proved something very specific:
-    --
-    --     15 LLabel      size=442x36   pos=(0,0)
-    --     16 LTextEntry  size=250x24   pos=(0,0)
-    --     19 LCheckButton size=442x26  pos=(0,0)
-    --     ...  1..14 = the frame's OWN chrome, also pos=(0,0)
-    --
-    -- i.e. SetSize() takes effect immediately but SetPos() does not: positions are only
-    -- applied by a vgui layout pass, and nothing drives that pass for a menu-state frame.
-    -- So issue them once through ReassertPositions() below and once more on the next frame.
+    -- (GameUI) state SetSize() takes effect immediately but SetPos() does not: positions
+    -- are only applied by a vgui layout pass.  ReassertPositions() replays the table
+    -- through the native setters and drives HL2SB_MenuLayout().
     local Layout = {}
 
-    local function NewLabel( x, y, w, text, h )
+    local function Record( pnl, x, y, w, h )
+        if ( pnl == nil ) then return nil end
+        pnl:SetBounds( x, y, w, h )
+        Layout[ #Layout + 1 ] = { pnl, x, y, w, h }
+        return pnl
+    end
+
+    local function NewLabel( parentPanel, x, y, w, text, h )
         if ( not vgui.Create ) then return nil end
-        local lbl = vgui.Create( "Label", frame )
-        if ( not lbl ) then return nil end
-        lbl:SetPos( x, y )
-        lbl:SetSize( w, h or 20 )
+        local lbl = vgui.Create( "Label", parentPanel or frame )
+        if ( lbl == nil ) then return nil end
         if ( lbl.SetWrap ) then lbl:SetWrap( true ) end
-        lbl:SetText( text )
+        lbl:SetText( text or "" )
         ApplyFont( lbl, FONT_TEXT )
         Colour( lbl, COL_TEXT )
-        Layout[ #Layout + 1 ] = { lbl, x, y, w, h or 20 }
-        return lbl
+        return Record( lbl, x, y, w, h or 20 )
     end
 
     local function NewButton( text, x, y, w, h, cmd )
         if ( not vgui.Button ) then return nil end
         local btn = vgui.Button( frame, "addons_" .. cmd, text, frame, cmd )
-        btn:SetBounds( x, y, w, h )
+        if ( btn == nil ) then return nil end
         ApplyFont( btn, FONT_TEXT )
-        Layout[ #Layout + 1 ] = { btn, x, y, w, h }
-        return btn
+        return Record( btn, x, y, w, h )
+    end
+
+    -- ---- scroll state (per open; shared with the closures below) -----------
+    local canvasH   = #rows * ROW_H
+    local scroll    = 0
+    local maxScroll = math.max( 0, canvasH - VIEW_H )
+    local selectedKey = nil
+
+    local viewport = nil
+    local canvas   = nil
+
+    -- SetPos only lands through a layout pass in this realm: record the new
+    -- canvas position, then make HL2SB_MenuLayout apply it natively.
+    local function ScrollApply()
+        if ( canvas and canvas.SetPos ) then
+            canvas:SetPos( 0, -scroll )
+        end
+        if ( HL2SB_MenuLayout and viewport ) then
+            HL2SB_MenuLayout( viewport )
+        end
+    end
+
+    local function ScrollBy( delta )
+        if ( maxScroll <= 0 ) then return end
+        local before = scroll
+        scroll = scroll - delta * 40
+        if ( scroll < 0 ) then scroll = 0 end
+        if ( scroll > maxScroll ) then scroll = maxScroll end
+        if ( scroll != before ) then ScrollApply() end
     end
 
     -- ---- layout: every block reserves its space, in order -------------------
-    -- ⚠️ The layout measures from DIALOG_W, NOT from frame:GetWide().  An
-    -- earlier version "adapted to the real width" and committed it at the end
-    -- with SetSize( fw, y ): before the frame has laid out, GetWide() answers
+    -- The layout measures from DIALOG_W, NOT from frame:GetWide().  An earlier
+    -- version "adapted to the real width" and committed it at the end with
+    -- SetSize( fw, y ): before the frame has laid out, GetWide() answers
     -- something small (the panel's default), so that logic SHRANK the window to
     -- a strip and every line of text ran into the next.
-    local M      = 14                      -- margin
     local fw     = DIALOG_W
     local innerW = DIALOG_W - M * 2
+    local cardX  = M + LIST_W + 16
+    local cardW  = fw - M - cardX
     local y      = 30
 
-    NewLabel( M, y, innerW, STR.Hint, 36 )  -- two wrapped lines
+    NewLabel( frame, M, y, innerW, STR.Hint, 36 )  -- two wrapped lines
     y = y + 42
 
     local search = nil
     if ( vgui.TextEntry ) then
         search = vgui.TextEntry( frame, "addonsSearch" )
-        search:SetBounds( M, y, 250, 24 )
-        Layout[ #Layout + 1 ] = { search, M, y, 250, 24 }
         if ( search.SetText ) then search:SetText( m_Filter or "" ) end
         ApplyFont( search, FONT_TEXT )
+        Record( search, M, y, 250, 24 )
         NewButton( STR.Filter, M + 258, y, 70, 24, "applyfilter" )
     end
     y = y + 32
 
-    NewLabel( M, y, innerW, string.format( "共 %d 个插件，已启用 %d 个（当前显示 %d 个）",
-        #addons, enabledCount, #rows ), 20 )
+    NewLabel( frame, M, y, LIST_W, string.format( STR.Stats, #addons, enabledCount ), 20 )
+    NewLabel( frame, cardX, y, cardW, STR.Hint2, 20 )
     y = y + 26
 
-    -- rows: a full page is always reserved, so page flips move nothing else
     local rowsTop = y
-    local show = math.min( #rows, PAGE_SIZE )
-    for i = 1, show do
+
+    -- ---- the scroll viewport ------------------------------------------------
+    -- A plain panel the wheel scrolls over; its bounds clip the canvas child,
+    -- so rows pushed above the top are not drawn (vgui2 clips children to the
+    -- parent chain while painting).
+    viewport = vgui.Panel( frame, "addonsViewport" )
+    Record( viewport, M, rowsTop, LIST_W, VIEW_H )
+    viewport.OnMouseWheeled = function( pnl, delta ) ScrollBy( delta ) end
+
+    local scrollbar = vgui.Panel( viewport, "addonsScrollbar" )
+    Record( scrollbar, LIST_W - SB_W, 0, SB_W, VIEW_H )
+    scrollbar.Paint = function( pnl, w, h )
+        if ( maxScroll <= 0 or canvasH <= 0 or DrawFilledRect == nil ) then return end
+        DrawSetColor( 255, 255, 255, 16 )
+        FillRect( w - 3, 1, 3, h - 2 )
+        local track = h - 4
+        local thumbH = math.max( 28, math.floor( track * h / ( h + maxScroll ) ) )
+        local thumbY = 2 + math.floor( ( track - thumbH ) * ( scroll / maxScroll ) + 0.5 )
+        DrawSetColor( 150, 150, 150, 210 )
+        FillRect( w - 3, thumbY, 3, thumbH )
+    end
+
+    canvas = vgui.Panel( viewport, "addonsCanvas" )
+    Record( canvas, 0, 0, LIST_W - SB_W - 4, math.max( canvasH, VIEW_H ) )
+
+    -- ---- the info card (GMod-style: details beside the list) ----------------
+    local card = vgui.Panel( frame, "addonsCard" )
+    Record( card, cardX, rowsTop, cardW, VIEW_H )
+    card.PaintBackground = function( pnl )
+        if ( DrawFilledRect == nil ) then return end
+        local w, h = pnl:GetWide(), pnl:GetTall()
+        DrawSetColor( 38, 38, 38, 248 )
+        FillRect( 0, 0, w, h )
+        DrawSetColor( 76, 76, 76, 255 )
+        DrawOutlinedRect( 0, 0, w - 1, h - 1 )
+    end
+
+    local function NewCardLabel( y2, h, clr, font )
+        local lbl = vgui.Create( "Label", card )
+        if ( lbl == nil ) then return nil end
+        if ( lbl.SetWrap ) then lbl:SetWrap( true ) end
+        lbl:SetText( "" )
+        ApplyFont( lbl, font or FONT_TEXT )
+        Colour( lbl, clr or COL_TEXT )
+        return Record( lbl, 10, y2, cardW - 20, h )
+    end
+
+    local cardName   = NewCardLabel( 10, 40, COL_TITLE, FONT_TITLE )
+    local cardMeta   = NewCardLabel( 54, 18, COL_DIM )
+    local cardAuthor = NewCardLabel( 74, 18, COL_TEXT )
+    local cardPath   = NewCardLabel( 94, 18, COL_DIM )
+    local cardDesc   = NewCardLabel( 118, VIEW_H - 128, COL_TEXT )
+
+    local function TrimDesc( s )
+        if ( s == nil ) then return nil end
+        s = s:gsub( "\r", "" )
+        if ( #s > 600 ) then s = s:sub( 1, 600 ) .. "..." end
+        return s
+    end
+
+    local function ShowCard( entry )
+        if ( cardName == nil ) then return end
+
+        if ( entry == nil ) then
+            selectedKey = nil
+            cardName:SetText( STR.CardEmpty )
+            cardMeta:SetText( "" )
+            cardAuthor:SetText( "" )
+            cardPath:SetText( "" )
+            cardDesc:SetText( "" )
+            return
+        end
+
+        selectedKey = entry.key
+        cardName:SetText( DisplayName( entry ) )
+
+        local bits = { entry.isGma and "GMA 归档" or "文件夹" }
+        if ( entry.addonType and entry.addonType != "" ) then bits[ #bits + 1 ] = entry.addonType end
+        bits[ #bits + 1 ] = disabled[ entry.key ] and "已禁用" or "已启用"
+        cardMeta:SetText( table.concat( bits, "  ·  " ) )
+
+        cardAuthor:SetText( ( entry.author and entry.author != "" ) and ( "作者: " .. entry.author ) or "" )
+        cardPath:SetText( "addons/" .. entry.name )
+        cardDesc:SetText( TrimDesc( entry.desc ) or STR.NoDesc )
+    end
+
+    -- ---- the rows ------------------------------------------------------------
+    for i = 1, #rows do
         local entry = rows[ i ]
+
+        -- The wrapper panel is the paint surface for the selection highlight;
+        -- wheel input over the row also lands here (CheckButton forwards
+        -- "MouseWheeled" up the parent chain into this LPanel's dispatcher).
+        local wrap = vgui.Panel( canvas, "addonsRow_" .. i )
+        Record( wrap, 0, ( i - 1 ) * ROW_H, LIST_W - SB_W - 4, ROW_H )
+        wrap.OnMouseWheeled = function( pnl, delta ) ScrollBy( delta ) end
+        wrap.Paint = function( pnl, w, h )
+            if ( entry.key != selectedKey or DrawFilledRect == nil ) then return end
+            DrawSetColor( 255, 255, 255, 14 )
+            FillRect( 0, 0, w, h )
+            DrawSetColor( 96, 160, 240, 255 )
+            FillRect( 0, 0, 2, h )
+        end
+
         local cb = nil
-        if ( vgui.CheckButton ) then cb = vgui.CheckButton( frame, "addon_" .. i, DisplayName( entry ) ) end
+        if ( vgui.CheckButton ) then cb = vgui.CheckButton( wrap, "addon_" .. i, DisplayName( entry ) ) end
         if ( cb ~= nil ) then
-            cb:SetBounds( M, rowsTop + ( i - 1 ) * ROW_H, innerW, ROW_H )
-            Layout[ #Layout + 1 ] = { cb, M, rowsTop + ( i - 1 ) * ROW_H, innerW, ROW_H }
+            Record( cb, 0, 0, LIST_W - SB_W - 4, ROW_H )
             cb:SetSelected( not disabled[ entry.key ] )
             ApplyFont( cb, FONT_TEXT )
-            if ( entry.desc and entry.desc != "" and cb.SetTooltip ) then
-                cb:SetTooltip( entry.desc )
-            end
             cb.OnCheckButtonChecked = function( btn )
+                -- keep the snapshot current so the card shows the live state
+                disabled[ entry.key ] = not btn:IsChecked()
                 Status( SetEnabled( entry.key, btn:IsChecked() ) )
+                ShowCard( entry )
             end
         end
     end
 
     if ( #rows == 0 ) then
-        NewLabel( M, rowsTop, innerW, STR.Empty, 20 )
-    elseif ( #rows > PAGE_SIZE ) then
-        NewLabel( M, rowsTop + PAGE_SIZE * ROW_H, innerW,
-            string.format( "还有 %d 个未显示，请用上面的筛选框缩小范围", #rows - PAGE_SIZE ), 20 )
+        NewLabel( viewport, 6, 4, LIST_W - SB_W - 16, STR.Empty, 20 )
     end
-    y = rowsTop + ( PAGE_SIZE + 1 ) * ROW_H + 6
+    ShowCard( rows[ 1 ] )   -- nil shows the hint text
 
-    m_Status = NewLabel( M, y, innerW, "", 20 )
-    y = y + 26
+    -- ---- status + button bar -------------------------------------------------
+    local statusY = rowsTop + VIEW_H + 8
+    m_Status = NewLabel( frame, M, statusY, innerW, "", 20 )
+    y = statusY + 26
 
     NewButton( STR.EnableAll,  M,      y, 100, 26, "enableall" )
     NewButton( STR.DisableAll, M+108,  y, 100, 26, "disableall" )
@@ -464,58 +657,12 @@ local function OpenPlain()
     frame:SetSize( DIALOG_W, y )
     frame:MoveToCenterOfScreen()
 
-    -- ---- diagnosis ----------------------------------------------------------
-    -- The window has twice been reported as an empty translucent box with
-    -- overlapping text, and every layout number here says it should be fine -
-    -- so dump what the panel tree actually ended up as (and which factories the
-    -- GameUI state has at all).  Log-only: Say() goes to the console/log and
-    -- changes nothing about the window.
-    Say( string.format( "[HL2SB] addonsdialog dbg: factories Frame=%s Button=%s Label=%s CheckButton=%s TextEntry=%s Create=%s",
-        tostring( vgui.Frame ~= nil ), tostring( vgui.Button ~= nil ), tostring( vgui.Create ~= nil ),
-        tostring( vgui.CheckButton ~= nil ), tostring( vgui.TextEntry ~= nil ), tostring( vgui.Create ~= nil ) ) )
-
-    if ( frame.GetChildren ) then
-        local kids = frame:GetChildren() or {}
-        local direct = 0
-
-        for i = 1, #kids do
-            local k = kids[ i ]
-            if ( k.GetParent and k:GetParent() == frame ) then direct = direct + 1 end
-        end
-
-        Say( string.format( "[HL2SB] addonsdialog dbg: frame %dx%d, %d children (%d of them direct)",
-            frame:GetWide(), frame:GetTall(), #kids, direct ) )
-
-        -- ALL of them: the first entries are the frame's own chrome, the dialog's own
-        -- controls come after, and it is exactly those the dump has to show.
-        for i = 1, math.min( #kids, 40 ) do
-            local k = kids[ i ]
-            local x, y2 = 0, 0
-            if ( k.GetPos ) then local px, py = k:GetPos(); x, y2 = px, py end
-
-            local parentName = "?"
-            if ( k.GetParent ) then
-                local p = k:GetParent()
-                parentName = ( p == frame ) and "(frame)" or ( p and p.GetName and p:GetName() or "?" )
-            end
-
-            Say( string.format( "[HL2SB] addonsdialog dbg:   %d %s parent=%s pos=(%s,%s) size=%sx%s visible=%s",
-                i, tostring( k.GetClassName and k:GetClassName() or "?" ), tostring( parentName ),
-                tostring( x ), tostring( y2 ),
-                tostring( k.GetWide and k:GetWide() or "?" ), tostring( k.GetTall and k:GetTall() or "?" ),
-                tostring( k.IsVisible and k:IsVisible() or "?" ) ) )
-        end
-    end
-
     -- children are laid out once here; a border resize would leave them behind
     -- (big blank areas), so the frame is not resizable
     if ( frame.SetSizeable ) then frame:SetSizeable( false ) end
 
-    -- One line, so a window that comes out the wrong size says so instead of
-    -- just looking wrong (the reported numbers are for DIAGNOSIS ONLY; the
-    -- window's size is DIALOG_W x y above).
-    Say( string.format( "[HL2SB] addonsdialog: %dx%d -> reports %dx%d",
-        DIALOG_W, y, frame:GetWide(), frame:GetTall() ) )
+    Say( string.format( "[HL2SB] addonsdialog: %d addons, %d filtered, viewport %dpx (canvas %dpx, scroll max %d)",
+        #addons, #rows, VIEW_H, canvasH, maxScroll ) )
 
     frame.OnCommand = function( self, cmd )
         -- the scripted dispatcher may pass the command as arg 1 or 2
@@ -540,6 +687,7 @@ local function OpenPlain()
             local want = ( cmd == "enableall" )
             local applied = true
             for _, entry in ipairs( rows ) do
+                disabled[ entry.key ] = not want
                 if ( not SetEnabled( entry.key, want ) ) then applied = false end
             end
             Reopen()
@@ -552,13 +700,11 @@ local function OpenPlain()
     frame:Activate()
 
     -- ---- run the layout pass NOW -------------------------------------------
-    -- vgui2 applies child geometry in a layout pass.  The dbg dump showed the frame's
-    -- OWN chrome still at (0,0) with the default 64x24 / 18x18 sizes - i.e. no pass had
-    -- run for this frame in the GameUI state, and the frame's own title bar was never
-    -- schemed.  InvalidateLayout( true ) performs the pass IMMEDIATELY (vgui2's
-    -- Panel::InvalidateLayout( bForce ); DPanelList:PerformLayout relies on the same call,
-    -- see its comment in lua/vgui/DPanelList.lua), so drive it explicitly here and again
-    -- for every child that has its own layout.
+    -- vgui2 applies child geometry in a layout pass, and nothing drives that
+    -- pass for a menu-state frame on its own.  InvalidateLayout( true )
+    -- performs the pass IMMEDIATELY; HL2SB_MenuLayout() additionally re-applies
+    -- each panel's recorded geometry through the native setters (the part this
+    -- realm never does by itself).
     local function ReassertPositions()
         for i = 1, #Layout do
             local e = Layout[ i ]
@@ -567,10 +713,6 @@ local function OpenPlain()
             end
         end
 
-        -- The ENGINE pass: HL2SB_MenuLayout() walks the frame and its whole subtree and
-        -- calls InvalidateLayout(true) + PerformLayout() on each - that is the pass this
-        -- realm never runs (game/client/lua/lua_gameui_menu.cpp).  The Lua-side call below
-        -- is the fallback for a build without it.
         if ( HL2SB_MenuLayout ) then
             HL2SB_MenuLayout( frame )
         end
@@ -580,23 +722,12 @@ local function OpenPlain()
 
     ReassertPositions()
 
-    -- ...and once more on the next frame: by then the frame is actually up, which is when
-    -- the first pass normally happens (the dump above ran before it).
+    -- ...and once more on the next frame: by then the frame is actually up,
+    -- which is when the first pass normally happens.
     if ( timer and timer.Simple ) then
         timer.Simple( 0, function()
             if ( frame == nil or frame.SetBounds == nil ) then return end
             ReassertPositions()
-
-            -- prove it: the positions we recorded, read back one frame later
-            for i = 1, math.min( #Layout, 40 ) do
-                local e = Layout[ i ]
-                if ( e[ 1 ] ~= nil and e[ 1 ].GetPos ~= nil ) then
-                    local px, py = e[ 1 ]:GetPos()
-                    Say( string.format( "[HL2SB] addonsdialog dbg2:   %d pos=(%s,%s) size=%sx%s",
-                        i, tostring( px ), tostring( py ),
-                        tostring( e[ 1 ]:GetWide() ), tostring( e[ 1 ]:GetTall() ) ) )
-                end
-            end
         end )
     end
 
