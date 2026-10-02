@@ -128,7 +128,11 @@ function PANEL:Paint( w, h )
 
 	derma.SkinHook( "Paint", "Button", self, w, h )
 
-	if ( self.m_iTexture ) then
+	-- GMod's SetImageVisible( false ) hides the icon but keeps the panel
+	-- interactive (DNumberScratch lives on it).  The flag used to be stored
+	-- and never read, so hidden icons still painted - the 16px number-scratch
+	-- icon showed up in the corner of every DNumSlider row.
+	if ( self:GetImageVisible() and self.m_iTexture ) then
 		local col = self.m_colImage
 		if ( col ) then
 			surface.DrawSetColor( col.r, col.g, col.b, col.a )
