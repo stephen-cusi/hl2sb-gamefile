@@ -212,7 +212,26 @@ end
 
 function PANEL:PerformLayout()
 
-	self.Label:SetWide( self:GetWide() / 2.4 )
+	-- GMod's original body is just the SetWide below: the three children are
+	-- Dock( LEFT / FILL / RIGHT ) and the engine dock pass places them from
+	-- that width.  GMod's engine re-docks when a child's bounds change (its
+	-- per-panel bounds-changed flag); this fork's dock rectangles settled one
+	-- layout pass later, which left the slider running under the label on any
+	-- row that stopped being re-laid-out.  Place all three children explicitly
+	-- - pixel-identical to GMod's settled dock geometry (label at w/2.4, entry
+	-- 45px on the right, slider filling the middle) and independent of the
+	-- dock pump's convergence timing.
+	local w = self:GetWide()
+	local h = self:GetTall()
+	local labelW = math.floor( w / 2.4 )
+
+	self.Label:SetWide( labelW )
+
+	self.TextArea:SetPos( w - 45, 0 )
+	self.TextArea:SetSize( 45, h )
+
+	self.Slider:SetPos( labelW, 0 )
+	self.Slider:SetSize( math.max( 0, w - labelW - 45 ), h )
 
 end
 

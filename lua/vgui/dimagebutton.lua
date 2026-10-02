@@ -9,6 +9,7 @@ local PANEL = {}
 
 function PANEL:Init()
 	self:SetDrawBackground( false )
+	self:SetCursor( "hand" )		-- GMod's dimagebutton.lua:9
 	self.m_strImage = ""
 	self.m_iImageSize = 32
 	self.m_iTexture = nil
@@ -126,12 +127,14 @@ function PANEL:Paint( w, h )
 	w = w or self:GetWide()
 	h = h or self:GetTall()
 
-	derma.SkinHook( "Paint", "Button", self, w, h )
-
-	-- GMod's SetImageVisible( false ) hides the icon but keeps the panel
-	-- interactive (DNumberScratch lives on it).  The flag used to be stored
-	-- and never read, so hidden icons still painted - the 16px number-scratch
-	-- icon showed up in the corner of every DNumSlider row.
+	-- GMod's DImageButton has NO Paint field at all: derma's automatic skin
+	-- dispatch looks up PaintDImageButton by class name, the default skin does
+	-- not define one, and the control is transparent - its visible content is
+	-- the icon and the caption only (its Init also turns background and border
+	-- off).  This fork used to route through the skin's PaintButton here, which
+	-- painted an opaque plate over the whole control - a DNumberScratch docked
+	-- over a DNumSlider's label area hid the label text behind that plate.
+	-- GMod-faithful: no plate, icon and caption only.
 	if ( self:GetImageVisible() and self.m_iTexture ) then
 		local col = self.m_colImage
 		if ( col ) then
