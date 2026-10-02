@@ -44,7 +44,18 @@ local PANEL = {}
 
 AccessorFunc( PANEL, "Padding", "Padding" )
 
-local BAR_W = 15
+-- Touch-friendly metrics (strip width): default follows system.IsAndroid()
+-- (never IsLinux); hl2sb_touch_ui overrides.  Same convar as DVScrollBar.
+CreateClientConVar( "hl2sb_touch_ui", system.IsAndroid() and "1" or "0", true, false )
+
+local function TouchUI()
+	local cv = GetConVar( "hl2sb_touch_ui" )
+	return cv and cv:GetInt() == 1
+end
+
+local function BarWidth()
+	return TouchUI() and 24 or 15		-- GMod's DVScrollBar is 15px wide
+end
 
 function PANEL:Init()
 	self.pnlCanvas = vgui.Create( "DPanel", self, "ContentContainer" )
@@ -178,17 +189,18 @@ function PANEL:PerformLayoutInternal()
 	local Wide = self:GetWide() - pad * 2
 	local YPos = 0
 
-	-- Reserve the bar strip (the same width the previous fork implementation
-	-- and GMod's DPanelList:PerformLayout use) instead of Dock(RIGHT).
-	self.VBar:SetPos( self:GetWide() - BAR_W, 0 )
-	self.VBar:SetSize( BAR_W, self:GetTall() )
+	-- Reserve the bar strip (GMod's DVScrollBar width, 24px on touch) instead
+	-- of Dock(RIGHT).
+	local barW = BarWidth()
+	self.VBar:SetPos( self:GetWide() - barW, 0 )
+	self.VBar:SetSize( barW, self:GetTall() )
 
 	self:Rebuild()
 
 	self.VBar:SetUp( self:GetTall(), self.pnlCanvas:GetTall() )
 	YPos = self.VBar:GetOffset()
 
-	if ( self.VBar.Enabled ) then Wide = Wide - BAR_W end
+	if ( self.VBar.Enabled ) then Wide = Wide - barW end
 
 	self.pnlCanvas:SetPos( pad, YPos + pad )
 	self.pnlCanvas:SetWide( Wide )
