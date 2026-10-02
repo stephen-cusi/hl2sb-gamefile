@@ -43,8 +43,8 @@ local function Dump( strTag, pnl, ... )
 	Msg( "\n" )
 end
 
---- Wrap one method of one registered control: run it, then (once per panel)
---- print the dump the caller builds from the post-call state.
+--- Wrap one method of one registered control: run it, then let the caller's
+--- dump decide what (and how often) to print from the post-call state.
 local function WrapAfter( strClass, strMethod, fnDump )
 	local cls = vgui.GetControlTable( strClass )
 
@@ -58,8 +58,7 @@ local function WrapAfter( strClass, strMethod, fnDump )
 	cls[ strMethod ] = function( self, ... )
 		local r = { old( self, ... ) }
 
-		if ( DbgEnabled() and not self.m_bDermaDbgDump ) then
-			self.m_bDermaDbgDump = true
+		if ( DbgEnabled() ) then
 			fnDump( self )
 		end
 
@@ -67,17 +66,35 @@ local function WrapAfter( strClass, strMethod, fnDump )
 	end
 end
 
+local function Once( pnl, strKey )
+	if ( pnl.m_bDermaDbgDone == nil ) then pnl.m_bDermaDbgDone = {} end
+
+	if ( pnl.m_bDermaDbgDone[ strKey ] ) then return false end
+
+	pnl.m_bDermaDbgDone[ strKey ] = true
+	return true
+end
+
 -- symptom: which paint path draws a row's text, and with which alignment
 WrapAfter( "DButton", "Paint", function( pnl )
+	if ( not Once( pnl, "paint" ) ) then return end
+
 	Dump( "DButton paint", pnl,
 		"align=" .. tostring( pnl.m_iContentAlignment ),
 		"font=" .. tostring( pnl.m_strFont ),
 		"text=" .. string.sub( tostring( pnl.m_strText or "" ), 1, 24 ) )
 end )
 
--- symptom: the DNumSlider row's child layout (label / scratch / slider / entry)
+-- symptom: the DNumSlider row's child layout (label / scratch / slider / entry).
+-- Dumps the first three layouts per panel, not just one: a layout that runs once
+-- with creation bounds and never again is exactly what we are hunting.
 WrapAfter( "DNumSlider", "PerformLayout", function( pnl )
-	Dump( "DNumSlider", pnl,
+	if ( not pnl.m_bDermaDbgCount ) then pnl.m_bDermaDbgCount = 0 end
+	pnl.m_bDermaDbgCount = pnl.m_bDermaDbgCount + 1
+
+	if ( pnl.m_bDermaDbgCount > 3 ) then return end
+
+	Dump( "DNumSlider pass " .. pnl.m_bDermaDbgCount, pnl,
 		"Label" .. Bounds( pnl.Label ),
 		"Scratch" .. Bounds( pnl.Scratch ),
 		"Slider" .. Bounds( pnl.Slider ),
@@ -85,22 +102,28 @@ WrapAfter( "DNumSlider", "PerformLayout", function( pnl )
 		"label='" .. tostring( pnl.Label and pnl.Label.GetText and pnl.Label:GetText() or "" ) .. "'" )
 end )
 
--- symptom: what the DPanelList gave its canvas, bar and rows
+-- symptom: what the DPanelList gave its canvas, bar and rows (first pass only)
 WrapAfter( "DPanelList", "PerformLayout", function( pnl )
+	if ( not Once( pnl, "layout" ) ) then return end
+
 	local canvas = pnl.GetCanvas and pnl:GetCanvas()
 	local bar = pnl.GetVBar and pnl:GetVBar()
 	local items = pnl.GetItems and pnl:GetItems() or {}
-	local first = items[ 1 ]
 
 	Dump( "DPanelList", pnl,
 		"canvas" .. Bounds( canvas ),
 		"bar" .. Bounds( bar ) .. " enabled=" .. tostring( bar and bar.Enabled ),
-		"items=" .. tostring( #items ),
-		"item1" .. Bounds( first ) )
+		"items=" .. tostring( #items ) )
+
+	for i = 1, math.min( 8, #items ) do
+		Dump( "DPanelList item " .. i, items[ i ] )
+	end
 end )
 
 -- symptom: where the window divider and its drag bar actually sit
 WrapAfter( "DHorizontalDivider", "PerformLayout", function( pnl )
+	if ( not Once( pnl, "layout" ) ) then return end
+
 	Dump( "DHorizontalDivider", pnl,
 		"bar" .. Bounds( pnl.m_pBar ),
 		"left" .. Bounds( pnl.m_pLeft ),
