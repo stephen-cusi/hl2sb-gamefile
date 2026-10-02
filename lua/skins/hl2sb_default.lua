@@ -485,7 +485,10 @@ function SKIN:PaintNumSlider( pnl, w, h )
 	surface.DrawSetColor( notchColor.r, notchColor.g, notchColor.b, notchColor.a )
 	surface.DrawRect( 8, h / 2 - 1, w - 15, 1 )
 
-	PaintNotches( 8, h / 2 - 1, w - 16, 1, pnl.GetNotches and pnl:GetNotches() )
+	-- GMod draws the ticks 4px below the line (they sit in the groove of its
+	-- textured slider); on this flat-line theme centre them on the row's mid
+	-- line instead, so every element shares one centre.
+	PaintNotches( 8, h / 2 - 6, w - 16, 1, pnl.GetNotches and pnl:GetNotches() )
 
 end
 

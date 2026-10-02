@@ -21,6 +21,13 @@
 	older scripts that poke the bar keep working.
 --]]
 
+-- Touch-friendly metrics, same convar as DVScrollBar/DScrollPanel.
+CreateClientConVar( "hl2sb_touch_ui", system.IsAndroid() and "1" or "0", true, false )
+
+local function TouchBarWidth()
+	return GetConVar( "hl2sb_touch_ui" ):GetInt() == 1 and 24 or 15
+end
+
 local PANEL = {}
 
 -- The base implementation this file's layout chains to.  Deliberately NOT
@@ -441,7 +448,7 @@ function PANEL:PerformLayout( w, h )
 	local pad = self:GetPadding()
 	local bar = self:GetVBar()
 	local canvas = self:GetCanvas()
-	local barW = 15
+	local barW = TouchBarWidth()
 
 	-- The base DScrollPanel sizes its canvas inside PerformLayoutInternal; this
 	-- list cannot run that loop (see Init - PANEL:Rebuild defers with

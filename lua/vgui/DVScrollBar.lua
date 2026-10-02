@@ -27,6 +27,20 @@
 
 local PANEL = {}
 
+-- Touch-friendly metrics: the strip, its buttons and the hit targets grow on
+-- touch screens.  Default follows system.IsAndroid() (never IsLinux - that is
+-- also true on desktop); hl2sb_touch_ui overrides either way.
+CreateClientConVar( "hl2sb_touch_ui", system.IsAndroid() and "1" or "0", true, false )
+
+local function TouchUI()
+	local cv = GetConVar( "hl2sb_touch_ui" )
+	return cv and cv:GetInt() == 1
+end
+
+function PANEL:BarWidth()
+	return TouchUI() and 24 or 15
+end
+
 AccessorFunc( PANEL, "m_HideButtons", "HideButtons" )
 
 --- The arrows GMod's skin paints; see the header for why they are drawn here.
@@ -40,25 +54,25 @@ local function PaintArrow( pnl, w, h, bDown )
 	if ( pnl.m_bDepressed ) then bright = 255
 	elseif ( pnl.m_bHover ) then bright = 235 end
 
+	-- GMod's default skin draws the scroller buttons as a textured rectangle
+	-- with an arrow inside.  Same shape here: a rectangular plate across the
+	-- whole button with a centred triangle, fully inside the button bounds
+	-- (the previous free-floating chevron rendered as a diamond spilling over
+	-- the panel edge).
 	surface.DrawSetColor( 56, 60, 68, 255 )
-	surface.DrawFilledRect( 0, 0, w, h )
+	surface.DrawRect( 0, 0, w, h )
 
 	surface.DrawSetColor( bright, bright, bright, 255 )
 
-	local half = ( h - 1 ) * 0.5
-	if ( half <= 0 ) then half = 1 end
+	local cx = math.floor( w * 0.5 )
+	local halfBase = math.floor( w * 0.5 ) - 2
+	local top = 4
+	local rows = h - 8
 
-	for y = 0, h - 1 do
-		local f = 1 - math.abs( y - half ) / half			-- 1 on the middle row
-		local len = math.max( 1, math.floor( ( w - 6 ) * f ) )
-
-		if ( bDown ) then
-			surface.DrawFilledRect( math.floor( w * 0.5 ) - math.floor( len * 0.5 ), h - 1 - y,
-				math.floor( w * 0.5 ) + math.ceil( len * 0.5 ), h - y )
-		else
-			surface.DrawFilledRect( math.floor( w * 0.5 ) - math.floor( len * 0.5 ), y,
-				math.floor( w * 0.5 ) + math.ceil( len * 0.5 ), y + 1 )
-		end
+	for i = 0, rows do
+		local fromTop = bDown and i or ( rows - i )
+		local inset = math.floor( fromTop * halfBase / rows )
+		surface.DrawRect( cx - halfBase + inset, top + i, ( halfBase - inset ) * 2, 1 )
 	end
 end
 
@@ -229,7 +243,7 @@ function PANEL:OnCursorMoved( lx, ly )
 	y = y - self.btnUp:GetTall()
 	y = y - self.HoldPos
 
-	local BtnHeight = self:GetWide()
+	local BtnHeight = self:BarWidth()
 	if ( self:GetHideButtons() ) then BtnHeight = 0 end
 
 	local TrackSize = self:GetTall() - BtnHeight * 2 - self.btnGrip:GetTall()
@@ -253,7 +267,7 @@ function PANEL:Grip()
 end
 
 function PANEL:PerformLayout()
-	local Wide = self:GetWide()
+	local Wide = self:BarWidth()
 	local BtnHeight = Wide
 	if ( self:GetHideButtons() ) then BtnHeight = 0 end
 	local Scroll = self:GetScroll() / self.CanvasSize
