@@ -1,6 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\mobs\ghast_fire"
-    "$selfillum"   "1"
-    "$halflambert" "1"
-    "$surfaceprop" "Mcloth"
-}

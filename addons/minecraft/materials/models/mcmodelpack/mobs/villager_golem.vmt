@@ -1,6 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture"  "models\MCModelPack\mobs\villager_golem"
-    "$surfaceprop"  "mmetal"
-    "$halflambert"  "1"
-    "$model"        "1"
-}

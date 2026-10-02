@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\mobs\pigzombie2"
-    "$translucent" 1
-    "$surfaceprop" "flesh"
-}

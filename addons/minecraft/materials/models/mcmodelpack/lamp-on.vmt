@@ -1,5 +1,0 @@
-"unlitgeneric" {
-    "$basetexture"  "models\MCModelPack\lamp-on"
-    "$surfaceprop"  "Mrock"
-    "$reflectivity" "[0.675 0.675 0.675]"
-}

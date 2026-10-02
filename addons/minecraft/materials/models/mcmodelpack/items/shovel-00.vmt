@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\items\shovel-00"
-    "$halflambert" "1"
-    "$surfaceprop" "Mwood"
-}

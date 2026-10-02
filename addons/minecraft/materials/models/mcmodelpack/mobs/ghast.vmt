@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\mobs\ghast"
-    "$surfaceprop" "Mcloth"
-    "$halflambert" "1"
-}

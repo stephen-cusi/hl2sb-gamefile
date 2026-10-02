@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\items\melon2"
-    "$halflambert" "1"
-    "$surfaceprop" "Mpumpkin"
-}

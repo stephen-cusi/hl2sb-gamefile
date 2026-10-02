@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\items\sugar"
-    "$halflambert" "1"
-    "$surfaceprop" "Msand"
-}

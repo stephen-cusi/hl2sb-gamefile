@@ -1,6 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\mobs\creeper"
-    "$surfaceprop" "Mleaves"
-    "$halflambert" "1"
-    "$model"       "1"
-}

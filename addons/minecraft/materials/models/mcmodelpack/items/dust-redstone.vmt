@@ -1,4 +1,0 @@
-"unlitgeneric" {
-    "$basetexture" "models\MCModelPack\items\dust-redstone"
-    "$surfaceprop" "Msand"
-}

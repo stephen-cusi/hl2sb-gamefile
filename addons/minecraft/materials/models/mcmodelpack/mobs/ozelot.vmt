@@ -1,6 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\mobs\ozelot"
-    "$surfaceprop" "flesh"
-    "$halflambert" "1"
-    "$model"       "1"
-}

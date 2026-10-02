@@ -1,5 +1,0 @@
-"unlitgeneric" {
-    "$basetexture" "models\MCModelPack\night"
-    "$nofog"       "1"
-//    "$nocull"      "1"
-}

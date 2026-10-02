@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\rail-activator1"
-    "$surfaceprop" "Mwood"
-    "$halflambert"  "1"
-}

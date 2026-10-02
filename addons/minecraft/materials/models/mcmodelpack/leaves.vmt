@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\leaves"
-    "$surfaceprop" "Mfoliage"
-    "$alphatest"   "1"
-}

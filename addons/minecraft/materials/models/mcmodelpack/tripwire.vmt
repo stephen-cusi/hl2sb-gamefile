@@ -1,6 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\tripwire"
-    "$surfaceprop" "Mwood"
-    "$halflambert"  "1"
-    "$alphatest"   "1"
-}

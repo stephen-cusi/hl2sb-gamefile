@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\items\pickaxe-00"
-    "$halflambert" "1"
-    "$surfaceprop" "Mwood"
-}

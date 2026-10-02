@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\items\clock"
-    "$surfaceprop" "Mmetal"
-    "$halflambert" "1"
-}

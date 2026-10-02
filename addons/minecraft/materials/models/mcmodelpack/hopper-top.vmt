@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture"  "models\MCModelPack\hopper-top"
-    "$surfaceprop"  "Mmetal"
-    "$halflambert"  "1"
-}

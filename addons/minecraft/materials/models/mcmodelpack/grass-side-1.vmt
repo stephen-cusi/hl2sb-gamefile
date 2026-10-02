@@ -1,6 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture"  "models\MCModelPack\grass-side-1"
-    "$surfaceprop"  "Mdirt"
-    "$halflambert"  "1"
-    "$reflectivity" "[0.675 0.675 0.675]"
-}

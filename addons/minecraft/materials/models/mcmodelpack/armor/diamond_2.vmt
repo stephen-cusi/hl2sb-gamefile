@@ -1,6 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\armor\diamond_2"
-    "$surfaceprop" "Mglass"
-    "$halflambert" "1"
-    "$nocull"      "1"
-}

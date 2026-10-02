@@ -1,6 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\mobs\cow-pcg"
-    "$surfaceprop" "Mflesh"
-    "$halflambert" "1"
-}
-// No voodoo spell... Sry ;)

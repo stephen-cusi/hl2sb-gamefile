@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\items\spawnegg-spots_color"
-    "$halflambert" "1"
-    "$surfaceprop" "Mplastic"
-}
