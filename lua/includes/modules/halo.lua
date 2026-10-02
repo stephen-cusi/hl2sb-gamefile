@@ -1,55 +1,40 @@
-module( "halo", package.seeall )
+-- HL2SB (2026-10-03): GMod's halo module, the upstream RT pipeline restored
+-- as the primary renderer (garrysmod/lua/includes/modules/halo.lua, verbatim
+-- Render below).  The 2026-09-26 rewrite replaced this pipeline with
+-- additive glow rings because the scene copy/restore blacked the screen on
+-- this engine's DX9 layer back then; every missing piece landed since
+-- (CopyRenderTargetToTexture with the correct source rect, the allocation-
+-- window screen-effect textures, UpdateScreenEffectTexture, the pp/copy|
+-- add|sub materials, real cam.IgnoreZ, BlurRenderTarget) so the original
+-- pipeline runs again.  The ring renderer survives behind halo_engine_rt 0
+-- as the instant fallback if the copy path ever regresses.
+--
+-- Fork deltas inside the upstream path, all mechanical:
+--   * module-reload guard (this engine's dofolder pass re-appends loaded
+--     files instead of honouring package.loaded, which would stack a second
+--     PostDrawEffects hook);
+--   * STUDIO_SKIP_DECALS keeps its "or 0" tolerance (upstream comment: the
+--     value is not defined in this engine);
+--   * the PostDrawEffects loop runs each Render behind a fuse that resets
+--     the stencil/override state on error (upstream has no fuse).
 
--- HL2SB (2026-09-26): GMod halo, reimplemented WITHOUT render targets.
---
--- GMod's upstream modules/halo.lua is a render-target pipeline (copy the
--- scene -> clear black -> draw silhouettes -> blur -> restore the scene ->
--- composite).  Ported 1:1 to this fork it BLACK-SCREENED every hold: the
--- scene-copy/restore steps did not survive this engine's DX9 layer on
--- Windows-on-ARM (the frame went black the moment the pass ran, with zero
--- Lua errors -- every binding returned successfully and the screen still
--- died), and the earlier fork's own note on the CopyFrameToTexture binding
--- records the same class of failure.  Rather than keep guessing at the
--- copy, this renderer reproduces what GMod's blur PRODUCES -- a soft glow
--- halo around the silhouette -- using an approach that provably cannot
--- black the screen:
---
---   * nothing is ever cleared;
---   * no render target is ever bound or copied;
---   * the only operations are additive model draws.
---
--- What GMod's gaussian blur does to a solid silhouette is smear its colour
--- outward in a radial falloff.  The same image is produced by redrawing the
--- silhouette many times at increasing radial offsets with decreasing
--- additive alpha ("accumulation blur").  The silhouette is stencil-marked
--- once so the innermost copies do not over-fill the object; the outer rings
--- are what read as the glow.
---
--- The API and the per-frame contract are GMod's: Add(...), RenderedEntity(),
--- and the PostDrawEffects pass that runs PreDrawHalos first.  The fork's
--- physgun wiring (lua/autorun/client/hl2sb_physgun_halo.lua) is the upstream
--- sandbox block and needs no change.
-
-if ( CreateClientConVar != nil ) then
-	CreateClientConVar( "halo_draw", "1", true, false, "Halo renderer: 1 = additive glow rings (default), 0 = flat tint" )
+if ( _G.halo and _G.halo.Add and _G.halo.RenderedEntity ) then
+	return _G.halo
 end
 
-local matGlow = Material( "models/effects/hl2sb_halo_rim" )	-- additive, culls front faces
-local matFlat = Material( "models/effects/hl2sb_physgun_glow" )	-- additive, no cull
+module( "halo", package.seeall )
+
+local mat_Copy		= Material( "pp/copy" )
+local mat_Add		= Material( "pp/add" )
+local mat_Sub		= Material( "pp/sub" )
+local rt_Store		= render.GetScreenEffectTexture( 0 )
+local rt_Blur		= render.GetScreenEffectTexture( 1 )
 
 local List = {}
 local RenderEnt = NULL
+-- TODO: Remove "or 0" after some update
+-- There's no point in filling the real value of STUDIO_SKIP_DECALS as the current client doesn't support it anyway
 local modelFlags = bit.bor( STUDIO_RENDER, STUDIO_SKIP_DECALS or 0 )
-
--- Cheapest possible convar read that does not depend on the unfinished
--- gmod_compat convar bridge (see the original 2026-09-24 note).
-local function CvInt( name, iDefault )
-	local ok, cv = pcall( ConVar, name )
-	if ( !ok or cv == nil ) then return iDefault end
-	if ( cv.GetInt == nil ) then return iDefault end
-	local ok2, v = pcall( cv.GetInt, cv )
-	return ( ok2 and type( v ) == "number" ) and v or iDefault
-end
 
 function Add( entities, color, blurx, blury, passes, add, ignorez )
 
@@ -57,20 +42,146 @@ function Add( entities, color, blurx, blury, passes, add, ignorez )
 	if ( add == nil ) then add = true end
 	if ( ignorez == nil ) then ignorez = false end
 
-	table.insert( List, {
-		Ents		= entities,
-		Color		= color,
-		BlurX		= blurx or 2,
-		BlurY		= blury or 2,
-		DrawPasses	= passes or 1,
-		Additive	= add,
-		IgnoreZ		= ignorez
-	} )
+	local t =
+	{
+		Ents = entities,
+		Color = color,
+		BlurX = blurx or 2,
+		BlurY = blury or 2,
+		DrawPasses = passes or 1,
+		Additive = add,
+		IgnoreZ = ignorez
+	}
+
+	table.insert( List, t )
 
 end
 
 function RenderedEntity()
 	return RenderEnt
+end
+
+function Render( entry )
+
+	local rt_Scene = render.GetRenderTarget()
+
+	-- Store a copy of the original scene
+	render.CopyRenderTargetToTexture( rt_Store )
+
+	-- Clear our scene so that additive/subtractive rendering with it will work later
+	if ( entry.Additive ) then
+		render.Clear( 0, 0, 0, 255, false, true )
+	else
+		render.Clear( 255, 255, 255, 255, false, true )
+	end
+
+	-- For certain materials this is necessary to not have the entire screen go pitch black
+	-- For example the glass doors in Episode 2 GMan sequence
+	render.UpdateRefractTexture()
+
+	-- Render colored props to the scene and set their pixels high
+	cam.Start3D()
+		render.SetStencilEnable( true )
+			render.SuppressEngineLighting( true )
+			cam.IgnoreZ( entry.IgnoreZ )
+
+				render.SetStencilWriteMask( 1 )
+				render.SetStencilTestMask( 1 )
+				render.SetStencilReferenceValue( 1 )
+
+				render.SetStencilCompareFunction( STENCIL_ALWAYS )
+				render.SetStencilPassOperation( STENCIL_REPLACE )
+				render.SetStencilFailOperation( STENCIL_KEEP )
+				render.SetStencilZFailOperation( STENCIL_KEEP )
+
+					for k, v in pairs( entry.Ents ) do
+						if ( !IsValid( v ) or v:GetNoDraw() ) then continue end
+
+						RenderEnt = v
+
+						v:DrawModel( modelFlags )
+					end
+
+					RenderEnt = NULL
+
+				render.SetStencilCompareFunction( STENCIL_EQUAL )
+				render.SetStencilPassOperation( STENCIL_KEEP )
+				-- render.SetStencilFailOperation( STENCIL_KEEP )
+				-- render.SetStencilZFailOperation( STENCIL_KEEP )
+
+					cam.Start2D()
+						local entryColor = entry.Color
+						surface.SetDrawColor( entryColor.r, entryColor.g, entryColor.b, entryColor.a )
+						surface.DrawRect( 0, 0, ScrW(), ScrH() )
+					cam.End2D()
+
+			cam.IgnoreZ( false )
+			render.SuppressEngineLighting( false )
+		render.SetStencilEnable( false )
+	cam.End3D()
+
+	-- Store a blurred version of the colored props in an RT
+	render.CopyRenderTargetToTexture( rt_Blur )
+	render.BlurRenderTarget( rt_Blur, entry.BlurX, entry.BlurY, 1 )
+
+	-- Restore the original scene
+	render.SetRenderTarget( rt_Scene )
+	mat_Copy:SetTexture( "$basetexture", rt_Store )
+	mat_Copy:SetString( "$color", "1 1 1" )
+	mat_Copy:SetString( "$alpha", "1" )
+	render.SetMaterial( mat_Copy )
+	render.DrawScreenQuad()
+
+	-- Draw back our blured colored props additively/subtractively, ignoring the high bits
+	render.SetStencilEnable( true )
+
+		render.SetStencilCompareFunction( STENCIL_NOTEQUAL )
+		-- render.SetStencilPassOperation( STENCIL_KEEP )
+		-- render.SetStencilFailOperation( STENCIL_KEEP )
+		-- render.SetStencilZFailOperation( STENCIL_KEEP )
+
+		if ( entry.Additive ) then
+			mat_Add:SetTexture( "$basetexture", rt_Blur )
+			render.SetMaterial( mat_Add )
+		else
+			mat_Sub:SetTexture( "$basetexture", rt_Blur )
+			render.SetMaterial( mat_Sub )
+		end
+
+		for i = 0, entry.DrawPasses do
+			render.DrawScreenQuad()
+		end
+
+	render.SetStencilEnable( false )
+
+	-- Return original values
+	render.SetStencilTestMask( 0 )
+	render.SetStencilWriteMask( 0 )
+	render.SetStencilReferenceValue( 0 )
+
+end
+
+-- ---------------------------------------------------------------------------
+-- FALLBACK: the additive glow-ring renderer (the 2026-09-26 rewrite), kept
+-- as the halo_engine_rt 0 path.  It reproduces what the upstream gaussian
+-- blur produces around a silhouette without ever touching a render target,
+-- so a copy-path regression can never black the screen.
+-- ---------------------------------------------------------------------------
+
+if ( CreateClientConVar != nil ) then
+	CreateClientConVar( "halo_engine_rt", "1", true, false, "Halo renderer: 1 = upstream RT blur pipeline, 0 = additive glow rings" )
+	CreateClientConVar( "halo_draw", "1", true, false, "Fallback renderer detail: 1 = glow rings, 0 = flat tint" )
+end
+
+local matGlow = Material( "models/effects/hl2sb_halo_rim" )	-- additive, culls front faces
+local matFlat = Material( "models/effects/hl2sb_physgun_glow" )	-- additive, no cull
+
+local function CvInt( name, iDefault )
+	local ok, cv = pcall( ConVar, name )
+	if ( !ok or cv == nil ) then return iDefault end
+	if ( cv.GetInt == nil ) then return iDefault end
+	local ok2, v = pcall( cv.GetInt, cv )
+	return ( ok2 and type( v ) == "number" ) and v or iDefault
 end
 
 -- Keep only drawable STUDIO models: brush models (gm_construct's mirror) and
@@ -116,17 +227,9 @@ local function RenderGlow( entry )
 	local targets = CollectValid( entry )
 	if ( #targets == 0 ) then return end
 
-	-- Radius step scales with the requested blur (GMod's blurx/blury): the
-	-- upstream defaults 2/2 give the classic tight physgun halo; bigger
-	-- values widen it.  The step is in degrees of camera rotation, the
-	-- screen-space offset an angular shift produces for a nearby object.
 	local blur = ( ( entry.BlurX or 2 ) + ( entry.BlurY or 2 ) ) * 0.5
 	local baseDeg = 0.16 + 0.05 * blur
 
-	-- Heavy models pay SetupBones + DrawModel per pass; vehicles get the
-	-- four/six-cardinal ring with a wider step (same coverage, far fewer
-	-- draws) -- the 2026-09-24 finding that nine draws of an airboat was the
-	-- frame-time cliff on this x64-on-ARM build.
 	local dirs, rings = RING_DIRS, RINGS
 	local t1 = targets[ 1 ]
 	if ( t1 != nil && type( t1.IsVehicle ) == "function" && t1:IsVehicle() ) then
@@ -149,10 +252,6 @@ local function RenderGlow( entry )
 
 	cam.Start3D()
 
-		-- Mark the TRUE silhouette in the stencil with an invisible additive
-		-- draw (blend 0 still writes stencil), depth ignored so it is stable
-		-- every frame.  The glow passes then skip these pixels so the object
-		-- itself is not filled in.
 		render.ClearStencilBufferRectangle( 0, 0, ScrW(), ScrH(), 0 )
 		render.SetStencilEnable( true )
 		render.SetStencilWriteMask( 1 )
@@ -171,20 +270,12 @@ local function RenderGlow( entry )
 				targets[ k ]:DrawModel( modelFlags )
 			end
 
-			-- Glow rings: additive, outside the silhouette only.
 			cam.IgnoreZ( entry.IgnoreZ == true )
 			render.SetStencilCompareFunction( STENCIL_NOTEQUAL )
-			render.CullMode( 1 )		-- MATERIAL_CULLMODE_CW: cull front faces so the offset copy is a shell
+			render.CullMode( 1 )
 			render.SetColorModulation( cr, cg, cb )
 			render.ModelMaterialOverride( matGlow )
 
-			-- 2026-09-27: user report "生效但微乎其微".  The old math divided the
-			-- total by EVERY draw (12 dirs x 3 rings = 36), leaving ~0.07
-			-- additive per copy -- but the angular offsets are tiny, so most
-			-- copies land on the same edge pixels and the accumulated ring
-			-- read at a fraction of GMod's outline strength.  Per-draw alpha
-			-- is now a constant (~4x the old accumulated result); the ring
-			-- brightness then scales naturally with how many copies overlap.
 			local perPass = math.min( ca * ( entry.Additive and 0.25 or 0.15 ), 1 )
 
 			for ri = 1, #rings do
@@ -250,11 +341,19 @@ local function RenderFlat( entry )
 	RenderEnt = NULL
 end
 
-function Render( entry )
+local function RenderUpstream( entry )
 	if ( CvInt( "halo_draw", 1 ) == 0 ) then
 		return RenderFlat( entry )
 	end
 	return RenderGlow( entry )
+end
+
+-- The public dispatch: upstream RT pipeline unless switched off.
+local function RenderDispatch( entry )
+	if ( CvInt( "halo_engine_rt", 1 ) == 0 ) then
+		return RenderUpstream( entry )
+	end
+	return Render( entry )
 end
 
 hook.Add( "PostDrawEffects", "RenderHalos", function()
@@ -268,10 +367,11 @@ hook.Add( "PostDrawEffects", "RenderHalos", function()
 
 	for k, v in ipairs( List ) do
 
-		-- Fuse: a failure can never leave the frame half-drawn.  This
-		-- renderer opens no render targets, so recovery is just resetting
-		-- the state it touches.
-		local ok, err = pcall( Render, v )
+		-- Fuse: a failure can never leave the frame half-drawn.  Both
+		-- renderers leave stencil/override state behind on error; reset
+		-- everything the upstream tail restores, plus the override knobs
+		-- the fallback uses.
+		local ok, err = pcall( RenderDispatch, v )
 
 		if ( !ok ) then
 			render.SetStencilEnable( false )
@@ -282,6 +382,8 @@ hook.Add( "PostDrawEffects", "RenderHalos", function()
 			render.SetBlend( 1 )
 			render.SetColorModulation( 1, 1, 1 )
 			render.CullMode( 0 )
+			render.SuppressEngineLighting( false )
+			cam.IgnoreZ( false )
 			RenderEnt = NULL
 
 			print( "[HL2SB halo] render failed: " .. tostring( err ) )
