@@ -44,7 +44,10 @@ function PANEL:Init()
 
 	self.Knob = vgui.Create( "DButton", self )
 	self.Knob:SetText( "" )
-	self.Knob:SetSize( 15, 15 )
+	-- GMod's knob is 15x15; 20x20 on touch screens (same convar as DVScrollBar).
+	CreateClientConVar( "hl2sb_touch_ui", system.IsAndroid() and "1" or "0", true, false )
+	local knobSize = GetConVar( "hl2sb_touch_ui" ):GetInt() == 1 and 20 or 15
+	self.Knob:SetSize( knobSize, knobSize )
 	self.Knob:NoClipping( true )
 	self.Knob.Paint = function( panel, w, h ) derma.SkinHook( "Paint", "SliderKnob", panel, w, h ) end
 	self.Knob.OnCursorMoved = function( panel, x, y )
