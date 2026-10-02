@@ -23,6 +23,8 @@
                         with a 20px font, and the scrollbar strip is 24px wide
                         and drag-scrollable (mouse capture keeps the drag alive
                         outside the strip - a phone has no wheel).
+                        `hl2sb_addons_touch` cycles a manual override:
+                        auto (follow the detection) -> forced on -> forced off.
 
       DERMA  (opt-in)   the GMod-style window (DFrame/DScrollPanel/
                         DCheckBoxLabel).  Available with the console command
@@ -75,7 +77,14 @@ MOUSE_RIGHT = MOUSE_RIGHT or ( _E and _E.MOUSE_RIGHT ) or 108
 -- convar uses (system.IsAndroid(); never IsLinux - that is also true on
 -- desktop).  The menu realm opens the Systems lib for exactly this
 -- (luasrc_init_gameui); without it the desktop layout runs.
-local TOUCH = ( system and system.IsAndroid and system.IsAndroid() ) and true or false
+-- `hl2sb_addons_touch` cycles a manual override on top of the detection:
+-- auto -> forced on -> forced off -> auto.
+local TOUCH_AUTO = ( system and system.IsAndroid and system.IsAndroid() ) and true or false
+local TOUCH_MODE = 0    -- 0 = follow the detection, 1 = force touch, 2 = force desktop
+
+local function TouchUI()
+    return ( TOUCH_MODE == 1 ) or ( TOUCH_MODE == 0 and TOUCH_AUTO )
+end
 
 local STR = {
     Title      = "插件管理",
@@ -103,7 +112,7 @@ local STR = {
 
 local FONT_TEXT  = "HL2SB_MenuText"
 local FONT_TITLE = "HL2SB_MenuTitle"
-local FONT_ROW   = TOUCH and "HL2SB_MenuTextTouch" or FONT_TEXT
+local FONT_TOUCH = "HL2SB_MenuTextTouch"   -- rows in the touch layout
 local m_FontsReady = false
 
 local function MakeFonts()
@@ -111,9 +120,9 @@ local function MakeFonts()
 
     surface.CreateFont( FONT_TEXT, { font = "Microsoft YaHei", size = 15, weight = 500, extended = true } )
     surface.CreateFont( FONT_TITLE, { font = "Microsoft YaHei", size = 17, weight = 800, extended = true } )
-    if ( TOUCH ) then
-        surface.CreateFont( FONT_ROW, { font = "Microsoft YaHei", size = 20, weight = 500, extended = true } )
-    end
+    -- always created: the touch layout can be forced onto a desktop with
+    -- hl2sb_addons_touch, so the font must exist regardless of the detection
+    surface.CreateFont( FONT_TOUCH, { font = "Microsoft YaHei", size = 20, weight = 500, extended = true } )
     m_FontsReady = true
 end
 
@@ -158,9 +167,9 @@ end
 -- metrics
 -- ---------------------------------------------------------------------------
 
-local ROW_H     = TOUCH and 40 or 26
-local M         = TOUCH and 10 or 14
-local SB_W      = TOUCH and 24 or 12   -- scrollbar strip inside the list column
+local ROW_H     = 26                   -- derma front end rows; the plain front
+                                       -- end sizes everything per open, because
+                                       -- the touch override is runtime-switchable
 local DIALOG_W  = 680                  -- desktop window width (touch fills the screen)
 
 -- ---------------------------------------------------------------------------
@@ -418,6 +427,14 @@ end
 local Open
 
 local function OpenPlain()
+    -- effective layout mode for THIS open - the override command may have
+    -- flipped it since the file loaded
+    local TOUCH    = TouchUI()
+    local ROW_H    = TOUCH and 40 or 26
+    local M        = TOUCH and 10 or 14
+    local SB_W     = TOUCH and 24 or 12
+    local FONT_ROW = TOUCH and FONT_TOUCH or FONT_TEXT
+
     local parent = VGui_GetGameUIPanel and VGui_GetGameUIPanel() or nil
     if ( not parent ) then
         Say( "[HL2SB] addonsdialog: no GameUI root panel - frame is parentless" )
@@ -1024,3 +1041,22 @@ concommand.Create( "hl2sb_addons_derma", function()
     Say( "[HL2SB] addonsdialog: derma UI " .. ( m_UseDerma and "ON" or "OFF" ) )
     CloseAndOpen()
 end, "Toggle the GMod-style (derma) addon manager window.", FCVAR_CLIENTDLL )
+
+-- Manual override for the touch layout: cycles AUTO (follow the platform
+-- detection) -> FORCED ON -> FORCED OFF, reopening the dialog so the new
+-- mode applies immediately.
+concommand.Create( "hl2sb_addons_touch", function()
+    TOUCH_MODE = ( TOUCH_MODE + 1 ) % 3
+
+    local state
+    if ( TOUCH_MODE == 0 ) then
+        state = "AUTO (" .. ( TOUCH_AUTO and "android detected" or "desktop detected" ) .. ")"
+    elseif ( TOUCH_MODE == 1 ) then
+        state = "FORCED ON"
+    else
+        state = "FORCED OFF"
+    end
+    Say( "[HL2SB] addonsdialog: touch layout " .. state )
+
+    CloseAndOpen()
+end, "Cycle the addon manager layout mode: auto, forced touch, forced desktop.", FCVAR_CLIENTDLL )
