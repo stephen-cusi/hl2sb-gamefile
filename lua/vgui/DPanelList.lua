@@ -360,10 +360,17 @@ function PANEL:ArrangeItems()
 
 		for _, item in ipairs( self.m_tItems ) do
 			if ( IsValid( item ) and item:IsVisible() ) then
-				item:SetPos( pad, y )
-
 				local itemW = w - pad * 2
 				if ( itemW > 0 ) then item:SetWide( itemW ) end
+
+				item:SetPos( pad, y )
+
+				-- GMod's dpanellist.lua:301 (its Rebuild, vertical branch): the
+				-- width change may change the item's height, so lay the item out
+				-- NOW and only then read GetTall.  A DNumSlider row carries its
+				-- whole content as Dock( LEFT/FILL/RIGHT ) children - without this
+				-- immediate pass they keep the stale width for a frame.
+				item:InvalidateLayout( true )
 
 				y = y + item:GetTall() + spacing
 			end
@@ -445,7 +452,11 @@ function PANEL:PerformLayout( w, h )
 		bar:SetSize( barW, h )
 
 		canvas:SetPos( pad, bar:GetOffset() + pad )
-		canvas:SetSize( math.max( 1, w - ( bar:Enabled() and barW or 0 ) - pad * 2 ),
+		-- Enabled is the GMod DVScrollBar FIELD (SetEnabled stores it), not a
+		-- method - the old fork bar had an Enabled() method, and calling the
+		-- field threw "attempt to call a boolean value" on every layout pass,
+		-- which killed the canvas sizing and left the whole list blank.
+		canvas:SetSize( math.max( 1, w - ( bar.Enabled and barW or 0 ) - pad * 2 ),
 			math.max( 1, h - pad * 2 ) )
 	end
 
@@ -455,7 +466,7 @@ function PANEL:PerformLayout( w, h )
 		local canvasTall = canvas:GetTall()
 		local contentH = self:ArrangeItems()
 		local bWanted = ( contentH > canvas:GetTall() )
-		local bChanged = ( bar:Enabled() ~= bWanted )
+		local bChanged = ( bar.Enabled ~= bWanted )
 
 		self:ApplyContentHeight( contentH )
 
