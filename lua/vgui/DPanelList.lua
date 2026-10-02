@@ -14,7 +14,7 @@
 	  SizeToContents/EnableHorizontal and the StretchHorizontally/NoSizing/Sortable/
 	  AnimTime/DraggableName accessors - all of them are here too.
 
-	⚠️ Base class: GMod derives it from DPanel and owns a scrollbar + canvas itself; this
+	NOTE - base class: GMod derives it from DPanel and owns a scrollbar + canvas itself; this
 	fork already has a working scroll container (lua/vgui/DScrollPanel.lua), so DPanelList
 	is built on top of THAT and inherits its canvas, bar, wheel handling and clipping.
 	The wiki's API is unchanged, and `DPanelList.VBar` is published as a field so the
@@ -23,7 +23,7 @@
 
 local PANEL = {}
 
--- The base implementation this file's layout chains to.  ⚠️ Deliberately NOT
+-- The base implementation this file's layout chains to.  Deliberately NOT
 -- `self.BaseClass`: for a derived control (DPanelSelect, DModelSelect...) that proxy
 -- resolves from the *parent* class, so after this file defines PerformLayout,
 -- self.BaseClass.PerformLayout would be this very function and the call below would
@@ -41,6 +41,17 @@ AccessorFunc( PANEL, "m_strDraggableName", "DraggableName" )
 function PANEL:Init()
 	-- DScrollPanel:Init already ran (the derma framework calls the chain's Inits
 	-- root-most first), so the canvas and the bar exist by now.
+	--
+	-- The base wires pnlCanvas.PerformLayout to its own measure loop
+	-- (PerformLayoutInternal -> Rebuild -> SizeToChildren).  This list must NOT
+	-- run that loop: its PANEL:Rebuild defers with InvalidateLayout, so the
+	-- hook would re-flag the list's layout on every pass and never settle.
+	-- This list arranges its own items in PerformLayout/ArrangeItems instead.
+	-- GMod's dpanellist.lua wires the canvas the same way (its Init lines
+	-- 22-24): the measure hook goes, child removals refresh the list.
+	self.pnlCanvas.PerformLayout = function() end
+	self.pnlCanvas.OnChildRemoved = function() self:OnChildRemoved() end
+
 	self.m_tItems = {}
 	self.m_iSpacing = 4
 	self.m_bAutoSize = false
@@ -144,7 +155,7 @@ end
 
 --- Wiki: "Hides all child panels, and optionally deletes them."
 ---
---- ⚠️ GMod semantics: the items leave the list EITHER WAY.  This port used to
+--- GMod semantics: the items leave the list EITHER WAY.  This port used to
 --- keep them in m_tItems when `remove` was falsy, so a caller doing Clear()
 --- followed by AddItem() -- the spawn menu, every tab/category/search switch --
 --- STACKED a fresh invisible copy of the whole list every time.  After ten
@@ -286,7 +297,7 @@ end
 -------------------------------------------------------------------------------
 --- Place every visible item and return the content height.
 ---
---- ⚠️ This is GMod's PerformLayout body, and it MUST run after the canvas has its real
+--- This is GMod's PerformLayout body, and it MUST run after the canvas has its real
 --- width - see PANEL:PerformLayout below for the bug that taught us that.
 function PANEL:ArrangeItems()
 	local canvas = self:GetCanvas()
@@ -403,7 +414,7 @@ end
 
 --- Wiki: "Used internally to rebuild the child panel positions."
 function PANEL:Rebuild()
-	-- ⚠️ 2026-09-17 - the reason the icon grid came out as ONE COLUMN: this used to run
+	-- 2026-09-17 - the reason the icon grid came out as ONE COLUMN: this used to run
 	-- the whole arrangement from here, and the only callers are AddItem / Clear /
 	-- SetSpacing / ... i.e. while the list is still being built.  Back then the canvas
 	-- was 1 px wide (DScrollPanel sizes it in PerformLayout, which had not run yet), so
@@ -418,40 +429,47 @@ function PANEL:PerformLayout( w, h )
 	w = w or self:GetWide()
 	h = h or self:GetTall()
 
-	-- The base (DScrollPanel) sizes the canvas and the bar.  The bar only claims its
-	-- width while it is ENABLED, so a bar that just turned visible narrows the canvas
-	-- and can push one more item onto the next row - measure twice when that happened.
+	local pad = self:GetPadding()
+	local bar = self:GetVBar()
+	local canvas = self:GetCanvas()
+	local barW = 14
+
+	-- The base DScrollPanel sizes its canvas inside PerformLayoutInternal; this
+	-- list cannot run that loop (see Init - PANEL:Rebuild defers with
+	-- InvalidateLayout), so the canvas and the bar strip are sized right here
+	-- with the same numbers the base uses.  The canvas y carries the bar's
+	-- offset so a scroll keeps its position across layout passes (GMod's
+	-- dpanellist.lua:368 applies GetOffset() the same way).
 	local function LayoutCanvas()
-		if ( BaseClass and isfunction( BaseClass.PerformLayout ) ) then
-			BaseClass.PerformLayout( self, w, h )
-			return
-		end
+		bar:SetPos( w - barW, 0 )
+		bar:SetSize( barW, h )
 
-		-- Insurance: if the base class cannot be resolved (baseclass.Get is the only
-		-- route to it) the canvas would stay 1 px wide and the grid would silently
-		-- collapse back into the single column this file exists to fix.  Size the canvas
-		-- and the bar exactly like DScrollPanel:PerformLayout does.
-		local pad = self.m_iPadding or 0
-		local bar = self:GetVBar()
-		local canvas = self:GetCanvas()
-		local barW = bar:Enabled() and 14 or 0
-
-		canvas:SetPos( pad, pad )
-		canvas:SetSize( math.max( 1, w - barW - 2 * pad ), math.max( 1, h - 2 * pad ) )
-		bar:SetPos( w - 14, 0 )
-		bar:SetSize( 14, h )
+		canvas:SetPos( pad, bar:GetOffset() + pad )
+		canvas:SetSize( math.max( 1, w - ( bar:Enabled() and barW or 0 ) - pad * 2 ),
+			math.max( 1, h - pad * 2 ) )
 	end
 
 	local function Pass()
 		LayoutCanvas()
 
+		local canvasTall = canvas:GetTall()
 		local contentH = self:ArrangeItems()
-		local canvas = self:GetCanvas()
-		local bar = self:GetVBar()
 		local bWanted = ( contentH > canvas:GetTall() )
 		local bChanged = ( bar:Enabled() ~= bWanted )
 
 		self:ApplyContentHeight( contentH )
+
+		-- GMod's dpanellist.lua:361 - give the bar the real range once the
+		-- content height has landed.  ApplyContentHeight only toggles the bar;
+		-- without SetUp its CanvasSize stays at the Init value and SetScroll
+		-- would clamp every wheel step / grip drag to a single pixel.
+		bar:SetUp( h, canvas:GetTall() )
+
+		-- dpanellist.lua:380 - when the canvas changed height, re-apply the
+		-- clamped scroll so the view is not stuck below the new range.
+		if ( canvasTall ~= canvas:GetTall() ) then
+			bar:SetScroll( bar:GetScroll() )
+		end
 
 		return bChanged
 	end
@@ -459,24 +477,20 @@ function PANEL:PerformLayout( w, h )
 	if ( Pass() ) then Pass() end
 end
 
---- GMod raises this when the list scrolls; kept as an overridable event.
-function PANEL:OnVScroll( iOffset )
-	self:SetValue( iOffset or 0 )
-end
+--- (OnVScroll is deliberately NOT overridden here.  The base DScrollPanel:OnVScroll
+--- moves the canvas by the bar's offset, which is exactly what this list needs;
+--- the previous fork override mapped the offset back through SetValue, which
+--- under the pixel scrollbar of the GMod architecture would clamp a negative
+--- offset to 0 and re-enter the bar forever.)
 
 function PANEL:Paint( w, h )
-	-- ⚠️ DScrollPanel:Paint is what SHIFTS THE CANVAS by the scroll offset
-	-- (m_pCanvas:SetPos( 0, -m_iPos )).  This override used to return before reaching
-	-- it whenever the background was off - which Init sets - so on every DPanelList
-	-- (the player model selector's Model grid and its Bodygroups page are both ones)
-	-- the wheel and the scrollbar grip updated m_iPos while the content stood still:
-	-- the "a menu page cannot be scrolled down" report (2026-09-20).  Run the base
-	-- Paint unconditionally; only the SKIN background stays optional.
-	BaseClass.Paint( self, w, h )
-
+	-- The canvas is moved by the scroll system itself now (the base
+	-- DScrollPanel:OnVScroll and this file's LayoutCanvas apply the bar's
+	-- offset); the old per-frame Paint shift is gone with the old fork scroll
+	-- scheme.  Only the SKIN background stays optional here.
 	if ( not self.m_bDrawBackground ) then return end
 
-	derma.SkinHook( "Paint", "Panel", self, w or self:GetWide(), h or self:GetTall() )
+	derma.SkinHook( "Paint", "PanelList", self, w or self:GetWide(), h or self:GetTall() )
 end
 
 function PANEL:OnChildRemoved()

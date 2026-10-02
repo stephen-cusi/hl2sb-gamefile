@@ -222,8 +222,6 @@ list.Set( "DesktopWindows", "PlayerEditor", {
 			timer.Simple( 0.1, function() UpdateFromConvars() end )
 		end
 
-		local categorized = {}
-
 		--- DELTA: populating is a function, not a one-shot loop.  The window can be
 		--- built before the models/player scan (hl2sb_playermodels.lua) has finished;
 		--- the hook below re-pulls when the scan announces its rebuild.
@@ -242,11 +240,26 @@ list.Set( "DesktopWindows", "PlayerEditor", {
 				end
 			end
 
-			for name, info in pairs( GetModelList() ) do
-				local catName = Phrase( info.category or "#spawnmenu.category.other" )
+			-- Fresh accumulator per fill.  This used to live across calls, so the
+			-- second fill (the HL2SB_PlayerModelsBuilt hook fires right after the
+			-- window is built, once the models/player scan completes) appended its
+			-- entries to the first fill's categories and every model showed up twice.
+			--
+			-- One entry per model PATH, first one wins: player_manager's list has no
+			-- path-level dedup (a plugin registration and the models/player scan can
+			-- both carry the same .mdl).
+			local categorized = {}
+			local seenPaths = {}
 
-				categorized[ catName ] = categorized[ catName ] or {}
-				table.insert( categorized[ catName ], { title = Phrase( info.title ), model = info.model, name = name } )
+			for name, info in pairs( GetModelList() ) do
+				if ( not seenPaths[ info.model ] ) then
+					seenPaths[ info.model ] = true
+
+					local catName = Phrase( info.category or "#spawnmenu.category.other" )
+
+					categorized[ catName ] = categorized[ catName ] or {}
+					table.insert( categorized[ catName ], { title = Phrase( info.title ), model = info.model, name = name } )
+				end
 			end
 
 			-- Text rows are cheap (no .mdl loads), so the old few-per-frame
@@ -274,6 +287,9 @@ list.Set( "DesktopWindows", "PlayerEditor", {
 					local okItem, errItem = pcall( function()
 						local row = vgui.Create( "DButton", canvas )
 						row:SetText( info.title )
+						-- GMod's alignment numbering (numpad grid): 4 = west, i.e.
+						-- left-aligned, vertically centred.  DButton now speaks that
+						-- table; 5 would be centred.
 						row:SetContentAlignment( 4 )
 						row:SetTextInset( 6, 0 )
 						row:SetTall( 20 )

@@ -16,6 +16,7 @@ local EngineSetEnabled = PanelMeta and PanelMeta.SetEnabled
 
 function PANEL:Init()
 	self:SetText( "" )
+	self:SetContentAlignment( 5 )		-- GMod's dbutton.lua:8 (centred captions)
 	self:SetMouseInputEnabled( true )
 	self:SetKeyBoardInputEnabled( false )
 	self:SetDrawBackground( false )
@@ -93,7 +94,7 @@ end
 --- with it; this fork's DButton derives from DPanel and neither existed, which
 --- DTab (lua/vgui/DTab.lua) needs to size itself from its caption
 --- ("local w, h = self:GetContentSize(); self:SetSize( w + 10, h )").
---- ⚠️ The text inset counts, like vgui2's `Label::GetContentSize`
+--- The text inset counts, like vgui2's `Label::GetContentSize`
 --- (`wide = (tx1 - tx0) + _textInset[0]`, vgui2/vgui_controls/Label.cpp): DTab insets
 --- its caption by `10 + icon width` first, so without it the tab is too narrow and the
 --- caption is clipped.
@@ -230,17 +231,25 @@ function PANEL:SetActionFunction( fn )
 	self.m_fnAction = fn
 end
 
---- GMod: Panel:SetContentAlignment( align ) / SetTextInset( x, y ), using
---- vgui2's Label alignment enum (public/vgui_controls/Label.h): 0 a_northwest,
---- 1 a_north, 2 a_northeast, 3 a_west, 4 a_center, 5 a_east, 6 a_southwest,
---- 7 a_south, 8 a_southeast.  4 (a_center) is the default, which is what this
---- button has always drawn; DNumPad's "0" key uses 4 + SetTextInset( 6, 0 ).
+--- GMod: Panel:SetContentAlignment( align ) / SetTextInset( x, y ).
+---
+--- GMod's numbering is a numpad grid - its own derma_gwen.lua:216-218 maps
+--- Right/Center/Left to 6/5/4, dbutton.lua:8 centres with 5:
+---
+---     7 8 9    northwest  north     northeast
+---     4 5 6    west       center    east
+---     1 2 3    southwest  south     southeast
+---
+--- (Stock vgui2's Label enum is 0-based: a_west=3, a_center=4 - shifted by one
+--- against GMod.  The previous fork implementation used that 0-based table,
+--- so GMod-ported callers passing 4 for "left" rendered centred text - the
+--- player-model menu rows being the report that found it.)
 function PANEL:SetContentAlignment( align )
 	self.m_iContentAlignment = align
 end
 
 function PANEL:GetContentAlignment()
-	return self.m_iContentAlignment or 4
+	return self.m_iContentAlignment or 5
 end
 
 function PANEL:SetTextInset( x, y )
@@ -354,9 +363,16 @@ function PANEL:Paint( w, h )
 
 	local tw, th = derma.GetTextSize( self.m_strFont, text )
 
-	local align = self.m_iContentAlignment or 4
-	local ax = align % 3
-	local ay = math.floor( align / 3 )
+	-- GMod's numpad numbering (see SetContentAlignment above): shift to
+	-- 0-based columns/rows - ax 0 left / 1 centre / 2 right, ay 0 top /
+	-- 1 middle / 2 bottom.  0 sits outside the grid and reads as northwest,
+	-- like vgui2's a_northwest default.
+	local align = self.m_iContentAlignment or 5
+	local a = align - 1
+	if ( a < 0 ) then a = 6 end
+
+	local ax = a % 3
+	local ay = math.floor( a / 3 )
 
 	local x = 0
 	if ( ax == 1 ) then x = math.floor( ( w - tw ) / 2 )

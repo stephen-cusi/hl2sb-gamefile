@@ -1,85 +1,220 @@
---[[ DScrollPanel -- a container that scrolls (original, pure Lua).
+--[[ DScrollPanel -- a container that scrolls (GMod port).
 
-	Owns a PnlContainer child that all Add()ed content lives in; content is
-	shifted by Paint offset against a vertical DScrollBar.  GMod's contract:
-	Add / GetCanvas / SetVScrollRange / SetValue / GetVScrollPos, child Dock
-	inside the canvas. --]]
+	Ported from GMod's lua/vgui/dscrollpanel.lua onto this fork's DVScrollBar
+	(GMod's pixel scrollbar, lua/vgui/DVScrollBar.lua).  The whole GMod
+	architecture is in place:
+
+	  * pnlCanvas.PerformLayout drives the measure loop.  Every canvas relayout
+	    re-runs PerformLayoutInternal, which measures the children
+	    (Rebuild -> canvas:SizeToChildren( false, true )) and feeds the result
+	    to VBar:SetUp( panelTall, canvasTall ).  A Dock(TOP) child invalidates
+	    its parent (Panel::SetDock -> InvalidateParentLayout), so rows added to
+	    the canvas grow it on the next layout pass and the bar enables itself
+	    exactly when the content outgrows the panel.  The canvas PANEL must
+	    grow: this engine clips child painting to the canvas bounds, so a
+	    viewport-sized canvas hides everything laid out below it.
+
+	  * The scroll offset is GMod's: DVScrollBar:SetScroll calls back into
+	    OnVScroll( offset ) which moves the canvas, and PerformLayoutInternal
+	    re-applies the same offset on every layout pass.  The previous fork
+	    scheme kept a private m_iPos pixel value and shifted the canvas in
+	    Paint while the canvas itself stayed viewport-sized forever - children
+	    beyond the visible rect never grew it, the bar stayed disabled, and
+	    plain DScrollPanels (the player-model menu's Model list) could not
+	    scroll at all.
+
+	Deviations from GMod's file, all forced by this fork (marked at their site):
+	  * The bar is positioned manually in PerformLayoutInternal instead of
+	    Dock(RIGHT) - the same strip GMod's dvscrollbar.lua usage note and
+	    dpanellist.lua PerformLayout reserve, without leaning on the dock pass.
+	  * PANEL:Add keeps the fork's string/table forms (DProperties relies on
+	    them).  GMod's OnChildAdded -> AddItem re-parenting is NOT ported: this
+	    engine fires OnChildAdded during vgui.Create, before self.pnlCanvas is
+	    assigned, so the hook would re-parent (detach) the canvas on creation -
+	    the same crash class the Panel:SetParent(nil) fix removed
+	    (public/lua/vgui_controls/lPanel.cpp, Panel_SetParent).
+	  * GMod's InvalidateParent() runs under its bound name
+	    InvalidateParentLayout().
+	  * SetPadding() is actually applied in the layout (GMod stores the value
+	    and never uses it); DForm-era consumers were built against the fork
+	    behaviour.
+--]]
 
 local PANEL = {}
+
+AccessorFunc( PANEL, "Padding", "Padding" )
 
 local BAR_W = 14
 
 function PANEL:Init()
-	self:SetDrawBackground( false )
-	self.m_bHorizontalScroll = false
+	self.pnlCanvas = vgui.Create( "DPanel", self, "ContentContainer" )
+	self.pnlCanvas:SetDrawBackground( false )
+	self.pnlCanvas:SetMouseInputEnabled( true )
 
-	self.m_pVBar = vgui.Create( "DScrollBar", self, "VBar" )
-	self.m_pVBar:SetVertical( true )
-	self.m_pVBar:SetEnabled( false )
-	self.m_pVBar:SetParentPanel( self )
-
-	self.m_pCanvas = vgui.Create( "DPanel", self, "ContentContainer" )
-	self.m_pCanvas:SetDrawBackground( false )
-
-	-- ⚠️ The canvas MUST accept mouse input, or nothing Add()ed to it can ever be
-	-- clicked: vgui2/vgui_controls/Panel.cpp:3347 refuses the whole subtree of a panel
-	-- whose IsMouseInputEnabled() is false.  GMod does exactly this -
-	-- _legacy_gmod/vgui/dscrollpanel.lua:11 `self.pnlCanvas:SetMouseInputEnabled( true )`.
-	self.m_pCanvas:SetMouseInputEnabled( true )
-
-	-- ... and because the canvas now takes the press, hand it back to the scroll panel,
-	-- which is how GMod keeps drag/scroll behaviour on its canvas
-	-- (_legacy_gmod/vgui/dscrollpanel.lua:10).  Without the forward the canvas would
-	-- swallow every press in its empty area.
-	self.m_pCanvas.OnMousePressed = function( slf, code )
+	-- GMod: the canvas hands presses back to the scroll panel
+	-- (dscrollpanel.lua:10) so the empty canvas area still scrolls/drags.
+	self.pnlCanvas.OnMousePressed = function( slf, code )
 		slf:GetParent():OnMousePressed( code )
 	end
 
-	self.m_iScrollDelta = 0
-	self.m_iRange = 0
-	self.m_iPos = 0
-
-	-- GMod's documented member names for the same two children
-	-- (wiki.facepunch.com/gmod/DScrollPanel: "pnlCanvas" / "pnlVBar"; GMod's own
-	-- files read scroll.pnlCanvas all over).  They point at the same panels, so
-	-- both spellings stay valid for the life of the control.
-	self.pnlCanvas = self.m_pCanvas
-	self.pnlVBar = self.m_pVBar
-end
-
-function PANEL:GetCanvas()
-	return self.m_pCanvas
-end
-
---- GMod: DScrollPanel:SizeToContents() - `self:SetSize( self.pnlCanvas:GetSize() )`
---- (_legacy_gmod/vgui/dscrollpanel.lua:45, the only implementation of it in GMod's
---- panel library that copies an inner canvas).  DTree_Node calls it on its child list
---- before adding that height to its own.
-function PANEL:SizeToContents()
-	local w, h = self.m_pCanvas:GetSize()
-	self:SetSize( w, h )
-end
-
---- GMod's DScrollPanel does NOT override Panel:Add (it has AddItem for the parented
---- case), so `scrollpanel:Add( "DLabel" )` and `scrollpanel:Add( someTable )` both
---- go through Panel:Add - which accepts a class name or an anonymous control table.
---- This fork narrowed that to a panel; DProperties relies on the wider contract
---- (`self:GetCanvas():Add( tblCategory )`), so the string/table forms are restored
---- here and parented to the canvas the same way.
-function PANEL:Add( pnl )
-	if ( isstring( pnl ) or istable( pnl ) ) then
-		pnl = vgui.Create( pnl, self:GetCanvas() )
-		return pnl
+	-- GMod: the canvas' own layout pass drives the whole measure
+	-- (dscrollpanel.lua:12-17).  This is what keeps the canvas sized to its
+	-- children no matter how they were added.
+	self.pnlCanvas.PerformLayout = function( pnl )
+		self:PerformLayoutInternal()
+		self:InvalidateParentLayout()
 	end
 
-	pnl:SetParent( self:GetCanvas() )
+	self.VBar = vgui.Create( "DVScrollBar", self, "VBar" )
+
+	self:SetPadding( 0 )
+	self:SetMouseInputEnabled( true )
+	self:SetPaintBackgroundEnabled( false )
+	self:SetPaintBorderEnabled( false )
+	self:SetDrawBackground( false )
+
+	self.m_bHorizontalScroll = false
+
+	-- Previous fork spellings of the same two children.  GMod's documented
+	-- member names are pnlCanvas / VBar (its own files read scroll.pnlCanvas
+	-- and scroll.VBar all over); DScroller reads m_pInner.m_pVBar and
+	-- derma_lib_test checks pnlCanvas / pnlVBar, so all of them stay valid.
+	self.m_pCanvas = self.pnlCanvas
+	self.m_pVBar = self.VBar
+	self.pnlVBar = self.VBar
+end
+
+--- GMod: DScrollPanel:AddItem( pnl ) - "Adds a panel to the scroll panel".
+function PANEL:AddItem( pnl )
+	if ( IsValid( pnl ) ) then
+		pnl:SetParent( self:GetCanvas() )
+	end
+
 	return pnl
 end
 
-function PANEL:SetContentHeight( iH )
-	self.m_iRange = math.max( 0, iH - self:GetCanvas():GetTall() )
-	self.m_pVBar:SetEnabled( self.m_iRange > 0 )
+--- The fork's wider Add contract (DProperties passes anonymous tables, other
+--- code passes class names).  Panel instances go to the canvas like AddItem;
+--- the string/table forms build the control on the canvas.
+function PANEL:Add( pnl )
+	if ( isstring( pnl ) or istable( pnl ) ) then
+		return vgui.Create( pnl, self:GetCanvas() )
+	end
+
+	return self:AddItem( pnl )
+end
+
+--- GMod: DScrollPanel:Clear() - "Removes all panels from the canvas".
+function PANEL:Clear()
+	return self.pnlCanvas:Clear()
+end
+
+--- GMod: DScrollPanel:SizeToContents() - sizes the panel to its canvas
+--- (dscrollpanel.lua:45-49).
+function PANEL:SizeToContents()
+	self:SetSize( self.pnlCanvas:GetSize() )
+end
+
+function PANEL:GetVBar()
+	return self.VBar
+end
+
+function PANEL:GetCanvas()
+	return self.pnlCanvas
+end
+
+function PANEL:InnerWidth()
+	return self:GetCanvas():GetWide()
+end
+
+--- GMod: DScrollPanel:Rebuild() - "Recalculates the height of the canvas"
+--- (dscrollpanel.lua:69-80): size the canvas to its children.  The vertical
+--- centring branch is GMod's, kept verbatim (m_bNoSizing is normally unset).
+function PANEL:Rebuild()
+	self:GetCanvas():SizeToChildren( false, true )
+
+	-- Although this behaviour isn't exactly implied, center vertically too
+	if ( self.m_bNoSizing && self:GetCanvas():GetTall() < self:GetTall() ) then
+		self:GetCanvas():SetPos( 0, ( self:GetTall() - self:GetCanvas():GetTall() ) * 0.5 )
+	end
+end
+
+function PANEL:OnMouseWheeled( dlta )
+	return self.VBar:OnMouseWheeled( dlta )
+end
+
+--- GMod: the bar pushes its offset here (DVScrollBar:SetScroll -> the parent's
+--- OnVScroll); the canvas moves and PerformLayoutInternal keeps the position
+--- on later layout passes.
+function PANEL:OnVScroll( iOffset )
+	self.pnlCanvas:SetPos( self:GetPadding(), ( iOffset or 0 ) + self:GetPadding() )
+end
+
+--- GMod: DScrollPanel:ScrollToChild( panel ) - centres the child with a short
+--- animated scroll (dscrollpanel.lua:94-106).  GetChildPosition is the panel
+--- extension of the same name (includes/extensions/client/panel.lua).
+function PANEL:ScrollToChild( panel )
 	self:InvalidateLayout( true )
+
+	local x, y = self.pnlCanvas:GetChildPosition( panel )
+	local w, h = panel:GetSize()
+
+	y = y + h * 0.5
+	y = y - self:GetTall() * 0.5
+
+	self.VBar:AnimateTo( y, 0.5, 0, 0.5 )
+end
+
+--- GMod: PerformLayoutInternal (dscrollpanel.lua:109-131) - the measure loop.
+--- "Avoid an infinite loop": call this from the canvas' PerformLayout hook or
+--- the panel's PerformLayout, never from itself through a layout invalidation.
+--- VPanel::SetSize early-returns when the size did not change, so the
+--- SizeToChildren -> SetSize -> relayout cycle settles after one extra pass.
+function PANEL:PerformLayoutInternal()
+	if ( not IsValid( self.pnlCanvas ) or not IsValid( self.VBar ) ) then return end
+
+	local Tall = self.pnlCanvas:GetTall()
+	local pad = self:GetPadding() or 0
+	local Wide = self:GetWide() - pad * 2
+	local YPos = 0
+
+	-- Reserve the bar strip (the same width the previous fork implementation
+	-- and GMod's DPanelList:PerformLayout use) instead of Dock(RIGHT).
+	self.VBar:SetPos( self:GetWide() - BAR_W, 0 )
+	self.VBar:SetSize( BAR_W, self:GetTall() )
+
+	self:Rebuild()
+
+	self.VBar:SetUp( self:GetTall(), self.pnlCanvas:GetTall() )
+	YPos = self.VBar:GetOffset()
+
+	if ( self.VBar.Enabled ) then Wide = Wide - BAR_W end
+
+	self.pnlCanvas:SetPos( pad, YPos + pad )
+	self.pnlCanvas:SetWide( Wide )
+
+	self:Rebuild()
+
+	if ( Tall ~= self.pnlCanvas:GetTall() ) then
+		self.VBar:SetScroll( self.VBar:GetScroll() ) -- Make sure we are not too far down!
+	end
+end
+
+function PANEL:PerformLayout()
+	self:PerformLayoutInternal()
+end
+
+--------------------------------------------------------------------------------
+-- Previous fork API, kept for in-tree consumers (DListView, DScroller,
+-- DPanelList:SizeToContents, gameui/addonsdialog.lua, hl2sb_lua_errors.lua).
+-- Under the GMod architecture "the content is iH tall" means exactly "the
+-- canvas is iH tall"; the measure loop turns that into the bar range on the
+-- next layout pass.
+--------------------------------------------------------------------------------
+
+function PANEL:SetContentHeight( iH )
+	self.pnlCanvas:SetTall( iH or 0 )
+	self:InvalidateLayout()
 end
 
 function PANEL:ContentSizeChanged( w, h )
@@ -87,8 +222,7 @@ function PANEL:ContentSizeChanged( w, h )
 end
 
 function PANEL:InvalidateContentSize( b )
-	local canvas = self:GetCanvas()
-	local _, h = canvas:GetChildrenSize()
+	local _, h = self.pnlCanvas:GetChildrenSize()
 	self:SetContentHeight( h or 0 )
 end
 
@@ -96,145 +230,26 @@ function PANEL:SetVScrollRange( iMin, iMax )
 	self:SetContentHeight( iMax )
 end
 
+--- Pixel scroll value = the bar's pixel scroll (DVScrollBar stores pixels).
 function PANEL:SetValue( iVal )
-	local old = self.m_iPos
-	self.m_iPos = math.Clamp( iVal or 0, 0, math.max( 0, self.m_iRange ) )
-	self.m_pVBar:SetValue( self.m_iRange > 0 and ( self.m_iPos / self.m_iRange ) or 0 )
-
-	if ( old ~= self.m_iPos and self.OnVScroll ) then
-		local ok, err = pcall( self.OnVScroll, self, self.m_iPos )
-		if ( not ok ) then Warning( "DScrollPanel:OnVScroll failed: " .. tostring( err ) .. "\n" ) end
-	end
+	self.VBar:SetScroll( tonumber( iVal ) or 0 )
 end
 
 function PANEL:GetValue()
-	return self.m_iPos
+	return self.VBar:GetScroll()
 end
 
 function PANEL:GetVScrollPos()
-	return self.m_iPos
+	return self:GetValue()
 end
 
---- GMod: DScrollPanel:ScrollToChild( panel ) -- "Scrolls the scroll panel to the
---- given child panel" (gmod/vgui/dscrollpanel.lua:94-106).  GMod centres the child
---- and animates the bar; this fork's scroll value IS the pixel offset (m_iPos), so
---- the same maths lands directly on SetValue.  GMod asks the canvas for
---- GetChildPosition; children live in the canvas here, so their own y is the same
---- number.
-function PANEL:ScrollToChild( pnl )
-	if ( !IsValid( pnl ) ) then return end
-
-	self:InvalidateLayout( true )
-
-	local _, y = pnl:GetPos()
-	local _, h = pnl:GetSize()
-
-	self:SetValue( math.max( 0, y + h * 0.5 - self:GetTall() * 0.5 ) )
-end
-
-function PANEL:OnMouseWheeled( delta )
-	self:SetValue( self.m_iPos - delta * 48 )
-end
-
--- ⚠️ OnThink, NOT Think.  A panel's per-frame hook has exactly one name in this
--- engine, and it is the one scripted_controls/lPanel.cpp:181-187 dispatches:
---
---     void LPanel::OnThink() { BEGIN_LUA_CALL_PANEL_METHOD( "OnThink" ); ... }
---
--- so a `PANEL:Think` is never called.  THIS function is what mirrors the scrollbar's
--- drag value back into the canvas offset, which is why the grid could be dragged by
--- its bar with nothing moving: only the wheel worked, because OnMouseWheeled IS
--- dispatched and reaches the same value from the other direction.
-function PANEL:OnThink()
-	-- the bar's value tracks the drag; mirror it back into pixel positions
-	if ( self.m_pVBar:Enabled() and self.m_iRange > 0 ) then
-		local wanted = self.m_pVBar:GetValue() * self.m_iRange
-		if ( math.abs( wanted - self.m_iPos ) > 0.5 ) then
-			self.m_iPos = wanted
-		end
-	end
-end
-
-function PANEL:PerformLayout( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
-
-	local pad = self.m_iPadding or 0
-	local barVisible = self.m_pVBar:Enabled()
-	local canvasW = w - ( barVisible and BAR_W or 0 ) - 2 * pad
-
-	self.m_pCanvas:SetPos( pad, pad )
-	self.m_pCanvas:SetSize( math.max( 1, canvasW ), math.max( 1, h - 2 * pad ) )
-
-	self.m_pVBar:SetPos( w - BAR_W, 0 )
-	self.m_pVBar:SetSize( BAR_W, h )
-end
-
-function PANEL:Paint( w, h )
-	-- shift the canvas by the scroll position; clipping comes from the engine's
-	-- panel clip (the canvas is a child of a visible panel with PaintEnabled
-	-- children -- content outside the bar-less rect stays hidden because vgui2
-	-- clips child painting to the parent bounds).
-	self.m_pCanvas:SetPos( 0, -math.floor( self.m_iPos ) )
-end
-
---[[---------------------------------------------------------------------------
-	GMod's own names for the same things, per
-	https://wiki.facepunch.com/gmod/DScrollPanel
-
-		AddItem( pnl )      -> Add
-		GetCanvas()         -> already above
-		GetVBar()           -> the vertical DScrollBar
-		InnerWidth()        -> the width left for content once the bar is counted
-		SetPadding( n )     -> an inset around the content
-		Rebuild()           -> re-measure the content
-
-	The wiki documents AddItem, not Add, so GMod code (and anything ported from it)
-	calls AddItem; both work here.
------------------------------------------------------------------------------]]
-
-function PANEL:AddItem( pnl )
-	return self:Add( pnl )
-end
-
-function PANEL:GetVBar()
-	return self.m_pVBar
-end
-
---- The width content actually gets, i.e. minus the bar when it is showing.
-function PANEL:InnerWidth()
-	return self:GetWide() - ( self.m_pVBar:Enabled() and BAR_W or 0 )
-end
-
-function PANEL:SetPadding( n )
-	self.m_iPadding = math.max( 0, math.floor( n or 0 ) )
-	self:InvalidateLayout( true )
-end
-
-function PANEL:GetPadding()
-	return self.m_iPadding or 0
-end
-
---- GMod's Rebuild: measure the children again instead of trusting the last range.
-function PANEL:Rebuild()
-	self:InvalidateContentSize( true )
-end
-
---- GMod: DScrollPanel:SetScrollY( pixels ) / SetScrollX -- the wiki spellings.
---- This fork scrolls vertically only; SetScrollX is recorded (m_bHorizontalScroll
---- exists but no bar drives it yet).
 function PANEL:SetScrollY( pixels )
-	self:SetValue( tonumber( pixels ) or 0 )
+	self:SetValue( pixels )
 end
 
+--- Vertical only: the value is recorded, no horizontal bar drives it yet.
 function PANEL:SetScrollX( pixels )
 	self.m_iScrollX = tonumber( pixels ) or 0
 end
 
---- GMod: DScrollPanel:OnVScroll( scrollPos ) -- the wiki callback fired when the
---- scroll position changes.  Raise it from SetValue so ports that implement it run.
-function PANEL:OnVScroll( scrollPos )
-	-- for override
-end
-
-derma.DefineControl( "DScrollPanel", "HL2SB scrolling container", PANEL, "DPanel" )
+derma.DefineControl( "DScrollPanel", "A scrollable panel", PANEL, "DPanel" )
