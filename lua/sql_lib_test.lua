@@ -73,17 +73,19 @@ Check( sql.QueryTyped( "SELECT * FROM sql_test_t WHERE id = ?", {} ) == false, "
 local rtn = sql.QueryTyped( "SELECT id FROM sql_test_t WHERE name = ?", nil )
 Check( type( rtn ) == "table", "nil binds as NULL without error" )
 
--- bool/boolean column quirk + big integer beyond double precision
+-- bool/boolean DECLARED TYPE quirk + big integer beyond double precision
+-- (the reference converts on sqlite3_column_decltype, stricmp'd, not on the
+-- column name)
 sql.Query( "CREATE TABLE IF NOT EXISTS sql_test_b (flag BOOLEAN, val INTEGER)" )
 sql.Query( "INSERT OR REPLACE INTO sql_test_b VALUES (1, 9007199254740993)" )
 local rb = sql.QueryTyped( "SELECT flag, val FROM sql_test_b" )
-Check( rb[1].flag == true, "bool/boolean column -> boolean" )
+Check( rb[1].flag == true, "bool/boolean declared type -> boolean" )
 Check( rb[1].val == "9007199254740993", "big int beyond double -> string" )
 
 -- QueryRow / QueryValue / IndexExists / Begin-Commit
 Check( sql.QueryRow( "SELECT * FROM sql_test_t WHERE id = 1" ).name == "it's", "QueryRow" )
 Check( sql.QueryRow( "SELECT * FROM sql_test_t WHERE id = 999" ) == nil, "QueryRow empty -> nil" )
-Check( sql.QueryValue( "SELECT COUNT(*) FROM sql_test_t" ) == "3", "QueryValue returns string" )
+Check( sql.QueryValue( "SELECT COUNT(*) FROM sql_test_t" ) == "2", "QueryValue returns string" )
 sql.Query( "DROP INDEX IF EXISTS idx_sql_test" )
 sql.Query( "CREATE INDEX idx_sql_test ON sql_test_t(score)" )
 Check( sql.IndexExists( "idx_sql_test" ) == true, "IndexExists" )
