@@ -44,7 +44,7 @@ SKIN.Colours = {
 	CheckOn			= Color( 52,  108, 190, 255 ),
 	CheckOff		= Color( 28,  30,  34,  255 ),
 
-	Slider			= Color( 28,  30,  34,  255 ),
+	Slider			= Color( 64,  68,  76,  255 ),
 	SliderGrip		= Color( 108, 115, 126, 255 ),
 
 	Warning			= Color( 200, 80,  30,  255 ),
@@ -144,7 +144,7 @@ end
 --[[ Panel ------------------------------------------------------------------]]
 
 function SKIN:PaintPanel( pnl, w, h )
-	-- ⚠️ GMod paints the panel's OWN background colour here
+	-- GMod paints the panel's OWN background colour here
 	-- (garrysmod/lua/skins/default.lua: `self.tex.Panels.Normal( 0, 0, w, h, panel.m_bgColor )`),
 	-- so a panel that called SetBackgroundColor shows that colour.  This hook used to
 	-- paint a flat skin colour and ignore it, which made every SetBackgroundColor in
@@ -234,7 +234,7 @@ end
 -- m_iTextGap, see lua/vgui/dcheckbox.lua) so the skin and SizeToContents cannot
 -- disagree.
 --
--- ⚠️ surface.DrawFilledRect / DrawOutlinedRect take TWO CORNERS (x0,y0,x1,y1) in
+-- surface.DrawFilledRect / DrawOutlinedRect take TWO CORNERS (x0,y0,x1,y1) in
 -- this engine -- the size-shaped DrawRect is the GMod-name shim in
 -- gmod_surface.lua.  This function used to call DrawFilledRect( x, y, size, size ),
 -- which draws from (x,y) to (size,size): a wrong rectangle.  Nobody noticed
@@ -398,9 +398,10 @@ end
 -----------------------------------------------------------------------------]]
 
 -- GMod's GetNotchColor falls back to skin.colNumSliderNotch (dslider.lua:274);
--- our dark-theme notch is the label colour at low alpha, matching what the old
--- in-tree DNumSlider:ApplySchemeSettings used to feed SetNotchColor.
-SKIN.colNumSliderNotch = Color( 255, 255, 255, 60 )
+-- our dark-theme notch and groove read against near-black panels: GMod's
+-- default skin keeps both clearly visible on its grey buttons, so keep the
+-- white at a legible alpha here too.
+SKIN.colNumSliderNotch = Color( 255, 255, 255, 150 )
 
 function SKIN:PaintSlider( pnl, w, h )
 	local c = col( self, "Slider" )
@@ -519,7 +520,7 @@ end
 -- "Panel" colour plus an outlined border, and the panel added a hard left
 -- colour stripe: a gray slab with a blue line, which is not the GMod look.
 --
--- ⚠️ Do NOT read pnl:GetBackgroundColor() here.  Measured 2026-09-15: it comes
+-- Do NOT read pnl:GetBackgroundColor() here.  Measured 2026-09-15: it comes
 -- back FULLY TRANSPARENT (the panel's SetBgColor does not survive), and because
 -- the notice icon is a textured draw it inherits the current draw colour -- so
 -- the transparent body also made the icon vanish.  Only the caption survived,
