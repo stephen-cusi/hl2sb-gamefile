@@ -15,7 +15,7 @@
 	DColorPalette, with a preview swatch and - "wangs", in GMod's own wording - the
 	per-channel readout.
 
-	⚠️ Deliberate deviations, all of them about internals rather than the API:
+	NOTE: Deliberate deviations, all of them about internals rather than the API:
 	  * The "wangs" are four read-only channel labels (GMod draws draggable channel
 	    gradients).  `SetWangs` / `GetWangs` show and hide the same panel.
 	  * `SetPaletteName` renames the palette's cookie (GMod also networks it; this fork
@@ -315,7 +315,7 @@ function PANEL:ConVarThink()
 	end
 end
 
---- ⚠️ This fork's scripted panels dispatch OnThink, not Think (see the note in
+--- NOTE: This fork's scripted panels dispatch OnThink, not Think (see the note in
 --- lua/vgui/DScrollPanel.lua), so the poll runs from OnThink; Think is kept as an
 --- alias because GMod scripts override it.
 function PANEL:OnThink()

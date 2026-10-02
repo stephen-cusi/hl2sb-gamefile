@@ -160,6 +160,15 @@ do
 
 	btn:Remove()
 
+	-- GMod's content-alignment numbering (numpad grid, derma_gwen maps
+	-- Left/Center/Right to 4/5/6): the stored value is what Paint maps.
+	local btn2 = vgui.Create( "DButton" )
+	btn2:SetContentAlignment( 4 )
+	Check( btn2:GetContentAlignment() == 4, "DButton align 4 stored (left)" )
+	btn2:SetContentAlignment( 5 )
+	Check( btn2:GetContentAlignment() == 5, "DButton align 5 stored (center)" )
+	btn2:Remove()
+
 	-- the backwards-compat "Button" control is the Derma one now
 	local compat = vgui.Create( "Button" )
 	Check( IsValid( compat ), "vgui.Create( 'Button' ) registers" )

@@ -16,7 +16,7 @@
 	optional middle panel sits ON TOP of the bar - which is why the middle is the place
 	to put a grip/grip texture.
 
-	⚠️ This fork has no `OnMouseDragged` panel dispatch (checked: the scripted LPanel
+	NOTE: This fork has no `OnMouseDragged` panel dispatch (checked: the scripted LPanel
 	dispatches OnCursorMoved / OnMousePressed / OnMouseReleased / OnMouseWheeled only),
 	so the drag is driven by OnCursorMoved plus a per-frame OnThink while the bar is
 	held.  `OnMouseDragged` is still defined - addons override it the GMod way and it
@@ -125,7 +125,7 @@ function PANEL:GetHoldPos()	return self.m_iHoldPos end
 -------------------------------------------------------------------------------
 --- Clamp the requested left width against both minimums.  Returns leftW, rightW.
 ---
---- ⚠️ `m_iLeftWidth` is the REQUEST and must never receive the clamped result back:
+--- NOTE: `m_iLeftWidth` is the REQUEST and must never receive the clamped result back:
 --- while the panel is being docked it is laid out with a bogus width (0, or a few
 --- pixels), and at w = 8 the right side alone exceeds the whole divider, so the clamp
 --- drives leftW to 0 and a write-back would destroy the caller's request for good.

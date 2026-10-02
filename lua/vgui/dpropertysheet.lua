@@ -18,7 +18,7 @@
 	    the padding, or keeps its size when AddSheet was given NoStretchX/NoStretchY
 	    (the 4th/5th arguments - GMod passes `true, true` in every GenerateExample).
 
-	⚠️ Tabs are positioned but NOT scrolled: GMod's tab strip is a
+	NOTE: Tabs are positioned but NOT scrolled: GMod's tab strip is a
 	DHorizontalScroller, so a long tab list pans.  Here the tabs simply run off the
 	right-hand edge (the same before this change); ScrollToChild invalidates the
 	layout and does nothing else.  Worth doing when a real DHorizontalScroller tab
@@ -63,7 +63,7 @@ function PANEL:Init()
 end
 
 --- GMod: DPropertySheet:AddSheet( label, panel, material, NoStretchX, NoStretchY ) ->
---- the sheet entry.  ⚠️ The 4th/5th arguments mean "do NOT stretch this axis" in
+--- the sheet entry.  NOTE: The 4th/5th arguments mean "do NOT stretch this axis" in
 --- GMod (every GenerateExample in GMod passes `true, true`), not "stretch".
 function PANEL:AddSheet( strLabel, pnl, strIcon, bNoStretchX, bNoStretchY, strTooltip )
 	-- GMod halts gracefully on a dead page panel (dpropertysheet.lua:177-181)
@@ -260,7 +260,7 @@ function PANEL:PerformLayout( w, h )
 
 	-- DTab sizes itself (its ApplySchemeSettings runs PerformLayout), so only the
 	-- x matters here, and the active (taller) tab sits on the strip's bottom edge.
-	-- ⚠️ GMod re-runs every tab's scheme in this very loop (dpropertysheet.lua:333) --
+	-- NOTE: GMod re-runs every tab's scheme in this very loop (dpropertysheet.lua:333) --
 	-- that is what re-measures the tabs after the active one changed, so the tab that
 	-- just became active grows to 28 and the one that stopped being active shrinks to
 	-- 20.  Without it the previously active tab keeps its height: in game the strip
@@ -286,7 +286,7 @@ function PANEL:PerformLayout( w, h )
 	-- the page fills the area under the tab strip minus the padding, unless the sheet was
 	-- told not to stretch that axis (then it is centred instead).  It does this for every
 	-- page, visible or not.
-	-- ⚠️ Without this the page keeps the engine's default panel size and every child is
+	-- NOTE: Without this the page keeps the engine's default panel size and every child is
 	-- clipped to it: in game on 2026-09-17 the demo's page label came out as "this is the
 	-- tl" - a 64px-wide page cutting a 330px captioned label, not a label bug.
 	local pad = self:GetPadding()
