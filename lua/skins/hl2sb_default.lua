@@ -452,12 +452,45 @@ end
 
 -- The DNumSlider hook name ("NumSlider") and the old in-tree name both land
 -- on the plain track: the knob paints itself as a child panel.
+-- GMod's default skin paints the number slider as a 1px line in the notch
+-- colour from x=8 to w-15 (clear of the knob), with 1x5 tick marks spaced
+-- below the line - verbatim shape from skins/default.lua.
+local function PaintNotches( x, y, w, h, num )
+
+	if ( !num ) then return end
+
+	local space = w / num
+
+	-- Ensure at least 1 px between each notch
+	if ( space < 2 ) then
+		space = 2
+		num = w / space
+	end
+
+	for i = 0, math.ceil( num ) do
+
+		surface.DrawRect( x + i * space, y + 4, 1, 5 )
+
+	end
+
+end
+
 function SKIN:PaintNumSlider( pnl, w, h )
-	self:PaintSlider( pnl, w, h )
+
+	-- GetNotchColor() returns SKIN.colNumSliderNotch if no custom override is
+	-- set (DNumSlider:ApplySchemeSettings feeds the label colour at its own
+	-- alpha, exactly like GMod's copy of this file).
+	local notchColor = pnl.GetNotchColor and pnl:GetNotchColor() or self.colNumSliderNotch
+
+	surface.DrawSetColor( notchColor.r, notchColor.g, notchColor.b, notchColor.a )
+	surface.DrawRect( 8, h / 2 - 1, w - 15, 1 )
+
+	PaintNotches( 8, h / 2 - 1, w - 16, 1, pnl.GetNotches and pnl:GetNotches() )
+
 end
 
 function SKIN:PaintNumberSlider( pnl, w, h )
-	self:PaintSlider( pnl, w, h )
+	self:PaintNumSlider( pnl, w, h )
 end
 
 --[[ ComboBox ------------------------------------------------------------------]]

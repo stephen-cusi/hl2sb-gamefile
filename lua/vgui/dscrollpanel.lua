@@ -44,7 +44,7 @@ local PANEL = {}
 
 AccessorFunc( PANEL, "Padding", "Padding" )
 
-local BAR_W = 14
+local BAR_W = 15
 
 function PANEL:Init()
 	self.pnlCanvas = vgui.Create( "DPanel", self, "ContentContainer" )

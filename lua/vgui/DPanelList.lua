@@ -397,7 +397,9 @@ function PANEL:ApplyContentHeight( h )
 
 	self.m_iContentHeight = h
 	self.m_iRange = math.max( 0, h - canvas:GetTall() )
-	bar:SetEnabled( self.m_iRange > 0 )
+	-- The bar's visibility/enable state is owned by DVScrollBar:SetUp now
+	-- (the strip stays visible with a full-track grip when the content fits);
+	-- toggling it here fought that every frame.
 
 	-- HL2SB (2026-09-27): the canvas PANEL itself has to grow to the content
 	-- height.  Updating the scrollbar range alone left the canvas at a stale
@@ -439,7 +441,7 @@ function PANEL:PerformLayout( w, h )
 	local pad = self:GetPadding()
 	local bar = self:GetVBar()
 	local canvas = self:GetCanvas()
-	local barW = 14
+	local barW = 15
 
 	-- The base DScrollPanel sizes its canvas inside PerformLayoutInternal; this
 	-- list cannot run that loop (see Init - PANEL:Rebuild defers with
@@ -465,15 +467,14 @@ function PANEL:PerformLayout( w, h )
 
 		local canvasTall = canvas:GetTall()
 		local contentH = self:ArrangeItems()
-		local bWanted = ( contentH > canvas:GetTall() )
-		local bChanged = ( bar.Enabled ~= bWanted )
 
 		self:ApplyContentHeight( contentH )
 
 		-- GMod's dpanellist.lua:361 - give the bar the real range once the
-		-- content height has landed.  ApplyContentHeight only toggles the bar;
-		-- without SetUp its CanvasSize stays at the Init value and SetScroll
-		-- would clamp every wheel step / grip drag to a single pixel.
+		-- content height has landed.  The bar strip stays visible with the
+		-- grip filling the track when the content fits (SetUp clamps
+		-- CanvasSize to 1), so there is no enable/disable measurement pass
+		-- here any more - the old two-pass toggle oscillated every frame.
 		bar:SetUp( h, canvas:GetTall() )
 
 		-- dpanellist.lua:380 - when the canvas changed height, re-apply the
@@ -481,11 +482,9 @@ function PANEL:PerformLayout( w, h )
 		if ( canvasTall ~= canvas:GetTall() ) then
 			bar:SetScroll( bar:GetScroll() )
 		end
-
-		return bChanged
 	end
 
-	if ( Pass() ) then Pass() end
+	Pass()
 end
 
 --- (OnVScroll is deliberately NOT overridden here.  The base DScrollPanel:OnVScroll
