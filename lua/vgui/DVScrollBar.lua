@@ -40,7 +40,7 @@ local function PaintArrow( pnl, w, h, bDown )
 	if ( pnl.m_bDepressed ) then bright = 255
 	elseif ( pnl.m_bHover ) then bright = 235 end
 
-	surface.DrawSetColor( 70, 70, 70, 255 )
+	surface.DrawSetColor( 56, 60, 68, 255 )
 	surface.DrawFilledRect( 0, 0, w, h )
 
 	surface.DrawSetColor( bright, bright, bright, 255 )
@@ -118,13 +118,24 @@ function PANEL:SetUp( _barsize_, _canvassize_ )
 	self.CanvasSize = math.max( _canvassize_ - _barsize_, 1 )
 	self.Scroll = math.Clamp( self:GetScroll(), 0, self.CanvasSize )
 
-	self:SetEnabled( _canvassize_ > _barsize_ )
+	-- GMod's original enables the bar only when the content overflows and
+	-- hides it otherwise (SetEnabled -> SetVisible( b )).  Deliberate deviation
+	-- requested for this fork: the strip stays visible with the grip filling
+	-- the whole track - CanvasSize clamps to 1, so BarScale approaches 1 and
+	-- scrolling a fitting page is a no-op.
+	self:SetEnabled( true )
 
 	self:InvalidateLayout()
 end
 
 function PANEL:OnMouseWheeled( dlta )
 	if ( !self:IsVisible() ) then return false end
+
+	-- Nothing to scroll (the strip stays visible with a full-track grip when
+	-- the content fits): feed the wheel to the parent container, like GMod
+	-- does for its hidden bar.
+
+	if ( self.CanvasSize <= 1 ) then return false end
 
 	-- We return true if the scrollbar changed.
 	-- If it didn't, we feed the mousehweeling to the parent panel
@@ -179,7 +190,12 @@ function PANEL:GetOffset()
 end
 
 function PANEL:Paint( w, h )
-	derma.SkinHook( "Paint", "VScrollBar", self, w, h )
+	-- the theme's PaintVScrollBar first; fall back to its flat ScrollBar strip
+	-- (GMod's default skin paints the scroller strip through its texture set).
+	if ( not derma.SkinHook( "Paint", "VScrollBar", self, w, h ) ) then
+		derma.SkinHook( "Paint", "ScrollBar", self, w, h )
+	end
+
 	return true
 end
 

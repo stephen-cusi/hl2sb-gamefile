@@ -21,6 +21,16 @@ local PANEL = {}
 function PANEL:Init()
 end
 
+--- The skin reads the hover state for its brighter grip (GMod's default skin
+--- does the same from panel.Hovered).
+function PANEL:OnCursorEntered()
+	self.Hovered = true
+end
+
+function PANEL:OnCursorExited()
+	self.Hovered = false
+end
+
 function PANEL:OnMousePressed()
 	self:GetParent():Grip( 1 )
 end
@@ -31,8 +41,9 @@ function PANEL:Paint( w, h )
 	w = w or self:GetWide()
 	h = h or self:GetTall()
 
-	local shade = 90
-	if ( self.Depressed ) then shade = 130 end
+	local shade = 112
+	if ( self.Depressed ) then shade = 150
+	elseif ( self.m_bHover or self.Hovered ) then shade = 135 end
 
 	surface.DrawSetColor( shade, shade, shade, 255 )
 	-- corner rect: this engine's DrawFilledRect takes ( x0, y0, x1, y1 )
