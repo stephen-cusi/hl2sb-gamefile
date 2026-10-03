@@ -296,7 +296,9 @@ function TranslateToPlayerModelName( model )
 	-- hl2sb 的玩家模型系统也维护了一份列表，认不出来就问它。
 	if ( _G.hl2sb ~= nil and hl2sb.FindPlayerModel ~= nil ) then
 		local ok, found = pcall( hl2sb.FindPlayerModel, model )
-		if ( ok and found ~= nil and found ~= "" ) then return found end
+		-- FindPlayerModel 可能回条目表（或 nil）；表被当 name 往下传，
+		-- 后续所有字符串拼接点都会炸。只有字符串才当名字用。
+		if ( ok and type( found ) == "string" and found ~= "" ) then return found end
 	end
 
 	return nil
