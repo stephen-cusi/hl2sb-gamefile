@@ -289,3 +289,64 @@ if ( EntityMeta.SetDeploySpeed == nil ) then
 
 	Msg( "[HL2SB]   Entity:SetDeploySpeed / GetDeploySpeed / DeploySpeed added\n" )
 end
+
+-- ---------------------------------------------------------------------------
+-- GMod's legacy "Networked" spellings for the NW store.  The engine binds
+-- SetNWInt/GetNWInt/SetNWBool/GetNWBool/SetNWEntity/GetNWEntity/... ; GMod
+-- keeps the pre-13 names (SetNetworkedInt, GetNetworkedBool, ...) as aliases
+-- of the same functions, and older addons (portalgun's info_hpd_controller,
+-- the SWEP LastPortal slot) use nothing else.
+-- ---------------------------------------------------------------------------
+if ( EntityMeta.SetNWInt != nil and EntityMeta.SetNetworkedInt == nil ) then
+	local NWAliasTypes = { "Int", "Bool", "Float", "String", "Entity", "Vector", "Angle" }
+
+	for _, t in pairs( NWAliasTypes ) do
+		if ( EntityMeta[ "SetNW" .. t ] != nil ) then
+			EntityMeta[ "SetNetworked" .. t ] = EntityMeta[ "SetNW" .. t ]
+			EntityMeta[ "SetNetworked" .. string.lower( t ) ] = EntityMeta[ "SetNW" .. t ]
+		end
+		if ( EntityMeta[ "GetNW" .. t ] != nil ) then
+			EntityMeta[ "GetNetworked" .. t ] = EntityMeta[ "GetNW" .. t ]
+			EntityMeta[ "GetNetworked" .. string.lower( t ) ] = EntityMeta[ "GetNW" .. t ]
+		end
+	end
+
+	Msg( "[HL2SB]   Entity:SetNetworked*/GetNetworked* aliases added\n" )
+end
+
+-- ---------------------------------------------------------------------------
+-- CRecipientFilter short spellings.  The engine binds AddRecipientsByPVS /
+-- AddRecipientsByPAS; GMod keeps the short forms AddPVS / AddPAS (the
+-- portalgun's in-portal footsteps build their recipient filter with them).
+-- ---------------------------------------------------------------------------
+local RecipientFilterMeta = FindMetaTable( "CRecipientFilter" )
+if ( RecipientFilterMeta != nil and RecipientFilterMeta.AddPVS == nil ) then
+	if ( RecipientFilterMeta.AddRecipientsByPVS != nil ) then
+		RecipientFilterMeta.AddPVS = RecipientFilterMeta.AddRecipientsByPVS
+	end
+	if ( RecipientFilterMeta.AddRecipientsByPAS != nil ) then
+		RecipientFilterMeta.AddPAS = RecipientFilterMeta.AddRecipientsByPAS
+	end
+	Msg( "[HL2SB]   CRecipientFilter:AddPVS/AddPAS aliases added\n" )
+end
+
+-- ---------------------------------------------------------------------------
+-- DynamicLight( index ) -> dlight table.  GMod's global drives CL_AllocDlight
+-- from the fields an addon writes (Pos/r/g/b/Brightness/Decay/Size/DieTime/
+-- Style).  This fork has no Lua dlight surface, so the answer is a plain
+-- table: every write is accepted and dropped.  The one consumer in the addon
+-- set (the portalgun's portal glow) is opt-in via portal_dynamic_light and
+-- defaults OFF, so the degradation is invisible unless the user turns it on -
+-- at which point portals simply have no dynamic light, instead of erroring
+-- every Think.
+-- ---------------------------------------------------------------------------
+if ( _G.DynamicLight == nil ) then
+	function DynamicLight( index )
+		return { Pos = Vector( 0, 0, 0 ), r = 255, g = 255, b = 255,
+			Brightness = 0, Decay = 0, Size = 0, DieTime = 0, Style = 0,
+			MinLight = 0, style = 0, KeyBind = index }
+	end
+	Msg( "[HL2SB]   DynamicLight stub added (writes accepted, no light)\n" )
+end
+
+Msg( "[HL2SB] gmod entity shims loaded\n" )
