@@ -730,3 +730,49 @@ if ( CLIENT ) then
 
 	end )
 end
+-- ===========================================================================
+-- HL2SB (2026-10-03): WEAPON:CallOnClient( method, argument ) -- GMod
+-- contract.  GMod queues a method call on the client-side copy of this
+-- weapon for its owner (a "SWEPCmd" usermessage: weapon entindex, method
+-- name, one optional argument string).  The same trip here goes over the
+-- net library, which both realms already register; this fork's net payload
+-- is capped at 255 bytes, the same practical limit GMod's usermessage has.
+--
+-- NOTE: this is a weapon_base class method, not an engine binding -- GMod
+-- binds it C-side on every scripted weapon, so weapons that do not derive
+-- from weapon_base do not have it here.
+-- ===========================================================================
+if ( SERVER ) then
+	util.AddNetworkString( "hl2sb_swepcmd" )
+end
+
+if ( CLIENT ) then
+	net.Receive( "hl2sb_swepcmd", function()
+		local wep = net.ReadEntity()
+		local method = net.ReadString()
+		local argument = net.ReadString()
+
+		if ( not IsValid( wep ) or method == "" ) then return end
+
+		local fn = wep[ method ]
+		if ( type( fn ) != "function" ) then return end
+
+		fn( wep, argument )
+	end )
+end
+
+function SWEP:CallOnClient( method, argument )
+	if ( not SERVER ) then return end
+
+	local owner = self:GetOwner()
+	if ( not IsValid( owner ) or not owner.IsPlayer or not owner:IsPlayer() ) then
+		print( "[HL2SB] ERROR! CallOnClient called on weapon without an owner!\n" )
+		return
+	end
+
+	net.Start( "hl2sb_swepcmd" )
+	net.WriteEntity( self )
+	net.WriteString( method or "" )
+	net.WriteString( argument or "" )
+	net.Send( owner )
+end

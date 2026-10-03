@@ -71,6 +71,15 @@ end
 -- HudViewportPaint，未迁移。
 function GM:HUDPaint()
 
+	-- HL2SB (2026-10-03): GMod 每帧派发已部署武器的 WEAPON:DrawHUD()
+	-- （引擎侧钩子；base 的空桩只是缺省）。本分叉的等价泵挂在这条
+	-- HUDPaint 链头：先画当前武器的 HUD，再跑共享钩子。
+	local ply = LocalPlayer()
+	local wep = ( IsValid( ply ) and ply.GetActiveWeapon ) and ply:GetActiveWeapon() or nil
+	if ( IsValid( wep ) and wep.DrawHUD ) then
+		wep:DrawHUD()
+	end
+
 	hook.Run( "HUDDrawTargetID" )
 	hook.Run( "HUDDrawPickupHistory" )
 	hook.Run( "DrawDeathNotice", 0.85, 0.04 )
@@ -110,7 +119,7 @@ function GM:OnUndo( name, strCustomString )
 		text = language.GetPhrase( strId )
 		if ( strId == text ) then
 			-- No custom translation available, make a generic one.
-			-- ⚠️ This fork's language.FormatPhrase is GetPhrase(key):format(...) --
+			-- NOTE: This fork's language.FormatPhrase is GetPhrase(key):format(...) --
 			-- an unknown key formats into ITSELF, and the screenshot showed the raw
 			-- "hint.undoneX" on screen.  Only use the phrase when the translation
 			-- actually resolved, "Undone <name>" otherwise.
