@@ -240,8 +240,17 @@ function GM:CalcView( ply, origin, angles, fov, znear, zfar )
 	}
 
 	-- GMod base (cl_init.lua:374): a vehicle re-routes the whole view through
-	-- the CalcVehicleView hook chain.
-	if ( IsValid( Vehicle ) ) then return hook.Run( "CalcVehicleView", Vehicle, ply, view ) end
+	-- the CalcVehicleView hook chain.  HL2SB delta (2026-10-04): when nothing
+	-- listens, GMod's strict `return hook.Run(...)` yields NIL and the engine
+	-- readback then discards every registered hook's in-place edit of
+	-- origin/angles (First Person Body's vehicle eye snap died exactly there).
+	-- Fall through instead: the drive/taunt/player-class stages keep running
+	-- and we return the view table, whose origin/angles still hold those
+	-- hooks' mutated userdata by reference.
+	if ( IsValid( Vehicle ) ) then
+		local vehView = hook.Run( "CalcVehicleView", Vehicle, ply, view )
+		if ( vehView ~= nil ) then return vehView end
+	end
 
 	-- HL2SB (2026-09-29): GMod base order - the drive gets the view first
 	-- (gamemodes/base/gamemode/cl_init.lua:379), then the taunt camera.
