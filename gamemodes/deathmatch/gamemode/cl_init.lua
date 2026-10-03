@@ -215,17 +215,41 @@ end
 -- taunt camera its turn while a taunt plays (GMod goes through
 -- player_manager.RunClass( ply, "CalcView", view ) -> PLAYER:CalcView), and
 -- hands the (possibly modified) view back to the engine's CalcView hook reader.
-function GM:CalcView( ply, origin, angles, fov )
+-- HL2SB (2026-10-04): brought to the GMod base shape (cl_init.lua:357) -- the
+-- (ply, origin, angles, fov, znear, zfar) signature, the znear/zfar/drawviewer
+-- CamData fields, the vehicle re-route and the player-class turn.  GMod's Lua
+-- weapon-view section stays out on purpose: SWEP:CalcView/TranslateFOV are
+-- dispatched natively in c_hl2mp_player.cpp and running them here too would
+-- apply them twice.  NOTE for addons: registered CalcView hooks run BEFORE
+-- this method and may edit origin/angles in place -- view.origin/angles hold
+-- those same userdata by reference, so their edits ride back to the engine
+-- through the returned table (this is what makes First Person Body's vehicle
+-- eye snap work).
+function GM:CalcView( ply, origin, angles, fov, znear, zfar )
+
+	local Vehicle	= ply:GetVehicle()
+	local Weapon	= ply:GetActiveWeapon()
 
 	local view = {
 		["origin"] = origin,
 		["angles"] = angles,
 		["fov"] = fov,
+		["znear"] = znear,
+		["zfar"] = zfar,
+		["drawviewer"] = false,
 	}
+
+	-- GMod base (cl_init.lua:374): a vehicle re-routes the whole view through
+	-- the CalcVehicleView hook chain.
+	if ( IsValid( Vehicle ) ) then return hook.Run( "CalcVehicleView", Vehicle, ply, view ) end
 
 	-- HL2SB (2026-09-29): GMod base order - the drive gets the view first
 	-- (gamemodes/base/gamemode/cl_init.lua:379), then the taunt camera.
 	if ( drive.CalcView( ply, view ) ) then return view end
+
+	-- GMod base: player classes get a turn (PLAYER:CalcView); no-op for
+	-- classes that do not define it.
+	player_manager.RunClass( ply, "CalcView", view )
 
 	TauntCam:CalcView( view, ply, ply:IsPlayingTaunt() )
 
