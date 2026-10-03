@@ -23,13 +23,39 @@ local random  = math.random
 local huge    = math.huge
 
 -------------------------------------------------------------------------------
--- Round(x) -> nearest integer (0.5 rounds up, matches GMod).
+-- Round(num, idp): GMod's exact extension (round half up, optional decimal
+-- precision).  The earlier single-argument form rounded -0.5 to -1; GMod's
+-- floor( num * mult + 0.5 ) / mult gives 0, and addon code (portalgun's
+-- pitch comparisons) relies on the GMod answer.
 -------------------------------------------------------------------------------
-function math.Round( x )
-  if ( x == 0 ) then return 0 end
-  if ( x < 0 ) then return ceil( x - 0.5 ) end
-  return floor( x + 0.5 )
+function math.Round( num, idp )
+  local mult = 10 ^ ( idp or 0 )
+  return floor( num * mult + 0.5 ) / mult
 end
+
+-------------------------------------------------------------------------------
+-- Truncate(num, idp): rounds towards zero, GMod's extension verbatim.
+-------------------------------------------------------------------------------
+function math.Truncate( num, idp )
+  local mult = 10 ^ ( idp or 0 )
+  return ( num < 0 and ceil or floor )( num * mult ) / mult
+end
+
+-------------------------------------------------------------------------------
+-- ApproachAngle(cur, target, inc): GMod's extension verbatim - approach along
+-- the shortest angular difference (the portalgun re-centres camera roll with
+-- it; plain Approach would sweep the long way round).
+-------------------------------------------------------------------------------
+function math.ApproachAngle( cur, target, inc )
+  return math.Approach( cur, cur + math.AngleDifference( target, cur ), inc )
+end
+
+-------------------------------------------------------------------------------
+-- atan2(y, x): GMod is Lua 5.1 where this is a standard; Lua 5.4 folded it
+-- into math.atan(y, x).  GMod addons call math.atan2 freely (the portalgun's
+-- VectorAngles does), so alias it.
+-------------------------------------------------------------------------------
+math.atan2 = math.atan
 
 -------------------------------------------------------------------------------
 -- Clamp(x, min, max)
