@@ -303,6 +303,13 @@ function GM:CalcVehicleView( Vehicle, ply, view )
 		start = view.origin,
 		endpos = TargetOrigin,
 		filter = function( e )
+			-- HL2SB (sbrust): the driver must never wall the camera into their
+			-- own head.  GMod gets that for free -- the seated player's
+			-- IN_VEHICLE collision group never collides with the trace hull --
+			-- while this fork's hull starts solid inside the player itself
+			-- (probe: ss=true, hitent=player, frac=0.000, camera pinned to the
+			-- eye).  Everything below stays GMod's filter verbatim.
+			if ( e == ply ) then return false end
 			local c = e:GetClass() -- Avoid contact with entities that can potentially be attached to the vehicle. Ideally, we should check if "e" is constrained to "Vehicle".
 			return !c:StartsWith( "prop_physics" ) &&!c:StartsWith( "prop_dynamic" ) && !c:StartsWith( "phys_bone_follower" ) && !c:StartsWith( "prop_ragdoll" ) && !e:IsVehicle() && !c:StartsWith( "gmod_" )
 		end,
