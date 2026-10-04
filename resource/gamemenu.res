@@ -78,6 +78,11 @@
 	}
 	"14"
 	{
+		"label" "#HL2SB_MainMenu_Saves"
+		"command" "engine OpenSavesDialog"
+	}
+	"15"
+	{
 		"label" "#GameUI_GameMenu_Quit"
 		"command" "Quit"
 	}

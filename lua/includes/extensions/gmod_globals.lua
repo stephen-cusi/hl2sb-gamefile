@@ -564,6 +564,70 @@ if ( _G.game ~= nil and game.GetWorld == nil and _G.ents ~= nil and ents.FindByC
 end
 
 -- ===========================================================================
+-- HL2SB (2026-10-05): the gm_save / gm_load layer's remaining GMod game.*
+-- surface.  These live here and NOT in extensions/gmod_compat.lua because that
+-- file is in no load path at all (no include, no folder pass) - everything it
+-- defines is dead code; gmod_globals.lua is the one extensions file proven to
+-- run in every realm (game.GetWorld above has been answering since before the
+-- save system existed).
+-- ===========================================================================
+
+-- GMod: game.CleanUpMap( dontSendToClients, extraFilters, callback ).
+-- The engine part is the HL2SB_GameCleanUpMap global (game/server/lua/lutil.cpp
+-- -> CHL2MPRules::CleanUpMap(), which raises the "CleanUpMap" hook itself).
+-- GMod raises GM:PreCleanupMap before and GM:PostCleanupMap after; gmsave's
+-- whole load flow hangs on PostCleanupMap (clean the map, then paste the dupe
+-- back), so the wrapper fires both around the engine call.
+if ( _G.game ~= nil and game.CleanUpMap == nil ) then
+
+	function game.CleanUpMap( dontSendToClients, extraFilters, callback )
+		if ( hook ~= nil and hook.Run ~= nil ) then
+			hook.Run( "PreCleanupMap" )
+		end
+
+		if ( HL2SB_GameCleanUpMap ~= nil ) then
+			HL2SB_GameCleanUpMap()
+		end
+
+		if ( hook ~= nil and hook.Run ~= nil ) then
+			hook.Run( "PostCleanupMap" )
+		end
+
+		if ( callback ~= nil ) then
+			callback()
+		end
+	end
+
+end
+
+-- GMod: Player:IsAdmin().  This engine has no usergroup system (cod-c4's
+-- shared.lua died on the missing method).  Minimum GMod-default semantics:
+-- single player is always allowed (GMod exempts SP from the admin gate), and
+-- in multiplayer nobody is an admin by default - same as GMod without a
+-- users.txt.
+if ( _R ~= nil and _R.CBasePlayer ~= nil and _R.CBasePlayer.IsAdmin == nil ) then
+	_R.CBasePlayer.IsAdmin = function()
+		return game.SinglePlayer() == true
+	end
+end
+
+-- GMod: player.GetHumans() - non-bot players (the save loader's "the one
+-- human" fallback).
+if ( _G.player ~= nil and player.GetHumans == nil and player.GetAll ~= nil ) then
+
+	function player.GetHumans()
+		local out = {}
+		for _, ply in ipairs( player.GetAll() or {} ) do
+			if ( ply.IsBot == nil or not ply:IsBot() ) then
+				out[ #out + 1 ] = ply
+			end
+		end
+		return out
+	end
+
+end
+
+-- ===========================================================================
 -- HL2SB GMod compat: DEFINE_BASECLASS( name )  (both realms)
 --
 -- The loader's GLua rewrite pass replaces the literal identifier

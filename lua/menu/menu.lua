@@ -162,3 +162,4 @@ concommand.Create( "hl2sb_menu", MENU.Open, "Alias of OpenHL2SBMenu.", FCVAR_CLI
 include( "menu/pages/_errors.lua" )
 include( "menu/pages/addons.lua" )
 include( "menu/pages/content.lua" )
+include( "menu/pages/saves.lua" )

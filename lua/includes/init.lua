@@ -79,6 +79,12 @@ include( "util/sql.lua" )
 include( "drive/drive_base.lua" )
 include( "drive/drive_noclip.lua" )
 
+-- HL2SB (2026-10-05): the GMod single-player save layer (gmsave.SaveMap /
+-- gmsave.LoadMap over the duplicator).  GMod's own lua/includes/init.lua:86
+-- includes it the same way; gm_save / gm_load live in the deathmatch gamemode
+-- (save_load.lua), which every gamemode here inherits.
+include( "gmsave.lua" )
+
 -- Everything below is CLIENT ONLY, and GMod's own bootstrap guards it the same
 -- way.  On the server these files do not merely no-op: derma/init.lua opens by
 -- indexing `surface` (nil server-side), so it throws before it ever reaches

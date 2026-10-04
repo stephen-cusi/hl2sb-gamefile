@@ -7,6 +7,10 @@
 include( "shared.lua" )
 include( "player_class/player_deathmatch.lua" )
 
+-- HL2SB (2026-10-05): GMod sandbox 的 gm_save / gm_load（文件存储适配版，见
+-- 文件头说明）。放 deathmatch——本引擎每个 gamemode 都从它继承，命令随在。
+include( "save_load.lua" )
+
 -- 引擎的 LUA_BASE_GAMEMODE 是 "deathmatch"（luamanager.h:40），gamemodes/base/
 -- 这层从来没有被加载过——里面的通用出生链（GM:PlayerSpawn -> PlayerLoadout
 -- -> RunClass）和 player_default 类因此全是死代码（2026-09-24 实锤：
