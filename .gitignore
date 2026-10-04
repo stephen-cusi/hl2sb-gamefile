@@ -114,3 +114,6 @@ cl.db
 hl2sb_2.zip
 sv.db
 data/veh_probe_*.txt
+
+# --- 第三方插件目录:永不提交(AGENTS.md 铁律 2026-10-05) ---
+addons/

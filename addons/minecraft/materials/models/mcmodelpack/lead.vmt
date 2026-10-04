@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture"  "models\MCModelPack\lead"
-    "$surfaceprop"  "Mfoliage"
-    "$halflambert"  "1"
-}

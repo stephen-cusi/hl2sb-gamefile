@@ -1,7 +1,0 @@
-VertexLitGeneric
-{
-	"$basetexture" "models/Blue Archive/Serika/Serika_Original_Face"
-	"$lightwarpTexture" "models/Blue Archive/Serika/basewarp"
-	"$bumpmap" "models/Blue Archive/Serika/normal"
-	"$halflambert" "1"
-}

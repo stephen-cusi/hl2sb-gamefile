@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture"  "models\MCModelPack\anvil-top3"
-    "$surfaceprop"  "Mmetal"
-    "$halflambert"  "1"
-}

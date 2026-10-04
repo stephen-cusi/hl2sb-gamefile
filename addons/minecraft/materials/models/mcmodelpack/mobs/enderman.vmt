@@ -1,7 +1,0 @@
-"unlitgeneric" {
-    "$basetexture" "models\MCModelPack\mobs\enderman"
-    "$alphatest"   "1"
-    "$nocull"      "1"
-    "$halflambert" "1"
-    "$surfaceprop" "Mflesh"
-}

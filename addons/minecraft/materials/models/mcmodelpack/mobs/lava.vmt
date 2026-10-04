@@ -1,5 +1,0 @@
-"unlitgeneric" {
-    "$basetexture" "models\MCModelPack\mobs\lava"
-    "$surfaceprop" "flesh"
-    "$halflambert" "1"
-}

@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\items\hoe-01"
-    "$halflambert" "1"
-    "$surfaceprop" "Mrock"
-}

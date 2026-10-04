@@ -1,6 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture"  "models\MCModelPack\clay"
-    "$surfaceprop"  "Mdirt"
-    "$halflambert"  "1"
-    "$reflectivity" "[0.675 0.675 0.675]"
-}

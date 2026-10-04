@@ -1,9 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\lilly"
-    "$surfaceprop" "Mfoliage"
-    "$alphatest"   "1"
-    "$halflambert" "1"
-    "$nocull"      "1"
-
-    //"$color2"      "{54 83 42}"
-}

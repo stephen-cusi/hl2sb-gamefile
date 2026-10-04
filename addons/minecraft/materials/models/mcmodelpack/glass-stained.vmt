@@ -1,6 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture"  "models\MCModelPack\glass-stained"
-    "$surfaceprop"  "Mglass"
-    "$halflambert"  "1"
-    "$translucent"  "1"
-}

@@ -1,6 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\mobs\sheep_fur"
-    "$surfaceprop" "Mcloth"
-    "$halflambert" "1"
-    "$model"       "1"
-}

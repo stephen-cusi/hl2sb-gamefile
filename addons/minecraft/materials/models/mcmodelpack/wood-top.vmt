@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture"  "models\MCModelPack\wood-top"
-    "$surfaceprop"  "Mwood"
-    "$reflectivity" "[0.675 0.675 0.675]"
-}

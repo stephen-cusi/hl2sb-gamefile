@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\items\rocket"
-    "$halflambert" "1"
-    "$surfaceprop" "Mplastic"
-}

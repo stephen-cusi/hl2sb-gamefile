@@ -1,6 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\sunflower-head2"
-    "$surfaceprop" "Mfoliage"
-    "$halflambert" "1"
-    "$alphatest"   "1"
-}

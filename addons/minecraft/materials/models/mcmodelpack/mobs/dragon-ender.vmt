@@ -1,6 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\mobs\dragon-ender"
-    "$selfillum"   "1"
-    "$halflambert" "1"
-    "$surfaceprop" "Mcloth"
-}

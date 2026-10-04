@@ -1,7 +1,0 @@
-"UnlitGeneric"
-{
-	"$basetexture" "vgui\tfusion\dumbthings\combustible_lemon_swep\hotbar_icon.vtf"
-	"$translucent" "1"
-	"$vertexcolor" "1"
-	"$vertexalpha" "1"
-}

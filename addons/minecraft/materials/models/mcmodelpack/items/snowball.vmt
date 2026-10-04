@@ -1,5 +1,0 @@
-"vertexlitgeneric" {
-    "$basetexture" "models\MCModelPack\items\snowball"
-    "$halflambert" "1"
-    "$surfaceprop" "Msnow"
-}
