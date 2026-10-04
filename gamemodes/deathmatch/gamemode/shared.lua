@@ -229,6 +229,28 @@ function GM:FinishMove( ply, mv )
 
 end
 
+-- ===========================================================================
+-- HL2SB (2026-10-03): GM:PlayerFootstep, verbatim from GMod
+-- (gamemodes/base/gamemode/player_shd.lua:31).  The portalgun plays its own
+-- in-portal footsteps by calling GAMEMODE:PlayerFootstep directly; without
+-- the default method that call died ("attempt to call a nil value (field
+-- 'PlayerFootstep')").  Return true suppresses the normal step sound.
+-- ===========================================================================
+
+--[[---------------------------------------------------------
+	Name: gamemode:PlayerFootstep( ply, vPos, iFoot, strSoundName, fVolume, pFilter )
+	Desc: Called when a player steps
+		pFilter is the recipient filter to use for effects/sounds
+			and is only valid SERVERSIDE. Clientside needs no filter!
+		Return true to not play normal sound
+-----------------------------------------------------------]]
+function GM:PlayerFootstep( ply, vPos, iFoot, strSoundName, fVolume, pFilter )
+	if ( IsValid( ply ) && !ply:Alive() ) then
+		return true
+	end
+
+end
+
 --[[---------------------------------------------------------
 	A player has started driving an entity
 -----------------------------------------------------------]]

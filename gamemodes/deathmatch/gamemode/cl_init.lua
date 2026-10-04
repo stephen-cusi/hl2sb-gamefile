@@ -71,6 +71,15 @@ end
 -- HudViewportPaint，未迁移。
 function GM:HUDPaint()
 
+	-- HL2SB (2026-10-03): GMod 每帧派发已部署武器的 WEAPON:DrawHUD()
+	-- （引擎侧钩子；base 的空桩只是缺省）。本分叉的等价泵挂在这条
+	-- HUDPaint 链头：先画当前武器的 HUD，再跑共享钩子。
+	local ply = LocalPlayer()
+	local wep = ( IsValid( ply ) and ply.GetActiveWeapon ) and ply:GetActiveWeapon() or nil
+	if ( IsValid( wep ) and wep.DrawHUD ) then
+		wep:DrawHUD()
+	end
+
 	hook.Run( "HUDDrawTargetID" )
 	hook.Run( "HUDDrawPickupHistory" )
 	hook.Run( "DrawDeathNotice", 0.85, 0.04 )
@@ -110,7 +119,7 @@ function GM:OnUndo( name, strCustomString )
 		text = language.GetPhrase( strId )
 		if ( strId == text ) then
 			-- No custom translation available, make a generic one.
-			-- ⚠️ This fork's language.FormatPhrase is GetPhrase(key):format(...) --
+			-- NOTE: This fork's language.FormatPhrase is GetPhrase(key):format(...) --
 			-- an unknown key formats into ITSELF, and the screenshot showed the raw
 			-- "hint.undoneX" on screen.  Only use the phrase when the translation
 			-- actually resolved, "Undone <name>" otherwise.
@@ -206,17 +215,50 @@ end
 -- taunt camera its turn while a taunt plays (GMod goes through
 -- player_manager.RunClass( ply, "CalcView", view ) -> PLAYER:CalcView), and
 -- hands the (possibly modified) view back to the engine's CalcView hook reader.
-function GM:CalcView( ply, origin, angles, fov )
+-- HL2SB (2026-10-04): brought to the GMod base shape (cl_init.lua:357) -- the
+-- (ply, origin, angles, fov, znear, zfar) signature, the znear/zfar/drawviewer
+-- CamData fields, the vehicle re-route and the player-class turn.  GMod's Lua
+-- weapon-view section stays out on purpose: SWEP:CalcView/TranslateFOV are
+-- dispatched natively in c_hl2mp_player.cpp and running them here too would
+-- apply them twice.  NOTE for addons: registered CalcView hooks run BEFORE
+-- this method and may edit origin/angles in place -- view.origin/angles hold
+-- those same userdata by reference, so their edits ride back to the engine
+-- through the returned table (this is what makes First Person Body's vehicle
+-- eye snap work).
+function GM:CalcView( ply, origin, angles, fov, znear, zfar )
+
+	local Vehicle	= ply:GetVehicle()
+	local Weapon	= ply:GetActiveWeapon()
 
 	local view = {
 		["origin"] = origin,
 		["angles"] = angles,
 		["fov"] = fov,
+		["znear"] = znear,
+		["zfar"] = zfar,
+		["drawviewer"] = false,
 	}
+
+	-- GMod base (cl_init.lua:374): a vehicle re-routes the whole view through
+	-- the CalcVehicleView hook chain.  HL2SB delta (2026-10-04): when nothing
+	-- listens, GMod's strict `return hook.Run(...)` yields NIL and the engine
+	-- readback then discards every registered hook's in-place edit of
+	-- origin/angles (First Person Body's vehicle eye snap died exactly there).
+	-- Fall through instead: the drive/taunt/player-class stages keep running
+	-- and we return the view table, whose origin/angles still hold those
+	-- hooks' mutated userdata by reference.
+	if ( IsValid( Vehicle ) ) then
+		local vehView = hook.Run( "CalcVehicleView", Vehicle, ply, view )
+		if ( vehView ~= nil ) then return vehView end
+	end
 
 	-- HL2SB (2026-09-29): GMod base order - the drive gets the view first
 	-- (gamemodes/base/gamemode/cl_init.lua:379), then the taunt camera.
 	if ( drive.CalcView( ply, view ) ) then return view end
+
+	-- GMod base: player classes get a turn (PLAYER:CalcView); no-op for
+	-- classes that do not define it.
+	player_manager.RunClass( ply, "CalcView", view )
 
 	TauntCam:CalcView( view, ply, ply:IsPlayingTaunt() )
 
@@ -290,19 +332,40 @@ function GM:PostDrawViewModel( vm, ply, wep, flags )
 	if ( wep.UseHands || !wep:IsScripted() ) then
 
 		local hands = ply:GetHands()
-		if ( IsValid( hands ) && IsValid( hands:GetParent() ) ) then
+		if ( IsValid( hands ) ) then
 
-			if ( not hook.Call( "PreDrawPlayerHands", self, hands, vm, ply, wep, flags ) ) then
+			-- HL2SB (2026-10-04) SP self-heal: the vehicle enter/exit cycle
+			-- holsters the weapon -> viewmodel EF_NODRAW -> FL_EDICT_DONTSEND ->
+			-- the single-player backdoor dormants the vm and the hands with it,
+			-- and the wake branch races the hands' own AttachToViewmodel --
+			-- the entity comes back alive and bound but detached (parent=NULL,
+			-- EF_BONEMERGE cleared, origin 0).  GMod never sees this because
+			-- its transport has no such wake; re-attach here, every frame,
+			-- which is also what GMod's per-frame parent check effectively
+			-- guarantees.  Client-side SetParent is the legal
+			-- outside-PostDataUpdate variant, and a healthy entity matches on
+			-- the next full update so this is a no-op in MP.
+			if ( hands:GetParent() != vm ) then
 
-				-- GMod base cl_init.lua:611 - a ViewModelFlip weapon mirrors the
-				-- viewmodel, so the hands draw with inverted winding.
-				if ( wep.ViewModelFlip ) then render.CullMode( MATERIAL_CULLMODE_CW ) end
-				hands:DrawModel( flags )
-				render.CullMode( MATERIAL_CULLMODE_CCW )
+				hands:AttachToViewmodel( vm )
 
 			end
 
-			hook.Call( "PostDrawPlayerHands", self, hands, vm, ply, wep, flags )
+			if ( IsValid( hands:GetParent() ) ) then
+
+				if ( not hook.Call( "PreDrawPlayerHands", self, hands, vm, ply, wep, flags ) ) then
+
+					-- GMod base cl_init.lua:611 - a ViewModelFlip weapon mirrors the
+					-- viewmodel, so the hands draw with inverted winding.
+					if ( wep.ViewModelFlip ) then render.CullMode( MATERIAL_CULLMODE_CW ) end
+					hands:DrawModel( flags )
+					render.CullMode( MATERIAL_CULLMODE_CCW )
+
+				end
+
+				hook.Call( "PostDrawPlayerHands", self, hands, vm, ply, wep, flags )
+
+			end
 
 		end
 
