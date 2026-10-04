@@ -1,0 +1,10 @@
+VertexLitGeneric
+{
+	"$basetexture" "models/Blue Archive/Serika/Serika_Halo"
+	"$lightwarpTexture" "models/Blue Archive/Serika/basewarp"
+	"$bumpmap" "models/Blue Archive/Serika/normal"
+	"$halflambert" "1"					
+	"$nodecal" "1"
+	"$selfillum" "1"
+	"$nocull" "1"
+}

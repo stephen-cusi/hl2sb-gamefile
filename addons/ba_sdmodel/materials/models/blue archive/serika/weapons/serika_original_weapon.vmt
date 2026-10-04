@@ -1,0 +1,6 @@
+VertexLitGeneric
+{
+	"$basetexture" "models/Blue Archive/Serika/Weapons/Serika_Original_Weapon"
+	"$lightwarpTexture" "models/Blue Archive/Serika/Weapons/basewarp"
+	"$nocull" 1
+}

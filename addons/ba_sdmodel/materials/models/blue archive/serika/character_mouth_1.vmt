@@ -1,0 +1,8 @@
+"VertexLitGeneric"
+{
+	"$baseTexture" "models/Blue Archive/Serika/Character_Mouth_1"
+	"$lightwarpTexture" "models/Blue Archive/Serika/basewarp"
+	"$bumpmap" "models/Blue Archive/Serika/normal"
+	"$alphatest" "1"
+	"$halflambert" "1"
+}

@@ -1,77 +1,54 @@
--- vehicle_eyeprobe.lua -- HL2SB (2026-10-04) diagnostic, run with: lua_dofile_cl vehicle_eyeprobe.lua
--- Sits in the jeep and dumps the actual camera / attachment / head-bone numbers
--- so the head-clip geometry is measured instead of guessed.  Prints one frame
--- immediately (if seated) and then once a second for 10 seconds.
+-- vehicle_eyeprobe.lua v4 -- HL2SB (2026-10-04) culprit projector.  Run: lua_dofile_cl vehicle_eyeprobe.lua
+-- Seated in the jeep, AIM AT THE HEAD.  For every candidate model, projects its
+-- head-bone position onto the view axis: the culprit is the one whose head is
+-- dead-center in front of the camera (offaxis ~ 0).
 
-local function dump( tag )
-	local ply = LocalPlayer()
-	if ( not IsValid( ply ) ) then print( "[eyeprobe] no local player" ) return end
+timer.Remove( "head_bisect" )
+timer.Remove( "probe3" )
+timer.Remove( "probe4" )
+hook.Remove( "Think", "head_bisect" )
+hook.Remove( "CalcView", "probe2_offset" )
 
-	local veh = ply:GetVehicle()
-	print( "==== [eyeprobe " .. tag .. "] ====" )
-	print( "InVehicle      : " .. tostring( ply:InVehicle() ) )
-	if ( not IsValid( veh ) ) then print( "no vehicle" ) return end
+local function isEnt( v ) return type( v ) == "Entity" end
 
-	print( "vehicle class  : " .. veh:GetClass() )
-	print( "EyePos         : " .. tostring( EyePos() ) )
-	print( "EyeAngles      : " .. tostring( EyeAngles() ) )
-	print( "ply origin     : " .. tostring( ply:GetPos() ) )
-	print( "ply angles     : " .. tostring( ply:GetAngles() ) )
-
-	local seq = ply:GetSequence()
-	print( "ply sequence   : " .. seq .. " (" .. tostring( ply:GetSequenceName( seq ) ) .. ")" )
-
-	-- vehicle driver-eye attachment (what the native camera sits on)
-	local iVehEye = veh:LookupAttachment( "vehicle_driver_eyes" )
-	local vFirst, vSecond = veh:GetAttachment( iVehEye )
-	local vPos = ( type( vFirst ) == "table" and vFirst.Pos ) or vFirst
-	local vAng = ( type( vFirst ) == "table" and vFirst.Ang ) or vSecond
-	print( "veh driver_eyes: " .. tostring( vPos ) .. " ang " .. tostring( vAng ) )
-
-	-- the rider model's own eyes attachment (what FPB snaps X/Y to)
-	local iEyes = ply:LookupAttachment( "eyes" )
-	if ( iEyes and iEyes > 0 ) then
-		local pFirst, pSecond = ply:GetAttachment( iEyes )
-		local pPos = ( type( pFirst ) == "table" and pFirst.Pos ) or pFirst
-		local pAng = ( type( pFirst ) == "table" and pFirst.Ang ) or pSecond
-		print( "ply eyes att   : " .. tostring( pPos ) .. " ang " .. tostring( pAng ) )
-	else
-		print( "ply eyes att   : NONE" )
-	end
-
-	-- head bone world position
-	local h = ply:LookupBone( "ValveBiped.Bip01_Head1" )
+local function headPos( e )
+	local h = e:LookupBone( "ValveBiped.Bip01_Head1" )
 	if ( h and h >= 0 ) then
-		local hpos = ply:GetBonePosition( h )
-		print( "head bone      : " .. tostring( hpos ) )
-	else
-		print( "head bone      : NONE" )
+		local p = e:GetBonePosition( h )
+		if ( p ) then return p end
 	end
-
-	local dv = Vector( 0, 0, 0 )
-	if ( vPos ) then dv = EyePos() - vPos end
-	print( "EyePos-vehEye  : " .. tostring( dv ) )
+	return nil
 end
 
-dump( "instant" )
+local n = 0
+timer.Create( "probe4", 0.5, 24, function()
+	n = n + 1
+	local ply = LocalPlayer()
+	if ( not IsValid( ply ) ) then return end
+	local eye = EyePos()
+	local fwd = EyeAngles():Forward()
 
--- Per-frame EyePos sampling: 90 consecutive frames.  A stable camera prints
--- the same vector; a flapping gate alternates between two positions; a
--- mid-frame bone fight shows small oscillation every frame.
-local nFrames = 0
-local vPrev = EyePos()
-hook.Add( "Think", "vehicle_eyeprobe_frames", function()
-	if ( nFrames >= 90 ) then
-		hook.Remove( "Think", "vehicle_eyeprobe_frames" )
-		print( "[eyeprobe] per-frame sampling done" )
-		return
+	print( string.format( "[probe4 f%02d] camera %s", n, tostring( eye ) ) )
+	-- candidates: the player + every entity field on the player table
+	local candidates = { { "ply(engine)", ply } }
+	local tbl = ply:GetTable()
+	for k, v in pairs( tbl ) do
+		if ( isEnt( v ) and IsValid( v ) ) then
+			candidates[#candidates + 1] = { "ply." .. tostring( k ), v }
+		end
 	end
-	nFrames = nFrames + 1
-	local v = EyePos()
-	local d = v - vPrev
-	print( string.format( "[eyeprobe f%02d] eye %s  delta (%.2f %.2f %.2f) len %.3f",
-		nFrames, tostring( v ), d.x, d.y, d.z, d:Length() ) )
-	vPrev = v
+	for _, c in ipairs( candidates ) do
+		local hp = headPos( c[2] )
+		if ( hp ) then
+			local rel = hp - eye
+			local along = rel:Dot( fwd )
+			local off = rel - fwd * along
+			local nodraw = c[2]:IsEffectActive( EF_NODRAW )
+			print( string.format( "   %-16s head dot=%8.1f offaxis=%6.2f nodraw=%s",
+				c[1], along, off:Length(), tostring( nodraw ) ) )
+		else
+			print( string.format( "   %-16s no head bone", c[1] ) )
+		end
+	end
 end )
-
-print( "[eyeprobe] per-frame sampling running for 90 frames -- sit still in the jeep" )
+print( "[probe4] running 24x0.5s -- AIM AT THE HEAD now" )

@@ -316,6 +316,29 @@ function game.GetMapName()
 	return game.GetMap()
 end
 
+-- GMod: game.GetWorld() -- 世界实体（entindex 0）。gmsave.SaveMap 把它加进
+-- 复制列表，只为取"只挂在世界上"的约束；本引擎没有 C 绑定，Entity(0) 等价。
+if ( game.GetWorld == nil ) then
+	function game.GetWorld()
+		if ( Entity == nil ) then return nil end
+		return Entity( 0 )
+	end
+end
+
+-- GMod: player.GetHumans() -- 非机器人玩家。gmsave 读档兜底找"唯一的那个
+-- 玩家"用；本引擎没有 C 绑定，在 GetAll 上滤 IsBot 等价。
+if ( player ~= nil and player.GetHumans == nil and player.GetAll ~= nil ) then
+	function player.GetHumans()
+		local out = {}
+		for _, ply in ipairs( player.GetAll() or {} ) do
+			if ( ply.IsBot == nil or not ply:IsBot() ) then
+				out[ #out + 1 ] = ply
+			end
+		end
+		return out
+	end
+end
+
 function game.GetIP()
 	if ( engine == nil or engine.GetGameDir == nil ) then return "" end
 	return SafeCall( engine.GetGameDir ) or ""
@@ -383,9 +406,22 @@ end
 -- CHL2MPRules::CleanUpMap()：重建地图自身实体、删掉其余（玩家/手持武器除外）并
 -- 触发 CleanUpMap 钩子 —— 与 GMod 文档描述一致。GMod 的三个可选参数这里接受但
 -- 忽略（callback 仍在结束后被调用）。
+--
+-- HL2SB (2026-10-05): GMod 在清理前后各发一个 GM:PreCleanupMap /
+-- GM:PostCleanupMap 钩子；本引擎 C++ 只发 "CleanUpMap" 一个。gmsave.LoadMap 的
+-- 整个读档流程挂在 PostCleanupMap 上（清完图再 Paste 回去），所以包装器按
+-- GMod 的次序补发这两个钩子；C++ 原有的 "CleanUpMap" 钩子保持不动。
 function game.CleanUpMap( dontSendToClients, extraFilters, callback )
+	if ( hook ~= nil and hook.Run ~= nil ) then
+		hook.Run( "PreCleanupMap" )
+	end
+
 	if ( HL2SB_GameCleanUpMap ) then
 		HL2SB_GameCleanUpMap()
+	end
+
+	if ( hook ~= nil and hook.Run ~= nil ) then
+		hook.Run( "PostCleanupMap" )
 	end
 
 	if ( callback ) then
@@ -480,6 +516,16 @@ if ( plymeta ~= nil ) then
 			local ok, v = pcall( engine.GetClientConVarValue, idx, key )
 			if ( not ok or v == nil ) then return "" end
 			return v
+		end
+	end
+
+	-- GMod: ply:IsAdmin()。本引擎没有 usergroup 体系（cod-c4 曾因它不存在
+	-- 报过 attempt to call nil）。按 GMod 默认语义的最低实现：单人恒真
+	-- （GMod 单人本来就豁免管理员门），多人恒假（GMod 默认也没有人自带
+	-- admin 组，users.txt 那套这里没有）。
+	if ( plymeta.IsAdmin == nil ) then
+		plymeta.IsAdmin = function()
+			return game.SinglePlayer() == true
 		end
 	end
 

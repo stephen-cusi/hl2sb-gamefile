@@ -107,3 +107,10 @@ _lua_enc_backup/
 # --- 一次性分析脚本(临时工具,不进仓库) ---
 _*.py
 *.gma
+
+# --- 运行期缓存/本地杂项(2026-10-05) ---
+cache/
+cl.db
+hl2sb_2.zip
+sv.db
+data/veh_probe_*.txt

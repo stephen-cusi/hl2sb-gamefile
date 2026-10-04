@@ -1,0 +1,8 @@
+VertexLitGeneric
+{
+	"$basetexture" "models/Blue Archive/Serika/Black_Outline"
+	"$lightwarpTexture" "models/Blue Archive/Serika/basewarp"
+	"$bumpmap" "models/Blue Archive/Serika/normal"
+	"$halflambert" "1"
+}
+
