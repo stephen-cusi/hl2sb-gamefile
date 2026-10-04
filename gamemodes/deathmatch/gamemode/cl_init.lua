@@ -332,19 +332,40 @@ function GM:PostDrawViewModel( vm, ply, wep, flags )
 	if ( wep.UseHands || !wep:IsScripted() ) then
 
 		local hands = ply:GetHands()
-		if ( IsValid( hands ) && IsValid( hands:GetParent() ) ) then
+		if ( IsValid( hands ) ) then
 
-			if ( not hook.Call( "PreDrawPlayerHands", self, hands, vm, ply, wep, flags ) ) then
+			-- HL2SB (2026-10-04) SP self-heal: the vehicle enter/exit cycle
+			-- holsters the weapon -> viewmodel EF_NODRAW -> FL_EDICT_DONTSEND ->
+			-- the single-player backdoor dormants the vm and the hands with it,
+			-- and the wake branch races the hands' own AttachToViewmodel --
+			-- the entity comes back alive and bound but detached (parent=NULL,
+			-- EF_BONEMERGE cleared, origin 0).  GMod never sees this because
+			-- its transport has no such wake; re-attach here, every frame,
+			-- which is also what GMod's per-frame parent check effectively
+			-- guarantees.  Client-side SetParent is the legal
+			-- outside-PostDataUpdate variant, and a healthy entity matches on
+			-- the next full update so this is a no-op in MP.
+			if ( hands:GetParent() != vm ) then
 
-				-- GMod base cl_init.lua:611 - a ViewModelFlip weapon mirrors the
-				-- viewmodel, so the hands draw with inverted winding.
-				if ( wep.ViewModelFlip ) then render.CullMode( MATERIAL_CULLMODE_CW ) end
-				hands:DrawModel( flags )
-				render.CullMode( MATERIAL_CULLMODE_CCW )
+				hands:AttachToViewmodel( vm )
 
 			end
 
-			hook.Call( "PostDrawPlayerHands", self, hands, vm, ply, wep, flags )
+			if ( IsValid( hands:GetParent() ) ) then
+
+				if ( not hook.Call( "PreDrawPlayerHands", self, hands, vm, ply, wep, flags ) ) then
+
+					-- GMod base cl_init.lua:611 - a ViewModelFlip weapon mirrors the
+					-- viewmodel, so the hands draw with inverted winding.
+					if ( wep.ViewModelFlip ) then render.CullMode( MATERIAL_CULLMODE_CW ) end
+					hands:DrawModel( flags )
+					render.CullMode( MATERIAL_CULLMODE_CCW )
+
+				end
+
+				hook.Call( "PostDrawPlayerHands", self, hands, vm, ply, wep, flags )
+
+			end
 
 		end
 
