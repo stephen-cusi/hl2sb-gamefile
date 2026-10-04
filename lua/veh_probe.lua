@@ -78,13 +78,13 @@ if not ok then
 	return
 end
 
--- The two calls the GMod wiki documents for the vehicle camera; they drive the convars
--- the engine camera (ClientModeShared::OverrideView) reads every frame.
+-- HL2SB (sbrust): the GMod camera state now lives ON the vehicle (networked
+-- CPropVehicleDriveable fields; the server's CTRL/wheel writer owns them in
+-- normal play).  Setting them from Lua proves the round trip; the read-back is
+-- the same field.  The camera itself is GM:CalcVehicleView (deathmatch cl_init).
 veh:SetThirdPersonMode( true )
-veh:SetCameraDistance( 480 )
-
-local cvar = GetConVar( "hl2sb_veh_thirdperson" )
-local cvarDist = GetConVar( "hl2sb_veh_thirdperson_dist" )
-print( "[veh_probe] SetThirdPersonMode(true) + SetCameraDistance(480) -> hl2sb_veh_thirdperson=" ..
-	   tostring( cvar and cvar:GetBool() ) .. " hl2sb_veh_thirdperson_dist=" ..
-	   tostring( cvarDist and cvarDist:GetFloat() ) )
+veh:SetCameraDistance( 2.5 )
+print( "[veh_probe] after Set(true/2.5): thirdPerson=" .. tostring( veh:GetThirdPersonMode() ) ..
+	   " camDist=" .. tostring( veh:GetCameraDistance() ) ..
+	   "  (server realm: this is authoritative and streams to clients;" ..
+	   " client realm: local mirror until the networked value arrives)" )

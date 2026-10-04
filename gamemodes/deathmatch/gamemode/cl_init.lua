@@ -266,6 +266,76 @@ function GM:CalcView( ply, origin, angles, fov, znear, zfar )
 
 end
 
+-- HL2SB (sbrust): verbatim port of GMod base gamemode's GM:CalcVehicleView
+-- (gamemodes/base/gamemode/cl_init.lua:305-351).  This IS the vehicle third
+-- person camera now: the state it reads (GetThirdPersonMode / GetCameraDistance)
+-- is the networked per-vehicle data the SERVER writes in
+-- CPropVehicleDriveable::HL2SB_UpdateCameraState (the port of GM:VehicleMove:
+-- CTRL edge flips the mode, mouse wheel drives the distance multiplier), and
+-- GM:CalcView above routes a seated view here (hook.Run("CalcVehicleView")
+-- falls back to this gamemode method).  First person returns the view
+-- untouched -- the C++ vehicle eye (SharedVehicleViewSmoothing) stands as
+-- computed.  GMod's own comments are kept.
+function GM:CalcVehicleView( Vehicle, ply, view )
+
+	if ( Vehicle.GetThirdPersonMode == nil || ply:GetViewEntity() != ply ) then
+		-- This shouldn't ever happen.
+		return
+	end
+
+	--
+	-- If we're not in third person mode - then get outa here stalker
+	--
+	if ( !Vehicle:GetThirdPersonMode() ) then return view end
+
+	-- Don't roll the camera
+	-- view.angles.roll = 0
+
+	local mn, mx = Vehicle:GetRenderBounds()
+	local radius = ( mn - mx ):Length()
+	local radius = radius + radius * Vehicle:GetCameraDistance()
+
+	-- Trace back from the original eye position, so we don't clip through walls/objects
+	local TargetOrigin = view.origin + ( view.angles:Forward() * -radius )
+	local WallOffset = 4
+
+	local tr = util.TraceHull( {
+		start = view.origin,
+		endpos = TargetOrigin,
+		filter = function( e )
+			local c = e:GetClass() -- Avoid contact with entities that can potentially be attached to the vehicle. Ideally, we should check if "e" is constrained to "Vehicle".
+			return !c:StartsWith( "prop_physics" ) &&!c:StartsWith( "prop_dynamic" ) && !c:StartsWith( "phys_bone_follower" ) && !c:StartsWith( "prop_ragdoll" ) && !e:IsVehicle() && !c:StartsWith( "gmod_" )
+		end,
+		mins = Vector( -WallOffset, -WallOffset, -WallOffset ),
+		maxs = Vector( WallOffset, WallOffset, WallOffset ),
+	} )
+
+	view.origin = tr.HitPos
+	view.drawviewer = true
+
+	--
+	-- If the trace hit something, put the camera there.
+	--
+	if ( tr.Hit && !tr.StartSolid) then
+		view.origin = view.origin + tr.HitNormal * WallOffset
+	end
+
+	return view
+
+end
+
+-- HL2SB (sbrust): GMod base's CLIENT-side GM:VehicleMove stub
+-- (gamemodes/base/gamemode/cl_init.lua:735) -- empty in GMod too: the hook
+-- exists in both realms, only the server body does work.  Ported so the hook
+-- contract matches GMod both realms.  Dormant in this fork: the engine does not
+-- dispatch VehicleMove (no CMoveData Lua bindings yet), the toggle+zoom run
+-- natively server-side (CPropVehicleDriveable::HL2SB_UpdateCameraState).  If a
+-- later round adds the dispatch, the C++ writer must be removed FIRST -- the
+-- final set must fire the toggle exactly once per seated server tick.
+function GM:VehicleMove( ply, vehicle, mv )
+
+end
+
 -- HL2SB (2026-09-27): GMod's GM:CreateMove.  While a taunt plays the taunt
 -- camera orbits itself with the mouse and locks the body
 -- (cmd:SetViewAngles/ClearButtons/ClearMovement); in_main.cpp copies the

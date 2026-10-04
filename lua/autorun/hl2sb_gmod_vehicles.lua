@@ -99,6 +99,13 @@ for _, v in ipairs( VEHICLES ) do
 			KeyValues	= {
 				vehiclescript	= v.script,
 				limitview	= "0",
+				-- HL2SB (sbrust): GMod's sandbox stores the table name on the
+				-- spawned vehicle too (vehicle:SetVehicleClass(VName),
+				-- commands.lua:1057) -- the keyfield keeps it on the entity so
+				-- Vehicle:GetVehicleClass() and any addon lookup work.  The
+				-- drive poses of jeep/airboat resolve by entity CLASS in
+				-- animations.lua HandlePlayerDriving, so no Members here.
+				vehicleclass	= v.id,
 			},
 		} )
 

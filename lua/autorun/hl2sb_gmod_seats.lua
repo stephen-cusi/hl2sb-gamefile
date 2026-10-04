@@ -63,23 +63,51 @@ local SEAT_SCRIPT = "scripts/vehicles/prisoner_pod.txt"
 -- GMod shows a "Chairs" node instead of dumping the seats in with the jeep.
 local SEAT_CATEGORY = "座椅"
 
+-- HL2SB (sbrust): GMod's seat POSE handlers (base_vehicles.lua:222-230).  The
+-- engine's animations.lua HandlePlayerDriving looks the spawned vehicle up in
+-- this list by its VehicleClass string (the `vehicleclass` keyvalue below,
+-- GMod's sandbox SetVehicleClass(VName) equivalent -- commands.lua:1057) and
+-- runs the entry's Members.HandleAnimation( vehicle, player ) as the sequence
+-- override.  GMod's own handlers ask through SelectWeightedSequence( ACT_* )
+-- with GMod-private activity numbers baked into the model's ACT table; this
+-- fork has no ACT_DRIVE_JEEP / ACT_DRIVE_AIRBOAT enum (and anime playermodels
+-- carry no such mappings), so the handlers resolve the SAME sequences by the
+-- NAME GMod's acttable maps to -- verified present in the current playermodel
+-- (sit_rollercoaster 388, drive_jeep 390, drive_airboat 389, sit 11).  A model
+-- without the sequence answers -1 = "no override", exactly GMod's miss case.
+local function HandleRollercoasterAnimation( vehicle, player )
+	return player:LookupSequence( "sit_rollercoaster" )
+end
+local function HandlePHXSeatAnimation( vehicle, player )
+	return player:LookupSequence( "sit" )
+end
+local function HandlePHXVehicleAnimation( vehicle, player )
+	return player:LookupSequence( "drive_jeep" )
+end
+local function HandlePHXAirboatAnimation( vehicle, player )
+	return player:LookupSequence( "drive_airboat" )
+end
+
 -- id      - the SPAWN NAME GMod uses; also the name of its spawnmenu thumbnail
 --           (materials/entities/<lowercase id>.png, found via IconOverride).
 -- label   - what the cell prints.
 -- model   - the model that makes this seat this seat.
 -- icon    - materials/<icon>.png from GMod's materials/entities/ set.
+-- pose    - the HandleAnimation above this seat uses (GMod's per-entry choice:
+--           chairs = rollercoaster; phx_seat = plain sit; phx_seat2 = the jeep
+--           drive pose; phx_seat3 = the airboat drive pose).
 local SEATS =
 {
-	{ id = "Chair_Office1",	label = "办公椅座椅",		model = "models/nova/chair_office01.mdl",	icon = "entities/chair_office1" },
-	{ id = "Seat_Jeep",		label = "吉普车座椅",		model = "models/nova/jeep_seat.mdl",		icon = "entities/seat_jeep" },
-	{ id = "Chair_Plastic",	label = "塑料椅",			model = "models/nova/chair_plastic01.mdl",	icon = "entities/chair_plastic" },
-	{ id = "Chair_Office2",	label = "大办公椅座椅",		model = "models/nova/chair_office02.mdl",	icon = "entities/chair_office2" },
-	{ id = "Chair_Wood",	label = "木椅子",			model = "models/nova/chair_wood01.mdl",		icon = "entities/chair_wood" },
-	{ id = "phx_seat",		label = "汽车座椅(空)",		model = "models/props_phx/carseat2.mdl",	icon = "entities/phx_seat" },
-	{ id = "phx_seat2",		label = "汽车座椅(左乘客)",	model = "models/props_phx/carseat3.mdl",	icon = "entities/phx_seat2" },
-	{ id = "phx_seat3",		label = "汽车座椅(右乘客)",	model = "models/props_phx/carseat2.mdl",	icon = "entities/phx_seat3" },
-	{ id = "Seat_Airboat",	label = "汽座位置",			model = "models/nova/airboat_seat.mdl",		icon = "entities/seat_airboat" },
-	{ id = "Seat_Jalopy",	label = "豪华车座椅",		model = "models/nova/jalopy_seat.mdl",		icon = "entities/seat_jalopy" },
+	{ id = "Chair_Office1",	label = "办公椅座椅",		model = "models/nova/chair_office01.mdl",	icon = "entities/chair_office1",	pose = HandleRollercoasterAnimation },
+	{ id = "Seat_Jeep",		label = "吉普车座椅",		model = "models/nova/jeep_seat.mdl",		icon = "entities/seat_jeep",		pose = HandleRollercoasterAnimation },
+	{ id = "Chair_Plastic",	label = "塑料椅",			model = "models/nova/chair_plastic01.mdl",	icon = "entities/chair_plastic",	pose = HandleRollercoasterAnimation },
+	{ id = "Chair_Office2",	label = "大办公椅座椅",		model = "models/nova/chair_office02.mdl",	icon = "entities/chair_office2",	pose = HandleRollercoasterAnimation },
+	{ id = "Chair_Wood",	label = "木椅子",			model = "models/nova/chair_wood01.mdl",		icon = "entities/chair_wood",		pose = HandleRollercoasterAnimation },
+	{ id = "phx_seat",		label = "汽车座椅(空)",		model = "models/props_phx/carseat2.mdl",	icon = "entities/phx_seat",		pose = HandlePHXSeatAnimation },
+	{ id = "phx_seat2",		label = "汽车座椅(左乘客)",	model = "models/props_phx/carseat3.mdl",	icon = "entities/phx_seat2",		pose = HandlePHXVehicleAnimation },
+	{ id = "phx_seat3",		label = "汽车座椅(右乘客)",	model = "models/props_phx/carseat2.mdl",	icon = "entities/phx_seat3",		pose = HandlePHXAirboatAnimation },
+	{ id = "Seat_Airboat",	label = "汽座位置",			model = "models/nova/airboat_seat.mdl",		icon = "entities/seat_airboat",	pose = HandleRollercoasterAnimation },
+	{ id = "Seat_Jalopy",	label = "豪华车座椅",		model = "models/nova/jalopy_seat.mdl",		icon = "entities/seat_jalopy",	pose = HandleRollercoasterAnimation },
 }
 
 for _, seat in ipairs( SEATS ) do
@@ -101,11 +129,27 @@ for _, seat in ipairs( SEATS ) do
 		IconOverride = seat.icon,
 
 		-- Same KeyValues GMod passes for every seat: the pod's own vehicle
-		-- script (it is what gives the model a seat to sit on) and GMod's
-		-- third-person `limitview 0`.
+		-- script (it is what gives the model a seat to sit on), GMod's
+		-- third-person `limitview 0`, and HL2SB (sbrust) the vehicle TABLE
+		-- name -- GMod's sandbox writes it via vehicle:SetVehicleClass(spawnname)
+		-- at spawn (commands.lua:1057); the fork's gm_spawnvehicle forwards
+		-- every KeyValues entry to the entity as a KeyValue before Spawn, and
+		-- the `vehicleclass` keyfield stores it on the pod.  The seat pose
+		-- lookup (animations.lua HandlePlayerDriving -> list.GetEntry
+		-- ( "Vehicles", GetVehicleClass() ).Members.HandleAnimation) depends
+		-- on this value; without it every seat falls to the generic
+		-- sit_rollercoaster answer.
 		KeyValues = {
 			vehiclescript	= SEAT_SCRIPT,
 			limitview		= "0",
+			vehicleclass	= seat.id,
+		},
+
+		-- HL2SB (sbrust): GMod's seat POSE callback slot (base_vehicles.lua:
+		-- Members = { HandleAnimation = ... }).  Consumed server-side by
+		-- animations.lua HandlePlayerDriving; SMenu ignores this table.
+		Members = {
+			HandleAnimation = seat.pose,
 		},
 	} )
 end

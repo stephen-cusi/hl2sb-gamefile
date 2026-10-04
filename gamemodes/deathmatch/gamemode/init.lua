@@ -55,6 +55,40 @@ end
 function GM:PlayerLeaveVehicle( ply, vehicle )
 end
 
+-- HL2SB (sbrust): verbatim port of GMod base gamemode's SERVER GM:VehicleMove
+-- (gamemodes/base/gamemode/init.lua:146-167) -- the IN_DUCK third-person toggle
+-- and the mouse-wheel camera zoom.  DORMANT by design: this engine does not
+-- dispatch VehicleMove yet (no CMoveData Lua bindings; same situation as the
+-- GM:Move/SetupMove/FinishMove methods placed for the noclip work).  The exact
+-- same behavior runs natively server-side in
+-- CPropVehicleDriveable::HL2SB_UpdateCameraState (CTRL press edge flips
+-- m_bThirdPersonMode, the usercmd wheel applies this formula, the DT stream
+-- carries both to the clients).  IF A LATER ROUND ADDS THE VehicleMove
+-- DISPATCH, REMOVE THE C++ WRITER FIRST -- the toggle must fire exactly once
+-- per seated server tick, two writers means the double-toggle bug returns.
+function GM:VehicleMove( ply, vehicle, mv )
+
+	--
+	-- On duck toggle third person view
+	--
+	if ( mv:KeyPressed( IN_DUCK ) && vehicle.SetThirdPersonMode ) then
+		vehicle:SetThirdPersonMode( !vehicle:GetThirdPersonMode() )
+	end
+
+	--
+	-- Adjust the camera distance with the mouse wheel
+	--
+	local iWheel = ply:GetCurrentCommand():GetMouseWheel()
+	if ( iWheel != 0 && vehicle.SetCameraDistance ) then
+		-- The distance is a multiplier
+		-- Actual camera distance = ( renderradius + renderradius * dist )
+		-- so -1 will be zero.. clamp it there.
+		local newdist = math.Clamp( vehicle:GetCameraDistance() - iWheel * 0.03 * ( 1.1 + vehicle:GetCameraDistance() ), -1, 10 )
+		vehicle:SetCameraDistance( newdist )
+	end
+
+end
+
 function GM:CanHavePlayerItem( pPlayer, pItem )
   if ( cvar.FindVar( "mp_weaponstay" ):GetInt() > 0 ) then
     if ( pPlayer:Weapon_OwnsThisType( pItem:GetClassname(), pItem:GetSubType() ) ) then
