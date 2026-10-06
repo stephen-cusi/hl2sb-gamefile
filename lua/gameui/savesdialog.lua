@@ -72,7 +72,8 @@ local function OpenPlain()
 	local function NewLabel( x, yy, w, h, text, clr )
 		local lbl = vgui.Create( "Label", frame )
 		if ( lbl == nil ) then return nil end
-		lbl:SetBounds( x, yy, w, h )
+		lbl:SetPos( x, yy )
+		lbl:SetSize( w, h )
 		lbl:SetText( text or "" )
 		if ( lbl.SetFgColor ~= nil ) then
 			lbl:SetFgColor( clr or COL_TEXT )
@@ -85,7 +86,8 @@ local function OpenPlain()
 		if ( not vgui.Button ) then return nil end
 		local btn = vgui.Button( frame, "saves_" .. cmd, text, frame, cmd )
 		if ( btn == nil ) then return nil end
-		btn:SetBounds( x, yy, w, h )
+		btn:SetPos( x, yy )
+		btn:SetSize( w, h )
 		Layout[ #Layout + 1 ] = { btn, x, yy, w, h }
 		return btn
 	end
@@ -115,7 +117,8 @@ local function OpenPlain()
 	if ( vgui.TextEntry ) then
 		entry = vgui.TextEntry( frame, "savesNameEntry" )
 		if ( entry ~= nil ) then
-			entry:SetBounds( M, y, DIALOG_W - 2 * M - 150, 24 )
+			entry:SetPos( M, y )
+			entry:SetSize( DIALOG_W - 2 * M - 150, 24 )
 			entry:SetText( "" )
 			Layout[ #Layout + 1 ] = { entry, M, y, DIALOG_W - 2 * M - 150, 24 }
 		end
@@ -202,8 +205,9 @@ local function OpenPlain()
 	local function ReassertPositions()
 		for i = 1, #Layout do
 			local e = Layout[ i ]
-			if ( e[ 1 ] ~= nil and e[ 1 ].SetBounds ~= nil ) then
-				e[ 1 ]:SetBounds( e[ 2 ], e[ 3 ], e[ 4 ], e[ 5 ] )
+			if ( e[ 1 ] ~= nil and e[ 1 ].SetPos ~= nil and e[ 1 ].SetSize ~= nil ) then
+				e[ 1 ]:SetPos( e[ 2 ], e[ 3 ] )
+				e[ 1 ]:SetSize( e[ 4 ], e[ 5 ] )
 			end
 		end
 

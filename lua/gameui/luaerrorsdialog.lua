@@ -140,7 +140,8 @@ local function OpenPlain()
     local function NewButton( text, x, y, w, h, cmd )
         if ( not vgui.Button ) then return nil end
         local btn = vgui.Button( frame, "err_" .. cmd, text, frame, cmd )
-        btn:SetBounds( x, y, w, h )
+        btn:SetPos( x, y )
+        btn:SetSize( w, h )
         ApplyFont( btn, FONT_TEXT )
         Layout[ #Layout + 1 ] = { btn, x, y, w, h }
         return btn
@@ -284,8 +285,9 @@ local function OpenPlain()
     local function ReassertPositions()
         for i = 1, #Layout do
             local e = Layout[ i ]
-            if ( e[ 1 ] ~= nil and e[ 1 ].SetBounds ~= nil ) then
-                e[ 1 ]:SetBounds( e[ 2 ], e[ 3 ], e[ 4 ], e[ 5 ] )
+            if ( e[ 1 ] ~= nil and e[ 1 ].SetPos ~= nil and e[ 1 ].SetSize ~= nil ) then
+                e[ 1 ]:SetPos( e[ 2 ], e[ 3 ] )
+                e[ 1 ]:SetSize( e[ 4 ], e[ 5 ] )
             end
         end
         if ( HL2SB_MenuLayout ) then
