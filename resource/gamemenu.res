@@ -56,6 +56,11 @@
 		"label" "#GameUI_GameMenu_CreateServer"
 		"command" "OpenCreateMultiplayerGameDialog"
 	}
+	"9b"
+	{
+		"label" "#HL2SB_GameMenu_CreateServerLua"
+		"command" "engine OpenStartGameDialogLua"
+	}
 	"10"
 	{
 		"label" "#GameUI_GameMenu_Options"

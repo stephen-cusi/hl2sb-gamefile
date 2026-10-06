@@ -349,4 +349,20 @@ if ( _G.DynamicLight == nil ) then
 	Msg( "[HL2SB]   DynamicLight stub added (writes accepted, no light)\n" )
 end
 
+-- ---------------------------------------------------------------------------
+-- Entity:GetShootPos.  GMod binds it on BOTH the Player and the NPC
+-- metatable; this engine binds it on the Player metatable only
+-- (CBasePlayer::Weapon_ShootPosition).  The hitnumbers addon traces melee
+-- swings from NPC:GetShootPos (sv_hitdamagenumbers.lua:416) and dies with
+-- "attempt to call a nil value (method 'GetShootPos')" the first time an NPC
+-- clubs or slashes something.  Our NPCs answer EyePos from the Entity
+-- metatable (CBaseCombatCharacter's shoot position derives from the eye
+-- point), so alias it there -- player userdata carries their own metatable
+-- and never reach this.
+-- ---------------------------------------------------------------------------
+if ( EntityMeta.GetShootPos == nil and EntityMeta.EyePos != nil ) then
+	EntityMeta.GetShootPos = EntityMeta.EyePos
+	Msg( "[HL2SB]   Entity:GetShootPos shim added (EyePos alias, non-player entities)\n" )
+end
+
 Msg( "[HL2SB] gmod entity shims loaded\n" )
