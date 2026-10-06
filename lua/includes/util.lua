@@ -594,3 +594,27 @@ function GetConVarString( name )
 	local c = GetConVar( name )
 	return ( c and c:GetString() ) or ""
 end
+
+-- ===========================================================================
+-- HL2SB GMod compat (2026-10-07): player.GetByID( id ) -- the pre-2013 wiki
+-- documents it as "Retrieve a player object based upon his entity index",
+-- so the argument is the ENTITY INDEX (Player:EntIndex()), NOT the UserID
+-- that modern GMod 13 changed the same name to.  Lives here (not in
+-- gmod_globals.lua) because the server realm's extension loading order does
+-- not reliably reach gmod_globals.lua, and lua_run needs it server-side.
+-- ents.GetByIndex resolves through PushLuaInstanceSafe, so a player at that
+-- index comes back carrying the player metatable.  A miss (bad index or a
+-- non-player entity there) returns the NULL sentinel: reads answer
+-- IsValid=false and false-returning method stubs instead of raising.
+-- ===========================================================================
+if ( player ~= nil and player.GetByID == nil and ents ~= nil and ents.GetByIndex ~= nil ) then
+	function player.GetByID( id )
+		id = tonumber( id )
+		if ( id == nil ) then return NULL end
+		local ent = ents.GetByIndex( id )
+		if ( ent ~= nil and ent.IsPlayer ~= nil and ent:IsPlayer() ) then
+			return ent
+		end
+		return NULL
+	end
+end
