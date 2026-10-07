@@ -26,17 +26,27 @@ local EntityMeta = FindMetaTable( "Entity" )
 if ( EntityMeta == nil ) then return end
 
 -- ---------------------------------------------------------------------------
+-- GMod's Angle constructor.  This engine publishes the same thing as QAngle
+-- (public/lua/mathlib/lvector.cpp QAngle_funcs); GMod scripts -- env_skypaint's
+-- siblings, the sky editor family -- spell it Angle( p, y, r ).
+-- ---------------------------------------------------------------------------
+if ( Angle == nil and QAngle != nil ) then
+	Angle = QAngle
+	Msg( "[HL2SB]   Angle() global added (QAngle alias)\n" )
+end
+
+-- ---------------------------------------------------------------------------
 -- DTVar
 -- ---------------------------------------------------------------------------
 if ( EntityMeta.SetDTFloat == nil ) then
 	-- GMod's dynamic variables are five typed, INDEXED slots
 	-- (lua/includes/extensions/entity.lua:255-295 - `ent[ "SetDT" .. typename ]`).
 	--
-	-- ⚠️ The accessor contract, verbatim from the GMod wiki (Entity.SetDTFloat):
+	-- The accessor contract, verbatim from the GMod wiki (Entity.SetDTFloat):
 	-- "Key can be a string that corresponds to the name of the DTVar given at creation,
 	-- or an integer indicating the ID" - so BOTH forms have to work.
 	--
-	-- ⚠️ cod_c4 calls SetDTFloat the moment its entity is created (init.lua:41-42) and
+	-- cod_c4 calls SetDTFloat the moment its entity is created (init.lua:41-42) and
 	-- never declares anything first: a name-keyed-only shim still left planting a C4
 	-- raising "attempt to call a nil value (method 'SetDTFloat')".
 	--
@@ -158,15 +168,140 @@ if ( EntityMeta.SetDTFloat == nil ) then
 			end
 		end
 
-		-- GMod answers the descriptor (SetupEditing / properties use it).
-		return { index = nIndex, name = strName, typename = strType, Notify = {} }
+	-- GMod answers the descriptor (SetupEditing / properties use it).
+	return { index = nIndex, name = strName, typename = strType, Notify = {} }
+	end
+
+	-- -----------------------------------------------------------------------
+	-- HL2SB (2026-10-08): engine NetworkVar declarations.  The engine's
+	-- HL2SB_EntityNetworkVar (basescripted seeds it as self:NetworkVar) is
+	-- the REPLICATING store (six types incl. Vector/Angle, per-entity keys,
+	-- local-first client reads) -- env_skypaint declares its whole palette
+	-- through it, and GMod's matproxy/sky_paint.lua then reads the values
+	-- back by SLOT with GetDTVector( 0 ) / GetDTFloat( 2 ) / GetDTBool( 0 ).
+	-- Record every engine declaration so the SetDT/GetDT accessors below
+	-- route engine-declared slots to their generated Get<Name>/Set<Name>,
+	-- and so the KeyName option (map keyvalues -> variable) is kept.
+	-- -----------------------------------------------------------------------
+	local EngineNWFlag = setmetatable( {}, { __mode = "k" } )	-- [ tbl ] = { [ name ] = true }
+	local EngineNWKey  = setmetatable( {}, { __mode = "k" } )	-- [ tbl ] = { [ lower keyname ] = name }
+	local EngineNWName = setmetatable( {}, { __mode = "k" } )	-- [ tbl ] = { [ lower name ] = name }
+	local ElementOrder = setmetatable( {}, { __mode = "k" } )	-- [ tbl ] = { [ "Angle_0" ] = { { component, name }, ... } }
+
+	-- entity userdata -> its instance table (registries are keyed on the
+	-- table SetupDataTables ran with; consumers hold the entity).
+	-- HL2SB (2026-10-08): this engine's type() answers a userdata's METATABLE
+	-- __type word ("entity"/"Player"/...), never the plain-Lua "userdata" --
+	-- the old type(self) == "userdata" probe was false for EVERY entity and
+	-- the whole instance-table layer here answered nil (the painted-sky map
+	-- keyvalues were all rejected with "no instance table").  Gate on not
+	-- being one of the plain Lua types instead.
+	local function EngineTable( self )
+		local t = type( self )
+		if ( t == "table" ) then return self end
+		if ( t != "nil" and t != "boolean" and t != "string" and t != "number"
+			and t != "table" and t != "function" and self.GetTable != nil ) then
+			return self:GetTable()
+		end
+		return nil
+	end
+
+	local function RecordEngineNW( tbl, strType, nIndex, strName, options )
+		Declare( tbl, strType, nIndex, strName )
+
+		local f = EngineNWFlag[ tbl ]
+		if ( f == nil ) then f = {} EngineNWFlag[ tbl ] = f end
+		f[ strName ] = true
+
+		local k = EngineNWKey[ tbl ]
+		if ( k == nil ) then k = {} EngineNWKey[ tbl ] = k end
+		local n = EngineNWName[ tbl ]
+		if ( n == nil ) then n = {} EngineNWName[ tbl ] = n end
+		n[ string.lower( strName ) ] = strName
+		if ( type( options ) == "table" and type( options.KeyName ) == "string" and options.KeyName != "" ) then
+			k[ string.lower( options.KeyName ) ] = strName
+		end
+	end
+
+	-- The registered engine name for a (type, key) slot, nil when the slot
+	-- was not declared through the engine NetworkVar.
+	local function ResolveEngineNW( self, strType, key )
+		local t = EngineTable( self )
+		if ( t == nil ) then return nil end
+
+		local f = EngineNWFlag[ t ]
+		if ( f == nil ) then return nil end
+
+		local d = Declared[ t ]
+		if ( type( key ) == "number" ) then
+			local idx = math.floor( key )
+			for n, dd in pairs( d or {} ) do
+				if ( f[ n ] and dd.type == strType and dd.index == idx ) then return n end
+			end
+		else
+			local name
+			if ( d != nil and d[ key ] != nil and f[ key ] ) then
+				name = key
+			end
+			if ( name == nil ) then
+				local k = EngineNWKey[ t ]
+				name = ( k != nil ) and k[ string.lower( tostring( key ) ) ] or nil
+			end
+			if ( name != nil and f[ name ] != nil ) then
+				-- the stored name wins when the case differs
+				local n = EngineNWName[ t ]
+				return ( n != nil ) and ( n[ string.lower( name ) ] or name ) or name
+			end
+		end
+		return nil
+	end
+
+	-- self:NetworkVar( type, slot, name [, options] ): keep the engine call
+	-- (it builds the replicated accessors) and record the declaration.
+	-- basescripted seeds whatever HL2SB_EntityNetworkVar holds at bind time,
+	-- so a wrapped global reaches every SetupDataTables call.
+	local EngineNWOriginal = HL2SB_EntityNetworkVar
+	HL2SB_EntityNetworkVar = function( tbl, strType, nIndex, strName, options )
+		if ( EngineNWOriginal != nil ) then
+			EngineNWOriginal( tbl, strType, nIndex, strName )
+		end
+		RecordEngineNW( tbl, tostring( strType or "Float" ), math.floor( tonumber( nIndex ) or 0 ), tostring( strName ), options )
+	end
+
+	-- self:NetworkVarElement( type, slot, component, name [, options] ):
+	-- GMod packs several named elements into ONE typed slot (env_skypaint
+	-- stores StarScale/StarFade/StarSpeed as the p/y/r of Angle slot 0).
+	-- This fork keeps each element as its own replicated Float variable and
+	-- composes the slot on access -- GetDTAngle( 0 ) assembles the Angle,
+	-- SetDTAngle( 0 ) distributes it back.  Observable contract matches.
+	HL2SB_EntityNetworkVarElement = function( tbl, strType, iSlot, strComponent, strName, options )
+		strType = tostring( strType or "Angle" )
+		iSlot = math.floor( tonumber( iSlot ) or 0 )
+
+		local t = ElementOrder[ tbl ]
+		if ( t == nil ) then t = {} ElementOrder[ tbl ] = t end
+		local slotKey = strType .. "_" .. tostring( iSlot )
+		local list = t[ slotKey ]
+		if ( list == nil ) then list = {} t[ slotKey ] = list end
+
+		if ( EngineNWOriginal != nil ) then
+			EngineNWOriginal( tbl, "Float", iSlot, strName )
+		end
+		-- Recorded at sentinel slot -1: the element is addressed BY NAME only
+		-- (the composed GetDTAngle/SetDTAngle below and its own accessors) and
+		-- must never answer a numeric Float slot -- GMod keeps the elements in
+		-- the ANGLE slot, so Float slot <iSlot> stays free for real variables.
+		RecordEngineNW( tbl, "Float", -1, strName, options )
+		list[ #list + 1 ] = { component = tostring( strComponent ), name = tostring( strName ) }
+
+		return { index = iSlot, name = strName, typename = strType }
 	end
 
 	function EntityMeta:DTVar( strType, nIndex, strName )
 		return Declare( self, strType, nIndex, strName )
 	end
 
-	-- ⚠️ SetupDataTables() runs with the entity's LUA TABLE as self
+	-- SetupDataTables() runs with the entity's LUA TABLE as self
 	-- (game/shared/lua/basescripted.cpp:249 - "self: the entity's Lua table"), not with the
 	-- entity userdata, so a method that exists only on the entity metatable is invisible
 	-- there.  The engine copies this global onto that table, exactly like it already does for
@@ -186,8 +321,38 @@ if ( EntityMeta.SetDTFloat == nil ) then
 		return s[ strType ][ math.floor( tonumber( nIndex ) or 0 ) ] ~= nil
 	end
 
+	-- HL2SB (2026-10-08): Vector and Angle join the loop for the SLOT
+	-- bookkeeping; this engine has no SetNWVector/GetNWVector, so an
+	-- undeclared Vector/Angle DTVar answers nil instead of erroring, and an
+	-- ENGINE-declared one (env_skypaint) routes through its replicated
+	-- accessors below.
+	DTVarTypes.Vector = { set = "SetNWVector", get = "GetNWVector" }
+	DTVarTypes.Angle  = { set = "SetNWAngle",  get = "GetNWAngle" }
+
+	-- HL2SB: last-resort slot -> accessor-name map for the painted-sky
+	-- driver.  env_skypaint.lua (GMod verbatim) declares exactly this layout,
+	-- so when the per-table engine records are unreachable on a realm the
+	-- fixed names still reach the replicated accessors.  Read-only: SetDT*
+	-- keeps the registry route.
+	EngineFixedSlotNames = {
+		Vector = { [0] = "TopColor", [1] = "BottomColor", [2] = "SunNormal", [3] = "SunColor", [4] = "DuskColor" },
+		Float  = { [0] = "FadeBias", [1] = "HDRScale", [2] = "DuskScale", [3] = "DuskIntensity", [4] = "SunSize" },
+		Bool   = { [0] = "DrawStars" },
+		Int    = { [0] = "StarLayers" },
+		String = { [0] = "StarTexture" },
+		Angle  = {},
+	}
+
 	for strType, t in pairs( DTVarTypes ) do
 		EntityMeta[ "SetDT" .. strType ] = function( self, key, value )
+			-- engine-declared slot: the replicated accessor owns the value
+			local nm = ResolveEngineNW( self, strType, key )
+			if ( nm != nil ) then
+				local f = self[ "Set" .. nm ]
+				if ( f != nil ) then return f( self, value ) end
+				return
+			end
+
 			if ( self[ t.set ] == nil ) then return end
 
 			if ( strType == "Int" ) then value = math.floor( tonumber( value ) or 0 )
@@ -199,10 +364,197 @@ if ( EntityMeta.SetDTFloat == nil ) then
 		end
 
 		EntityMeta[ "GetDT" .. strType ] = function( self, key )
+			local nm = ResolveEngineNW( self, strType, key )
+			if ( nm != nil ) then
+				local f = self[ "Get" .. nm ]
+				if ( f != nil ) then return f( self ) end
+				return nil
+			end
+
+			-- HL2SB: last-resort fixed-name fallback for the painted-sky
+			-- driver (env_skypaint's GMod-verbatim declaration order below);
+			-- keeps GetDT* answering even if the per-table engine records
+			-- were not reached on this realm.
+			local fixed = EngineFixedSlotNames[ strType ]
+			local nm2 = ( fixed != nil ) and fixed[ math.floor( tonumber( key ) or -1 ) ] or nil
+			if ( nm2 != nil ) then
+				local f = self[ "Get" .. nm2 ]
+				if ( f != nil ) then return f( self ) end
+			end
+
 			if ( self[ t.get ] == nil ) then return nil end
 
 			return self[ t.get ]( self, Resolve( self, strType, key ) )
 		end
+	end
+
+	-- HL2SB (2026-10-08): Vector slots answer GMod's never-nil getter
+	-- contract.  Route engine-declared slots to their replicated accessors;
+	-- everything else falls through the NW store and finally to a zero
+	-- vector.  A nil here made GMod's matproxy/sky_paint.lua throw
+	-- "bad argument #2 to 'SetVector' (Vector expected, got nil)" on every
+	-- painted-sky bind -- and each of those pcall errors underflowed the
+	-- shared client Lua stack by one slot (the flagr abort).
+	local s_bVectorMissLogged = false
+	EntityMeta.GetDTVector = function( self, key )
+		local nm = ResolveEngineNW( self, "Vector", key )
+		if ( nm != nil ) then
+			local f = self[ "Get" .. nm ]
+			if ( f != nil ) then
+				local v = f( self )
+				if ( v != nil ) then return v end
+			end
+		end
+
+		local fixed = EngineFixedSlotNames.Vector[ math.floor( tonumber( key ) or -1 ) ]
+		if ( fixed != nil ) then
+			local f = self[ "Get" .. fixed ]
+			if ( f != nil ) then
+				local v = f( self )
+				if ( v != nil ) then return v end
+			end
+		end
+
+		if ( self.GetNWVector != nil ) then
+			local v = self:GetNWVector( Resolve( self, "Vector", key ) )
+			if ( v != nil ) then return v end
+		end
+
+		if ( !s_bVectorMissLogged ) then
+			s_bVectorMissLogged = true
+			local t = EngineTable( self )
+			local f = ( t != nil ) and EngineNWFlag[ t ] or nil
+			local d = ( t != nil ) and Declared[ t ] or nil
+			local nRec = 0
+			for _ in pairs( f or {} ) do nRec = nRec + 1 end
+			Msg( string.format(
+				"[HL2SB] GetDTVector miss: self=%s table=%s engineRecords=%d declared=%s hasGetTopColor=%s -> zero vector\n",
+				tostring( self ), tostring( t ), nRec, tostring( d != nil ),
+				tostring( t != nil and rawget( t, "GetTopColor" ) != nil ) ) )
+		end
+		return Vector( 0, 0, 0 )
+	end
+
+	-- HL2SB (2026-10-08): Angle slots compose their NetworkVarElement
+	-- elements (see the shim above) -- GMod keeps one Angle networkvar and
+	-- answers it whole from GetDTAngle( 0 ); the fork stores the elements
+	-- separately and rebuilds the Angle here.
+	EntityMeta.GetDTAngle = function( self, key )
+		local t = EngineTable( self )
+		local list = ( t != nil and ElementOrder[ t ] != nil )
+			and ElementOrder[ t ][ "Angle_" .. tostring( math.floor( tonumber( key ) or 0 ) ) ]
+			or nil
+
+		if ( list != nil ) then
+			local function comp( want )
+				for _, e in pairs( list ) do
+					if ( e.component == want ) then
+						local f = self[ "Get" .. e.name ]
+						if ( f != nil ) then return tonumber( f( self ) ) or 0 end
+					end
+				end
+				return 0
+			end
+			return Angle( comp( "p" ), comp( "y" ), comp( "r" ) )
+		end
+
+		-- HL2SB: last-resort fixed names (env_skypaint's element order)
+		if ( self.GetStarScale != nil and self.GetStarFade != nil and self.GetStarSpeed != nil ) then
+			return Angle( self:GetStarScale(), self:GetStarFade(), self:GetStarSpeed() )
+		end
+
+		if ( self.GetNWAngle != nil ) then
+			return self:GetNWAngle( Resolve( self, "Angle", key ) )
+		end
+		return Angle( 0, 0, 0 )
+	end
+
+	EntityMeta.SetDTAngle = function( self, key, ang )
+		local t = EngineTable( self )
+		local list = ( t != nil and ElementOrder[ t ] != nil )
+			and ElementOrder[ t ][ "Angle_" .. tostring( math.floor( tonumber( key ) or 0 ) ) ]
+			or nil
+
+		if ( list != nil and isangle( ang ) ) then
+			for _, e in pairs( list ) do
+				local f = self[ "Set" .. e.name ]
+				if ( f != nil ) then f( self, ang[ e.component ] ) end
+			end
+			return
+		end
+
+		if ( self.SetNWAngle != nil ) then self:SetNWAngle( Resolve( self, "Angle", key ), ang ) end
+	end
+
+	-- -----------------------------------------------------------------------
+	-- HL2SB (2026-10-08): Entity:SetNetworkKeyValue( key, value ).  GMod maps
+	-- a networkvar's KeyName option (or its own name) to the variable and
+	-- answers true when one matched.  Map keyvalues arrive as strings, so
+	-- parse per the declared type.  env_skypaint's ENT:KeyValue is the caller.
+	-- -----------------------------------------------------------------------
+	function EntityMeta:SetNetworkKeyValue( key, value )
+		local t = EngineTable( self )
+		if ( t == nil ) then
+			return false
+		end
+
+		local f = EngineNWFlag[ t ]
+		local d = Declared[ t ]
+		if ( f == nil or d == nil ) then
+			return false
+		end
+
+		local strKey = string.lower( tostring( key ) )
+		local name = EngineNWKey[ t ] and EngineNWKey[ t ][ strKey ] or nil
+		if ( name == nil ) then name = EngineNWName[ t ] and EngineNWName[ t ][ strKey ] or nil end
+		if ( name == nil or f[ name ] == nil ) then
+			return false
+		end
+
+		local rec = d[ name ]
+		local setter = self[ "Set" .. name ]
+		if ( rec == nil or setter == nil ) then
+			return false
+		end
+
+		local v = value
+		if ( type( value ) == "string" ) then
+			if ( rec.type == "Vector" ) then
+				local x, y, z = string.match( value, "^%s*([%-%d%.eE]+)%s+([%-%d%.eE]+)%s+([%-%d%.eE]+)%s*$" )
+				v = Vector( tonumber( x ) or 0, tonumber( y ) or 0, tonumber( z ) or 0 )
+			elseif ( rec.type == "Angle" ) then
+				local p, y2, r = string.match( value, "^%s*([%-%d%.eE]+)%s+([%-%d%.eE]+)%s+([%-%d%.eE]+)%s*$" )
+				v = Angle( tonumber( p ) or 0, tonumber( y2 ) or 0, tonumber( r ) or 0 )
+			elseif ( rec.type == "Float" ) then
+				v = tonumber( value ) or 0
+			elseif ( rec.type == "Int" ) then
+				v = math.floor( tonumber( value ) or 0 )
+			elseif ( rec.type == "Bool" ) then
+				v = ( tonumber( value ) or 0 ) != 0
+			end
+		end
+
+		setter( self, v )
+		return true
+	end
+
+	-- -----------------------------------------------------------------------
+	-- HL2SB (2026-10-08): Entity:SetNetworkVarsFromMapInput( name, data ).
+	-- GMod maps a "Set<NetworkVar>" map input onto the variable and answers
+	-- true when one matched (which also keeps developer 2 quiet about the
+	-- input).  env_skypaint's ENT:AcceptInput is the caller.
+	-- -----------------------------------------------------------------------
+	function EntityMeta:SetNetworkVarsFromMapInput( name, data )
+		local strName = tostring( name or "" )
+		if ( string.sub( strName, 1, 3 ) != "Set" or string.len( strName ) <= 3 ) then return false end
+
+		local t = EngineTable( self )
+		if ( t == nil ) then return false end
+
+		local n = EngineNWName[ t ]
+		local base = ( n != nil ) and ( n[ string.lower( string.sub( strName, 4 ) ) ] or string.sub( strName, 4 ) ) or string.sub( strName, 4 )
+
+		return self:SetNetworkKeyValue( base, data )
 	end
 
 	-- HL2SB extra (GMod has no such pair): read/write by the name given to DTVar.
@@ -269,7 +621,7 @@ end
 if ( EntityMeta.SetDeploySpeed == nil ) then
 	-- GMod: SWEP.DeploySpeed is a FIELD on the weapon table ("SWEP.DeploySpeed = 1.4",
 	-- terrortown/entities/weapons/weapon_tttbase.lua:120) and SetDeploySpeed is the method
-	-- that consumes it.  ⚠️ Do NOT mirror the value onto self.DeploySpeed: an instance
+	-- that consumes it.  Do NOT mirror the value onto self.DeploySpeed: an instance
 	-- field shadows the DeploySpeed() method of this metatable, so the next
 	-- `self:DeploySpeed( speed )` would try to call a number.
 	function EntityMeta:SetDeploySpeed( flSpeed )
