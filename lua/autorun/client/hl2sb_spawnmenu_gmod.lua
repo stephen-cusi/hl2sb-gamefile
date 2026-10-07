@@ -1,5 +1,5 @@
 --[[---------------------------------------------------------------------------
-	HL2SB spawn menu v3 -- a GMod-shaped spawn menu, rewritten from scratch.
+	HL2SB spawn menu v4 -- a GMod-shaped spawn menu, rewritten from scratch.
 
 	Replaces both older implementations (the 2000-line hl2sb_spawnmenu.lua and
 	spawnmenu_gmod.lua v2).  This file is the only spawn menu now.
@@ -11,23 +11,40 @@ LAYOUT (GMod's spawnmenu, wiki.facepunch.com/gmod/spawnmenu):
                   "All" page, a tab always shows ONE category, and that is
                   also what keeps every page small)
   right ......... the icon grid: SpawnIcon (GMod's 3D model thumbnail,
-                  lua/vgui/SpawnIcon.lua) for everything with a model on
-                  disk, a text DButton otherwise
+                  lua/vgui/SpawnIcon.lua) for PROPS, a flat image / text tile
+                  for everything else (user rule, 2026-10-07: only the Props
+                  page shows 3D model thumbnails)
 
-	CONTENT IS THE REGISTRY, not a curated hand list:
-	  Entities   list.Get( "SpawnableEntities" )  +  hl2sb.GetSpawnableClasses()
-	  Weapons    weapons.GetList()  (SWEP.Category / PrintName / WorldModel)
-	  NPCs       list.Get( "NPC" )  +  a stock HL2 set (grouped Citizens/
-	             Combine/Zombies/Xen/Wildlife)
-	  Vehicles   list.Get( "Vehicles" )  +  the stock HL2 rides
-	  Props      a stock set, grouped by folder
+	CONTENT IS THE REGISTRY, and each tab reads EXACTLY ONE (v4 de-dup: the
+	old per-tab fallback tables listed the same stock content the registries
+	already carry, under a different key -- every stock NPC and the stock
+	rides appeared TWICE):
+	  Entities   list.Get( "SpawnableEntities" )      (game_hl2.lua + SENTs)
+	  Weapons    weapons.GetList()                    (game_hl2.lua + SWEPs)
+	  NPCs       list.Get( "NPC" )                    (hl2sb_gmod_npcs.lua,
+	                                                   GMod's base_npcs.lua)
+	  Vehicles   list.Get( "Vehicles" )               (hl2sb_gmod_vehicles.lua
+	                                                   + hl2sb_gmod_seats.lua)
+	  Props      the stock prop set below (the one list there is)
 	  Entries merge on lowercase class; registry data (name/Category/model)
 	  wins over the engine class list.  The cache is refreshed on every Open,
 	  so lua reloads / addon changes are picked up.
 
+	LOCALIZATION (v4): registrations carry GMod's "#token" names; display
+	resolves them through language.GetPhrase (lua/includes/modules/language.lua
+	reads GMod's resource/localization/<lang>/*.properties, which this mod
+	ships) -- so tab labels, categories, entry names and the menu strings all
+	follow cl_language (english / zh-cn / ...).  A token that resolves to
+	nothing falls back to the token text or the English stock spelling.
+
+	TOUCH (v4): on Android (system.IsAndroid, or hl2sb_spawnmenu_touch 1 to
+	force) the window goes near-fullscreen and the cells, tab buttons and
+	category rows size up for fingers; +smenu toggles instead of holding,
+	because a touch UI has no reliable key-release.
+
 	SPAWN DISPATCH (the command set the older menus proved):
 	  weapon   gm_giveswep <class>
-	  npc      gm_spawnnpc <class>
+	  npc      gm_spawnnpc <class>  (weapon/name/model/KeyValues ride along)
 	  vehicle  gm_spawnvehicle <class> <model> <script>   (model-less
 	           prop_vehicle = server crash, so the model always rides along)
 	  else     gm_spawn <class> [model]
@@ -38,9 +55,11 @@ LAYOUT (GMod's spawnmenu, wiki.facepunch.com/gmod/spawnmenu):
 	  * a repopulate never runs inside the click that caused it -- it is
 	    deferred one tick (timer.Simple( 0 ));
 	  * cells are CACHED per tab (entry key -> panel) and re-docked on a
-	    category / search / tab switch; only cells never built before are
-	    created, through a per-frame budget, so a big tab cannot stall;
-	  * ASCII only -- the derma font has no CJK glyphs.
+	    category / search / tab switch; the cache is wiped on every Open so a
+	    stale icon decision (an image that had not decoded yet, a snapshot
+	    from before a map change) can never outlive the session it was made
+	    in -- only cells never built before are created, through a per-frame
+	    budget, so a big tab cannot stall.
 
 	CONSOLE:
 	  +smenu / -smenu   hold-open (Q is bound to +smenu in cfg)
@@ -58,48 +77,69 @@ local function Dbg( sText )
 	if ( cvarDbg == nil ) then cvarDbg = ( GetConVar ~= nil ) and GetConVar( "hl2sb_debug" ) or nil end
 	if ( cvarDbg ~= nil and cvarDbg:GetBool() ) then print( sText ) end
 end
-local ICON   = 64
+local ICON   = 64		-- desktop cell size; the touch layout enlarges it below
 local BUDGET = 4		-- NEW cells created per frame while a fill is pending
-					-- (a Material() decode or a clientside model is tens of ms;
-					-- a burst of ten of those per frame was a visible stall)
+						-- (a Material() decode or a clientside model is tens of ms;
+						-- a burst of ten of those per frame was a visible stall)
 
 -- ---------------------------------------------------------------------------
--- stock content (everything the registries do not already carry)
+-- touch layout branch (v4): Android gets finger-sized cells and a
+-- near-fullscreen window.  Three ways to get it: the auto detection
+-- (system.IsAndroid), or hl2sb_spawnmenu_touch 1 to force it on any platform
+-- (testing), 0 back to auto.  Read at BuildMenu time so a mid-session convar
+-- change lands on the next open.
 -- ---------------------------------------------------------------------------
 
-local STOCK_WEAPONS = {
-	{ class = "weapon_crowbar",    name = "Crowbar" },
-	{ class = "weapon_pistol",     name = "9mm Pistol" },
-	{ class = "weapon_357",        name = ".357 Magnum" },
-	{ class = "weapon_smg1",       name = "SMG" },
-	{ class = "weapon_ar2",        name = "Pulse Rifle" },
-	{ class = "weapon_shotgun",    name = "Shotgun" },
-	{ class = "weapon_crossbow",   name = "Crossbow" },
-	{ class = "weapon_frag",       name = "Grenade" },
-	{ class = "weapon_rpg",        name = "RPG" },
-	{ class = "weapon_physcannon", name = "Gravity Gun" },
-	{ class = "weapon_physgun",    name = "Physics Gun" },
-}
+local cvarTouch = ( CreateClientConVar ~= nil )
+	and CreateClientConVar( "hl2sb_spawnmenu_touch", "0", true, false,
+		"1 = force the touch layout, 0 = auto (touch on Android)" )
+	or nil
 
--- category, class list
-local STOCK_NPCS = {
-	{ cat = "HL2 Citizens", classes = { "npc_alyx", "npc_barney", "npc_kleiner", "npc_magnusson",
-		"npc_eli", "npc_mossman", "npc_breen", "npc_monk", "npc_vortigaunt", "npc_dog", "npc_citizen" } },
-	{ cat = "HL2 Combine",  classes = { "npc_combine_s", "npc_metropolice", "npc_manhack", "npc_stalker",
-		"npc_cscanner", "npc_clawscanner", "npc_rollermine", "npc_turret_floor", "npc_turret_ceiling",
-		"npc_strider", "npc_helicopter", "npc_hunter", "npc_combine_camera" } },
-	{ cat = "HL2 Zombies",  classes = { "npc_zombie", "npc_zombie_torso", "npc_fastzombie",
-		"npc_poisonzombie", "npc_headcrab", "npc_headcrab_fast", "npc_headcrab_black" } },
-	{ cat = "HL2 Xen",      classes = { "npc_antlion", "npc_antlionguard", "npc_barnacle",
-		"npc_sniper", "npc_combinegunship" } },
-	{ cat = "HL2 Wildlife", classes = { "npc_crow", "npc_pigeon", "npc_seagull" } },
-}
+local function IsTouchLayout()
+	if ( cvarTouch ~= nil and cvarTouch.GetInt ~= nil ) then
+		local ok, v = pcall( cvarTouch.GetInt, cvarTouch )
+		if ( ok and v == 1 ) then return true end
+	end
+	if ( system ~= nil and system.IsAndroid ~= nil ) then
+		local ok, res = pcall( system.IsAndroid )
+		if ( ok and res == true ) then return true end
+	end
+	return false
+end
 
-local STOCK_VEHICLES = {
-	{ class = "prop_vehicle_prisoner_pod", name = "Chair",   model = "models/vehicles/prisoner_pod_inner.mdl", script = "scripts/vehicles/prisoner_pod.txt" },
-	{ class = "prop_vehicle_jeep",         name = "Jeep",    model = "models/buggy.mdl",                       script = "scripts/vehicles/jeep.txt" },
-	{ class = "prop_vehicle_airboat",      name = "Airboat", model = "models/airboat.mdl",                     script = "scripts/vehicles/airboat.txt" },
-}
+-- the layout the current menu frame was built with (BuildMenu fills this in;
+-- MakeCell reads the cell size from it)
+local g_Layout = { touch = false, icon = ICON, rowTall = 20 }
+
+-- ---------------------------------------------------------------------------
+-- localization helpers (v4): every display string resolves through
+-- language.GetPhrase, so "#token" registrations and the menu chrome follow
+-- cl_language.  A token that resolves to nothing comes back as readable text
+-- (the English stock spelling / the token itself), never as nil.
+-- ---------------------------------------------------------------------------
+
+local function Phrase( token )
+	if ( _G.language ~= nil and language.GetPhrase ~= nil ) then
+		local ok, res = pcall( language.GetPhrase, token )
+		if ( ok and isstring( res ) and res ~= "" and string.sub( res, 1, 1 ) ~= "#" ) then
+			return res
+		end
+	end
+	return token
+end
+
+-- a Category string may itself be a "#token" (GMod's stock registrations:
+-- "#spawnmenu.category.combine", weapons.Register's "#spawnmenu.category.other")
+local function CategoryLabel( c )
+	if ( isstring( c ) and string.sub( c, 1, 1 ) == "#" ) then
+		return Phrase( c )
+	end
+	return tostring( c or "" )
+end
+
+-- ---------------------------------------------------------------------------
+-- stock content (what no registry carries)
+-- ---------------------------------------------------------------------------
 
 -- models, grouped by the folder that names them
 local STOCK_PROPS = {
@@ -159,10 +199,12 @@ local STOCK_PROPS = {
 	"models/props_borealis/bluebarrel001.mdl",
 }
 
--- HL2SB: register the stock NPCs into list.Get( "NPC" ) with their proper
--- names.  Two wins: the NPC tab reads like GMod's, and the death/undo name
--- resolution (hl2sb_displayname.lua) answers stock classes with stock names
--- instead of whichever reskin pack happened to register the same class first.
+-- The stock NPCs themselves register into list.Get( "NPC" ) from
+-- lua/autorun/hl2sb_gmod_npcs.lua (GMod's base_npcs.lua port) -- THIS file no
+-- longer registers stock content, it only reads the registry.  STOCK_NPC_NAMES
+-- below stays as the display fallback for when the localization files are
+-- unavailable.
+
 local STOCK_NPC_NAMES = {
 	npc_alyx = "Alyx", npc_barney = "Barney", npc_kleiner = "Kleiner",
 	npc_magnusson = "Magnusson", npc_eli = "Eli", npc_mossman = "Mossman",
@@ -182,17 +224,6 @@ local STOCK_NPC_NAMES = {
 	npc_combinegunship = "Combine Gunship", npc_crow = "Crow",
 	npc_pigeon = "Pigeon", npc_seagull = "Seagull",
 }
-
-for _, group in ipairs( STOCK_NPCS ) do
-	for _, class in ipairs( group.classes ) do
-		-- GMod's AddNPC (lua/autorun/base_npcs.lua): the registered Name is
-		-- the "#class" token and the language table resolves it -- that is
-		-- what makes every built-in NPC read in the UI language everywhere
-		-- (spawn tab, kill feed, undo).  STOCK_NPC_NAMES stays as the
-		-- display fallback for when the properties are unavailable.
-		list.Set( "NPC", class, { Name = "#" .. class, PrintName = "#" .. class, Class = class, Category = group.cat } )
-	end
-end
 
 -- Resolve a (possibly "#token") registration name for DISPLAY: the language
 -- table first (lua/includes/modules/language.lua loads GMod's
@@ -314,27 +345,30 @@ end
 local function CollectWeapons()
 	local byKey = {}
 
-	-- the engine's SWEP registry: every loaded Lua SWEP lands in weapon.lua's
-	-- table via weapon.register (weapon_nyangun and friends).  weapons.GetList()
-	-- below is a DIFFERENT module whose list only fills through
-	-- weapons.Register, which the stock loader never calls.
-	if ( weapon ~= nil and weapon.getweapons ) then
+	-- TWO sources, merged on class key (in-game evidence: the SWEP loader's
+	-- "[HL2SB wp] REGISTER" line only fires for part of the roster, so
+	-- weapons.GetList() alone loses the rest -- seal6-c4, minecraft_swep and
+	-- friends were gone from the grid).  weapons.GetList() carries the stock
+	-- HL2 set (game_hl2.lua -> weapons.Register) and every SWEP the
+	-- ScriptedWeaponRegistered sync caught; weapon.getweapons() is the
+	-- loader's own table and has the rest.  Same key -> last write wins, no
+	-- duplicates.
+	if ( weapon ~= nil and weapon.getweapons ~= nil ) then
 		local ok, all = pcall( weapon.getweapons )
 		if ( ok and istable( all ) ) then
-				for class, w in pairs( all ) do
-					if ( istable( w ) and w.Spawnable ~= false ) then
-						local e, key = NewEntry( class )
-						if ( e ) then
-							-- SWEP PrintNames are frequently "#token"s (GMod
-							-- addons localise them through entities.properties)
-							e.name     = ResolveStockName( tostring( w.PrintName or class ), tostring( class ) )
-							e.category = ( isstring( w.Category ) and w.Category ~= "" ) and w.Category or "Other"
-							e.model    = firstModel( w.WorldModel, w.ViewModel )
-							e.cat      = "weapon"
-							byKey[ key ] = e
-						end
+			for class, w in pairs( all ) do
+				if ( istable( w ) and isstring( class ) and w.Spawnable ~= false ) then
+					local e, key = NewEntry( class )
+					if ( e ) then
+						e.name      = ResolveStockName( tostring( w.PrintName or class ), tostring( class ) )
+						e.category  = ( isstring( w.Category ) and w.Category ~= "" ) and w.Category or "Half-Life 2"
+						e.model     = firstModel( w.WorldModel, w.ViewModel )
+						e.spawnname = tostring( class )
+						e.cat       = "weapon"
+						byKey[ key ] = e
 					end
 				end
+			end
 		end
 	end
 
@@ -354,16 +388,6 @@ local function CollectWeapons()
 		end
 	end
 
-	for _, w in ipairs( STOCK_WEAPONS ) do
-		local e, key = NewEntry( w.class )
-		if ( e and byKey[ key ] == nil ) then
-			e.name     = w.name
-			e.category = "Half-Life 2"
-			e.cat      = "weapon"
-			byKey[ key ] = e
-		end
-	end
-
 	local out = {}
 	for _, e in pairs( byKey ) do out[ #out + 1 ] = e end
 	return SortEntries( out )
@@ -372,6 +396,10 @@ end
 local function CollectNPCs()
 	local byKey = {}
 
+	-- v4: the registry is the only source (hl2sb_gmod_npcs.lua = GMod's
+	-- base_npcs.lua).  The old hardcoded stock-table fallback re-added every
+	-- stock NPC under a different key ("npc_alyx" vs the registry's
+	-- "n:npc_alyx"), so the whole stock roster showed up TWICE.
 	local reg = ( list ~= nil and list.Get ) and list.Get( "NPC" ) or nil
 	if ( istable( reg ) ) then
 		for spawnname, data in pairs( reg ) do
@@ -391,25 +419,21 @@ local function CollectNPCs()
 					cat        = "npc",
 					spawnname  = tostring( spawnname ),
 					iconOverride = ( isstring( data.IconOverride ) ) and data.IconOverride or nil,
-					category   = ( isstring( data.Category ) and data.Category ~= "" ) and data.Category or "Other",
+					category   = ( isstring( data.Category ) and data.Category ~= "" ) and data.Category or "#spawnmenu.category.other",
 					-- GMod forwards data.KeyValues through gmod_spawnnpc (the
 					-- hutao pack's citizentype = 4 makes npc_citizen keep the
 					-- reskin model); ride them on the concommand the same way
 					keyvalues  = ( istable( data.KeyValues ) and data.KeyValues ) or nil,
+					-- the rest of GMod's registration fields that ride as
+					-- entity keyvalues on the spawn line (spawn flags / skin /
+					-- health are real keyfields; Offset/OnCeiling/NoDrop stay
+					-- stored-only, this fork's spawner has no floor-drop pass)
+					spawnflags = ( data.SpawnFlags ~= nil or data.TotalSpawnFlags ~= nil )
+						and ( tonumber( data.SpawnFlags or data.TotalSpawnFlags ) or nil ) or nil,
+					skin       = ( data.Skin ~= nil ) and ( tonumber( data.Skin ) or nil ) or nil,
+					health     = ( data.Health ~= nil ) and ( tonumber( data.Health ) or nil ) or nil,
 				}
 				byKey[ e.key ] = e
-			end
-		end
-	end
-
-	for _, group in ipairs( STOCK_NPCS ) do
-		for _, class in ipairs( group.classes ) do
-			local e, key = NewEntry( class )
-			if ( e and byKey[ key ] == nil ) then
-				e.name     = ResolveStockName( "#" .. class, class )
-				e.category = group.cat
-				e.cat      = "npc"
-				byKey[ key ] = e
 			end
 		end
 	end
@@ -435,7 +459,10 @@ local function CollectVehicles()
 			if ( istable( data ) and isstring( data.Model ) and data.Model ~= "" ) then
 				local kv = ( istable( data.KeyValues ) and data.KeyValues ) or {}
 				local e = {
-					name       = tostring( data.Name or data.PrintName or spawnname ),
+					-- registrations carry "#spawnmenu.vehicle.*" tokens
+					-- (hl2sb_gmod_vehicles.lua / hl2sb_gmod_seats.lua); resolve
+					-- for display in the UI language
+					name       = ResolveStockName( tostring( data.Name or data.PrintName or spawnname ), tostring( data.Class or spawnname ) ),
 					class      = tostring( data.Class or spawnname ),
 					key        = "v:" .. tostring( spawnname ),
 					model      = data.Model,
@@ -455,18 +482,10 @@ local function CollectVehicles()
 		end
 	end
 
-	for _, v in ipairs( STOCK_VEHICLES ) do
-		local e = {
-			name     = v.name,
-			class    = v.class,
-			key      = v.class .. "|" .. v.model,
-			model    = v.model,
-			script   = v.script,
-			cat      = "vehicle",
-			category = "Half-Life 2",
-		}
-		byKey[ e.key ] = e
-	end
+	-- v4: the registry is the only source.  The old hardcoded stock rides
+	-- table re-added the jeep / airboat / pod under their own keys, so those
+	-- three showed up twice (once as the registry's localized cell, once as
+	-- the stock "Jeep / Airboat / Chair").
 
 	local out = {}
 	for _, e in pairs( byKey ) do out[ #out + 1 ] = e end
@@ -565,6 +584,11 @@ local function SpawnEntry( e )
 				line = line .. " " .. Q( tostring( k ) ) .. " " .. Q( tostring( v ) )
 			end
 		end
+		-- GMod's other registration fields that ARE entity keyfields ride the
+		-- same way (spawnflags/skin/health applied by the spawner before Spawn)
+		if ( e.spawnflags ~= nil ) then line = line .. ' "spawnflags" ' .. Q( tostring( e.spawnflags ) ) end
+		if ( e.skin ~= nil and e.skin > 0 ) then line = line .. ' "skin" ' .. Q( tostring( e.skin ) ) end
+		if ( e.health ~= nil ) then line = line .. ' "health" ' .. Q( tostring( e.health ) ) end
 	elseif ( e.cat == "vehicle" ) then
 		-- the MODEL rides along: a model-less prop_vehicle is a server crash
 		line = "gm_spawnvehicle " .. e.class
@@ -598,13 +622,13 @@ local function EntryMenu( e )
 	local ok, menu = pcall( vgui.Create, "DMenu" )
 	if ( not ok or not IsValid( menu ) ) then return end
 
-	menu:AddOption( "Spawn 1", function() SpawnEntry( e ) end )
-	menu:AddOption( "Spawn 5", function()
+	menu:AddOption( Phrase( "hl2sb.spawnmenu.spawn_one" ), function() SpawnEntry( e ) end )
+	menu:AddOption( Phrase( "hl2sb.spawnmenu.spawn_five" ), function()
 		for _ = 1, 5 do SpawnEntry( e ) end
 	end )
 	if ( menu.AddSpacer ) then menu:AddSpacer() end
 	if ( SetClipboardText ) then
-		menu:AddOption( "Copy class name", function() SetClipboardText( tostring( e.class ) ) end )
+		menu:AddOption( Phrase( "spawnmenu.menu.copy" ), function() SetClipboardText( tostring( e.class ) ) end )
 	end
 	menu:Open()
 end
@@ -625,7 +649,7 @@ local g_CellCache  = {}		-- tab id -> entry key -> built cell panel.  The point
 							-- cached panels instead of re-probing icons, re-decoding
 							-- materials and re-creating clientside models.
 
--- ⚠️ MOUSE INPUT IS A GATE IN THIS ENGINE, NOT INHERITED
+-- MOUSE INPUT IS A GATE IN THIS ENGINE, NOT INHERITED
 -- (vgui2/vgui_controls/Panel.cpp:3343 -- "if it doesn't want mouse input its
 -- children can't get it either").  Every container from the popup down must
 -- keep it open, and it must be RE-ASSERTED: the previous menu watched a
@@ -720,10 +744,14 @@ end
 --- run-on line ("utao - Frutao - He", the 2026-09-19 video).  Trim to fit.
 --- surface.SetFont resolves a scheme font and returns the HFont handle;
 --- surface.GetTextSize measures against an explicit handle here.
+--- Trimming goes one UTF-8 CHARACTER at a time, not one byte: the localized
+--- names are CJK (3 bytes per glyph), a byte-wise sub() splits a character
+--- mid-sequence and the renderer draws the broken bytes as '?' inside the
+--- label ("办公?座椅").
 local function FitLabel( text, maxw )
 	text = tostring( text or "" )
 
-	-- ⚠️ measure with the EXACT handle draw.SimpleText will render with
+	-- measure with the EXACT handle draw.SimpleText will render with
 	-- (draw.GetFont).  surface.SetFont( name ) resolves a different registry
 	-- and either nil (label silently untrimmed -> "Atomic Bomb" bleeding over
 	-- the neighbour cells, 2026-09-26 video) or a narrower metric than the
@@ -735,7 +763,22 @@ local function FitLabel( text, maxw )
 	if ( not okW or w == nil or w <= maxw ) then return text end
 
 	while ( #text > 1 ) do
-		text = string.sub( text, 1, #text - 1 )
+		-- Step back to the start of the last UTF-8 character: a continuation
+		-- byte (0x80-0xBF) is never a character start, so scan back until a
+		-- lead byte / ASCII.  (utf8.offset from the compat module throws on
+		-- exactly this walk -- its negative start lands ON the last byte,
+		-- which for CJK is a continuation -- and a throw here used to kill
+		-- the whole cell: every localized name longer than the tile came out
+		-- MISSING, only short names survived.)
+		local i = #text
+		while ( i > 1 ) do
+			local b = string.byte( text, i )
+			if ( b < 0x80 or b >= 0xC0 ) then break end
+			i = i - 1
+		end
+		if ( i <= 1 ) then return "..." end
+
+		text = string.sub( text, 1, i - 1 )
 		local okT, wt = pcall( surface.GetTextSize, hFont, text .. "..." )
 		if ( okT and wt ~= nil and wt <= maxw ) then return text .. "..." end
 	end
@@ -744,26 +787,39 @@ local function FitLabel( text, maxw )
 end
 
 local function MakeCell( e )
+	local icon = g_Layout.icon
+
 	-- 1) a shipped icon image: static and exact, what GMod shows for anything
 	--    that ships one (materials/entities/<name>.png; IconOverride rides)
 	local iconPath = ProbeIconPath( e )
 	if ( iconPath ~= nil ) then
 		local okM, mat = pcall( Material, iconPath )
-		-- a file that exists but does not DECODE comes back as the error
-		-- material and draws as the magenta/black checkerboard (the Sniper
-		-- cell, 2026-09-19 video).  IsError() is the only reliable tell, so
-		-- fall through to the 3D icon / text cell when it fires.
-		if ( okM and mat ~= nil and not ( mat.IsError and mat:IsError() ) ) then
-			local label = FitLabel( e.name or e.class, ICON - 6 )
+		if ( okM and mat ~= nil ) then
+			-- v4: a PNG that is STILL DECODING answers IsError() true on the
+			-- first call (async texture load).  The old code fell through to
+			-- the next fallback on that -- and the flat cell it built instead
+			-- was cached, so the icon never came back for the whole session.
+			-- Build the image cell either way; Paint draws the flat tile +
+			-- label until the material decodes, then the texture.  A file that
+			-- never decodes keeps the flat tile instead of the magenta
+			-- checkerboard, which is the same thing the blank cell drew.
+			local label = FitLabel( e.name or e.class, icon - 6 )
 			local ok, btn = pcall( vgui.Create, "DButton" )
 			if ( ok and IsValid( btn ) ) then
 				btn:SetText( "" )
 				btn.Paint = function( pnl, w, h )
 					surface.SetDrawColor( 45, 48, 52, 255 )
 					surface.DrawRect( 0, 0, w, h )
-					surface.SetMaterial( mat )
-					surface.SetDrawColor( 255, 255, 255, 255 )
-					surface.DrawTexturedRect( 0, 0, w, h )
+
+					local bReady = not ( mat.IsError and mat:IsError() )
+					if ( bReady ) then
+						surface.SetMaterial( mat )
+						surface.SetDrawColor( 255, 255, 255, 255 )
+						surface.DrawTexturedRect( 0, 0, w, h )
+					else
+						surface.SetDrawColor( 70, 75, 82, 255 )
+						surface.DrawOutlinedRect( 0, 0, w, h )
+					end
 					draw.SimpleText( label, "DermaDefault", w / 2, h - 8, Color( 220, 220, 220, 255 ), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
 				end
 				pcall( function() btn:SetTooltip( ( e.name or e.class ) .. "\n" .. e.class ) end )
@@ -772,14 +828,15 @@ local function MakeCell( e )
 				return btn, "image"
 			end
 		else
-			Dbg( TAG .. "icon material is error for '" .. iconPath .. "' - next fallback" )
+			Dbg( TAG .. "icon material call failed for '" .. iconPath .. "' - next fallback" )
 		end
 	end
 
-	-- 2) a live 3D thumbnail -- PROPS, VEHICLES and RAGDOLLS only (user rule,
-	--    2026-09-26: everything else with no shipped image shows a BLANK tile,
-	--    the way GMod's icon grid reads; entity/weapon/NPC 3D thumbnails of
-	--    view/world models looked wrong and the viewmodels were unusable).
+	-- 2) a live 3D thumbnail -- the PROPS page ONLY (user rule, tightened
+	--    2026-10-07: vehicles used to render here too; everything that is not
+	--    a prop shows a flat image / blank tile, the way GMod's icon grid
+	--    reads -- entity/weapon/NPC/vehicle 3D thumbnails of view/world models
+	--    looked wrong and the viewmodels were unusable).
 	--    No file.Exists gate: the Lua file API does not see every mounted
 	--    model tree.  The MODEL LOAD itself is deferred inside SpawnIcon
 	--    (queued, one per tick, on-screen cells only -- the load is the
@@ -788,47 +845,43 @@ local function MakeCell( e )
 	--    the icon's Paint degrades to the model's file name instead of the
 	--    error checkerboard.
 	local mdl = e.model or ""
-	local bRender3D = ( e.cat == nil or e.cat == "prop" or e.cat == "vehicle"
-		or ( mdl:find( "ragdoll", 1, true ) ~= nil ) )
 
-	if ( bRender3D and mdl ~= "" ) then
-		local ok, icon = pcall( vgui.Create, "SpawnIcon" )
-		if ( ok and IsValid( icon ) ) then
-			local okSet, errSet = pcall( function() icon:SetModel( mdl, 0, "" ) end )
+	if ( e.cat == "prop" and mdl ~= "" ) then
+		local ok, spicon = pcall( vgui.Create, "SpawnIcon" )
+		if ( ok and IsValid( spicon ) ) then
+			local okSet, errSet = pcall( function() spicon:SetModel( mdl, 0, "" ) end )
 			if ( okSet ) then
-				pcall( function() icon:SetTooltip( ( e.name or e.class ) .. "\n" .. mdl ) end )
-				icon.DoClick = function() SpawnEntry( e ) end
-				icon.DoRightClick = function() EntryMenu( e ) end
-				icon.OpenMenu = function() EntryMenu( e ) end
-				return icon, "spawnicon"
+				pcall( function() spicon:SetTooltip( ( e.name or e.class ) .. "\n" .. mdl ) end )
+				spicon.DoClick = function() SpawnEntry( e ) end
+				spicon.DoRightClick = function() EntryMenu( e ) end
+				spicon.OpenMenu = function() EntryMenu( e ) end
+				return spicon, "spawnicon"
 			end
 			Dbg( TAG .. "SetModel failed for '" .. mdl .. "': " .. tostring( errSet ) )
-			if ( IsValid( icon ) ) then icon:Remove() end
+			if ( IsValid( spicon ) ) then spicon:Remove() end
 		else
-			Dbg( TAG .. "vgui.Create( SpawnIcon ) failed: " .. tostring( icon ) )
+			Dbg( TAG .. "vgui.Create( SpawnIcon ) failed: " .. tostring( spicon ) )
 		end
 	end
 
-	-- 2b) entity / weapon / NPC with no shipped image: a BLANK tile (the same
+	-- 2b) everything else with no shipped image: a BLANK tile (the same
 	--     chrome as the image cell, minus the texture) -- per the user rule
 	--     these must not fall through to a 3D model render.
-	if ( not bRender3D ) then
-		local label = FitLabel( e.name or e.class, ICON - 6 )
-		local ok, btn = pcall( vgui.Create, "DButton" )
-		if ( ok and IsValid( btn ) ) then
-			btn:SetText( "" )
-			btn.Paint = function( pnl, w, h )
-				surface.SetDrawColor( 45, 48, 52, 255 )
-				surface.DrawRect( 0, 0, w, h )
-				surface.SetDrawColor( 70, 75, 82, 255 )
-				surface.DrawOutlinedRect( 0, 0, w, h )
-				draw.SimpleText( label, "DermaDefault", w / 2, h - 8, Color( 220, 220, 220, 255 ), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
-			end
-			pcall( function() btn:SetTooltip( ( e.name or e.class ) .. "\n" .. e.class ) end )
-			btn.DoClick = function() SpawnEntry( e ) end
-			btn.DoRightClick = function() EntryMenu( e ) end
-			return btn, "blank"
+	local label = FitLabel( e.name or e.class, icon - 6 )
+	local ok, btn = pcall( vgui.Create, "DButton" )
+	if ( ok and IsValid( btn ) ) then
+		btn:SetText( "" )
+		btn.Paint = function( pnl, w, h )
+			surface.SetDrawColor( 45, 48, 52, 255 )
+			surface.DrawRect( 0, 0, w, h )
+			surface.SetDrawColor( 70, 75, 82, 255 )
+			surface.DrawOutlinedRect( 0, 0, w, h )
+			draw.SimpleText( label, "DermaDefault", w / 2, h - 8, Color( 220, 220, 220, 255 ), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
 		end
+		pcall( function() btn:SetTooltip( ( e.name or e.class ) .. "\n" .. e.class ) end )
+		btn.DoClick = function() SpawnEntry( e ) end
+		btn.DoRightClick = function() EntryMenu( e ) end
+		return btn, "blank"
 	end
 
 	-- 3) last resort: a text button
@@ -883,7 +936,7 @@ local function FillStep()
 				if ( kind == "spawnicon" ) then g_IconsMade = g_IconsMade + 1
 				elseif ( kind == "image" ) then g_ImagesMade = g_ImagesMade + 1
 				else g_TextsMade = g_TextsMade + 1 end
-				c:SetSize( ICON, ICON )
+				c:SetSize( g_Layout.icon, g_Layout.icon )
 				g_Grid:AddItem( c )
 
 				cache = g_CellCache[ g_ActiveTab ]
@@ -956,8 +1009,8 @@ local function Repopulate( bRebuildSidebar )
 
 		for _, c in ipairs( rows ) do
 			local btn = vgui.Create( "DButton" )
-			btn:SetText( c )
-			btn:SetTall( 20 )
+			btn:SetText( CategoryLabel( c ) )		-- "#spawnmenu.category.*" resolves here
+			btn:SetTall( g_Layout.rowTall )
 			btn:SetContentAlignment( 4 )
 			btn.m_bDepressed = ( c == g_ActiveCat )
 			btn.DoClick = function()
@@ -996,7 +1049,10 @@ local function Repopulate( bRebuildSidebar )
 	end
 
 	if ( g_Hint ~= nil and IsValid( g_Hint ) ) then
-		g_Hint:SetText( #g_Pending .. " items | LMB spawn | RMB menu" )
+		-- "%d items" template token + the control hint for the current layout
+		local items = string.format( Phrase( "hl2sb.spawnmenu.items_fmt" ), #g_Pending )
+		local controls = Phrase( g_Layout.touch and "hl2sb.spawnmenu.hint_touch" or "hl2sb.spawnmenu.hint_desktop" )
+		g_Hint:SetText( items .. " | " .. controls )
 	end
 
 	-- The fill is driven by the frame's OnThink (the mechanism the previous
@@ -1023,9 +1079,29 @@ local function SetActiveTab( id )
 end
 
 local function BuildMenu()
+	-- v4: the touch branch sizes everything up once, here -- cells, rows,
+	-- buttons and the window itself.  The desktop numbers are the v3 ones.
+	local bTouch    = IsTouchLayout()
+	local icon      = bTouch and 96 or 64
+	local pad       = bTouch and 12 or 8
+	local btnH      = bTouch and 32 or 22
+	local rowTall   = bTouch and 32 or 20
+	local sideW     = bTouch and 210 or 170
+	local searchW   = bTouch and 280 or 240
+	local spacing   = bTouch and 8 or 4
+
+	g_Layout.touch   = bTouch
+	g_Layout.icon    = icon
+	g_Layout.rowTall = rowTall
+
 	local frame = vgui.Create( "DPanel" )
-	frame:SetSize( ScrW() - 160, ScrH() - 140 )
-	frame:SetPos( 80, 70 )
+	if ( bTouch ) then
+		frame:SetSize( ScrW() - pad * 2, ScrH() - pad * 2 )
+		frame:SetPos( pad, pad )
+	else
+		frame:SetSize( ScrW() - 160, ScrH() - 140 )
+		frame:SetPos( 80, 70 )
+	end
 
 	-- HL2SB: this fork's DPanel paints nothing, so the world showed through
 	-- the whole menu.  GMod's spawnmenu sits on an opaque dark sheet.
@@ -1036,9 +1112,9 @@ local function BuildMenu()
 
 	-- search
 	local search = vgui.Create( "DTextEntry", frame )
-	search:SetPos( 8, 8 )
-	search:SetSize( 240, 22 )
-	search:SetPlaceholderText( "search..." )
+	search:SetPos( pad, pad )
+	search:SetSize( searchW, btnH )
+	search:SetPlaceholderText( Phrase( "hl2sb.spawnmenu.search" ) )
 	search.OnTextChanged = function()
 		-- never clear the grid inside the text entry's own dispatch
 		timer.Simple( 0, function()
@@ -1048,43 +1124,52 @@ local function BuildMenu()
 		end )
 	end
 
-	-- tabs
+	-- tabs (labels are the same category tokens the sidebar uses, so they
+	-- localize with the rest)
 	local tabs = {}
-	local tx = 260
+	local tx = pad + searchW + 12
 	local order  = { "entities", "weapons", "npcs", "vehicles", "props" }
-	local labels = { entities = "Entities", weapons = "Weapons", npcs = "NPCs",
-	                 vehicles = "Vehicles", props = "Props" }
+	local labels = {
+		entities = "#spawnmenu.category.entities",
+		weapons  = "#spawnmenu.category.weapons",
+		npcs     = "#spawnmenu.category.npcs",
+		vehicles = "#spawnmenu.category.vehicles",
+		props    = "#spawnmenu.category.props",
+	}
+	local tabW = bTouch and 96 or 88
 	for _, id in ipairs( order ) do
 		local btn = vgui.Create( "DButton", frame )
-		btn:SetText( labels[ id ] )
-		btn:SetPos( tx, 8 )
-		btn:SetSize( 88, 22 )
+		btn:SetText( Phrase( labels[ id ] ) )
+		btn:SetPos( tx, pad )
+		btn:SetSize( tabW, btnH )
 		btn.m_bDepressed = ( id == "entities" )
 		btn.DoClick = function() SetActiveTab( id ) end
 		tabs[ id ] = btn
-		tx = tx + 92
+		tx = tx + tabW + 4
 	end
 
 	-- category sidebar
+	local topY = pad + btnH + 6
 	local side = vgui.Create( "DPanelList", frame )
-	side:SetPos( 8, 36 )
-	side:SetSize( 170, frame:GetTall() - 44 )
+	side:SetPos( pad, topY )
+	side:SetSize( sideW, frame:GetTall() - topY - pad )
 	side:EnableVerticalScrollbar( true )
 	side:SetSpacing( 2 )
 	side:SetPadding( 4 )
 
 	-- icon grid
+	local gridX = pad + sideW + 8
 	local grid = vgui.Create( "DPanelList", frame )
-	grid:SetPos( 186, 36 )
-	grid:SetSize( frame:GetWide() - 194, frame:GetTall() - 44 )
+	grid:SetPos( gridX, topY )
+	grid:SetSize( frame:GetWide() - gridX - pad, frame:GetTall() - topY - pad )
 	grid:EnableHorizontal( true )
 	grid:EnableVerticalScrollbar( true )
-	grid:SetSpacing( 4 )
+	grid:SetSpacing( spacing )
 	grid:SetPadding( 6 )
 
 	-- hint
 	local hint = vgui.Create( "DLabel", frame )
-	hint:SetPos( frame:GetWide() - 330, 12 )
+	hint:SetPos( frame:GetWide() - 330 - pad, pad + 4 )
 	hint:SetSize( 320, 18 )
 	hint:SetContentAlignment( 2 )
 	hint:SetText( "" )
@@ -1105,11 +1190,36 @@ local function BuildMenu()
 	frame:SetVisible( false )
 end
 
+-- v4: cached cells are wiped on every Open.  The per-tab cache exists to make
+-- category / search / tab switches cheap WITHIN one open -- it must not outlive
+-- it: a cell built while an icon PNG was still decoding, or holding a texture
+-- id from before a map change, would re-dock as a dead tile forever (the
+-- "some icons are gone after a map change" report).
+local function WipeCellCache()
+	for _, cache in pairs( g_CellCache ) do
+		for _, cell in pairs( cache ) do
+			if ( IsValid( cell ) ) then
+				cell:Remove()
+			end
+		end
+	end
+	g_CellCache = {}
+end
+
 local function Open()
+	if ( g_Frame ~= nil and IsValid( g_Frame ) and g_Layout.touch ~= IsTouchLayout() ) then
+		-- the touch convar flipped since this frame was built: the layout is
+		-- baked into the frame's geometry, so rebuild.  Open() runs from a key
+		-- or console, never from a mouse event inside the frame -- the "never
+		-- remove while a mouse event is inside it" rule holds.
+		g_Frame:Remove()
+		g_Frame = nil
+	end
 	if ( g_Frame == nil or not IsValid( g_Frame ) ) then
 		BuildMenu()
 	end
 	KillFill()
+	WipeCellCache()
 	g_Cache = {}		-- re-read the registries: addons may have registered since
 
 	for id, fn in pairs( Collectors ) do
@@ -1148,7 +1258,11 @@ end
 
 if ( concommand and concommand.Add ) then
 	concommand.Add( "hl2sb_spawnmenu", function() Toggle() end, nil, "Toggle the spawn menu." )
-	concommand.Add( "+smenu", function() Open() end, nil, "Open the spawn menu (hold)." )
+	-- touch has no reliable key release (a finger lift never sends "-smenu"),
+	-- so on the touch layout +smenu toggles instead of holding
+	concommand.Add( "+smenu", function()
+		if ( g_Layout.touch ) then Toggle() else Open() end
+	end, nil, "Open the spawn menu (hold)." )
 	concommand.Add( "-smenu", function() Close() end, nil, "Close the spawn menu (release)." )
 end
 
@@ -1161,4 +1275,4 @@ if ( hook and hook.Add ) then
 	hook.Add( "OnSpawnMenuClose", "hl2sb_spawnmenu_close", function() Close() end )
 end
 
-Dbg( TAG .. "v3 loaded: registry content, category sidebar, SpawnIcon grid (Q = +smenu)" )
+Dbg( TAG .. "v4 loaded: registry-only content, token localization, prop-only 3D, touch branch (Q = +smenu)" )

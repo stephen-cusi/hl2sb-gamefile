@@ -159,6 +159,64 @@ AddTable(
 } )
 
 -------------------------------------------------------------------------------
+-- HL2SB: fork tokens the GMod properties tables do not carry.  Same shape as
+-- the built-ins above; values verbatim, CJK kept as \u{} escapes so the file
+-- stays pure ASCII.  These back the spawn menu's own chrome (the Props tab
+-- has no GMod category token, the APC has no vehicle token, and the menu
+-- strings are this fork's own) and resolve through the same GetPhrase path.
+-------------------------------------------------------------------------------
+AddTable(
+{
+	[ "spawnmenu.category.props" ] =
+	{
+		en			= "Props",
+		schinese	= "\u{9053}\u{5177}",
+	},
+
+	[ "spawnmenu.vehicle.apc" ] =
+	{
+		en			= "Combine APC",
+		schinese	= "\u{8054}\u{5408}\u{519b} APC",
+	},
+
+	[ "hl2sb.spawnmenu.items_fmt" ] =
+	{
+		en			= "%d items",
+		schinese	= "%d \u{9879}",
+	},
+
+	[ "hl2sb.spawnmenu.hint_desktop" ] =
+	{
+		en			= "LMB spawn | RMB menu",
+		schinese	= "\u{5de6}\u{952e}\u{751f}\u{6210} | \u{53f3}\u{952e}\u{83dc}\u{5355}",
+	},
+
+	[ "hl2sb.spawnmenu.hint_touch" ] =
+	{
+		en			= "Tap to spawn | Hold for menu",
+		schinese	= "\u{70b9}\u{6309}\u{751f}\u{6210} | \u{957f}\u{6309}\u{83dc}\u{5355}",
+	},
+
+	[ "hl2sb.spawnmenu.search" ] =
+	{
+		en			= "search...",
+		schinese	= "\u{641c}\u{7d22}...",
+	},
+
+	[ "hl2sb.spawnmenu.spawn_one" ] =
+	{
+		en			= "Spawn 1",
+		schinese	= "\u{751f}\u{6210} 1 \u{4e2a}",
+	},
+
+	[ "hl2sb.spawnmenu.spawn_five" ] =
+	{
+		en			= "Spawn 5",
+		schinese	= "\u{751f}\u{6210} 5 \u{4e2a}",
+	},
+} )
+
+-------------------------------------------------------------------------------
 -- HL2SB: GMod ships its object names as Java-style .properties files under
 -- resource/localization/<lang>/ -- entities.properties carries every built-in
 -- HL2 NPC / weapon / prop / ammo display name, spawnmenu.properties the
@@ -234,9 +292,13 @@ end
 local function UnescapePropertyValue( value )
 	-- the Java properties escapes GMod's files actually use: "\uXXXX" (all
 	-- the CJK / cyrillic values ship escaped), "\:" and "\=" (fr/es).
+	-- Surrogate / out-of-range escapes are dropped rather than handed to
+	-- utf8.char: one ill-formed value must not break the rest of the table.
 	local out = string.gsub( value, "\\u(%x%x%x%x)", function( hex )
 		local n = tonumber( hex, 16 )
-		if ( n == nil ) then return "" end
+		if ( n == nil or n > 0x10FFFF or ( n >= 0xD800 and n <= 0xDFFF ) ) then
+			return ""
+		end
 		return utf8.char( n )
 	end )
 	return string.gsub( out, "\\([:=])", "%1" )

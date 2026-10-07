@@ -470,6 +470,14 @@ function IsMounted( name )
 		name = "hl2"
 	end
 
+	-- This engine does not expose GetGames; with no game list nothing extra
+	-- is mounted.  The call must ANSWER false, not throw: GMod's stock
+	-- content files (game_hl2 / base_npcs) call IsMounted() unconditionally
+	-- and a throw takes the whole registration file down with it.
+	if ( engine == nil or engine.GetGames == nil ) then
+		return false
+	end
+
 	local games = engine.GetGames()
 
 	for k, v in pairs( games ) do

@@ -28,12 +28,11 @@
     VPK, which gameinfo.txt mounts as game+mod - verified against the VPK tree,
     not assumed.
 
-    PrintName is the Chinese label the user's GMod shows in its Vehicles tab.  It
-    is written as a plain UTF-8 string rather than as GMod's "#spawnmenu...."
-    token on purpose: this fork's resource/ language files do not carry GMod's
-    spawnmenu.properties, and SMenu's name resolution passes a plain string
-    through untouched (a token that resolves to nothing falls through to the
-    class name instead).
+    Labels are GMod's own "#spawnmenu.chair.* / #spawnmenu.seat.*" tokens (the
+    spawnmenu.properties table above lists them).  The mod ships GMod's
+    resource/localization/ files (resource/localization/<lang>/*.properties),
+    so language.GetPhrase resolves each token into the UI language and the
+    plain-string fallback this file used before is gone.
 
     NOTE on the label/pairing: the three car-seat variants are one family, so
     they are the three phx_seat* entries; Seat_Airboat and Seat_Jalopy take the
@@ -61,7 +60,7 @@ local SEAT_SCRIPT = "scripts/vehicles/prisoner_pod.txt"
 -- GMod's own grouping (base_vehicles.lua: Category = "#spawnmenu.category.chairs",
 -- zh-cn "座椅").  SMenu uses it for the Vehicles page's sidebar bucket, the way
 -- GMod shows a "Chairs" node instead of dumping the seats in with the jeep.
-local SEAT_CATEGORY = "座椅"
+local SEAT_CATEGORY = "#spawnmenu.category.chairs"
 
 -- HL2SB (sbrust): GMod's seat POSE handlers (base_vehicles.lua:222-230).  The
 -- engine's animations.lua HandlePlayerDriving looks the spawned vehicle up in
@@ -98,16 +97,16 @@ end
 --           drive pose; phx_seat3 = the airboat drive pose).
 local SEATS =
 {
-	{ id = "Chair_Office1",	label = "办公椅座椅",		model = "models/nova/chair_office01.mdl",	icon = "entities/chair_office1",	pose = HandleRollercoasterAnimation },
-	{ id = "Seat_Jeep",		label = "吉普车座椅",		model = "models/nova/jeep_seat.mdl",		icon = "entities/seat_jeep",		pose = HandleRollercoasterAnimation },
-	{ id = "Chair_Plastic",	label = "塑料椅",			model = "models/nova/chair_plastic01.mdl",	icon = "entities/chair_plastic",	pose = HandleRollercoasterAnimation },
-	{ id = "Chair_Office2",	label = "大办公椅座椅",		model = "models/nova/chair_office02.mdl",	icon = "entities/chair_office2",	pose = HandleRollercoasterAnimation },
-	{ id = "Chair_Wood",	label = "木椅子",			model = "models/nova/chair_wood01.mdl",		icon = "entities/chair_wood",		pose = HandleRollercoasterAnimation },
-	{ id = "phx_seat",		label = "汽车座椅(空)",		model = "models/props_phx/carseat2.mdl",	icon = "entities/phx_seat",		pose = HandlePHXSeatAnimation },
-	{ id = "phx_seat2",		label = "汽车座椅(左乘客)",	model = "models/props_phx/carseat3.mdl",	icon = "entities/phx_seat2",		pose = HandlePHXVehicleAnimation },
-	{ id = "phx_seat3",		label = "汽车座椅(右乘客)",	model = "models/props_phx/carseat2.mdl",	icon = "entities/phx_seat3",		pose = HandlePHXAirboatAnimation },
-	{ id = "Seat_Airboat",	label = "汽座位置",			model = "models/nova/airboat_seat.mdl",		icon = "entities/seat_airboat",	pose = HandleRollercoasterAnimation },
-	{ id = "Seat_Jalopy",	label = "豪华车座椅",		model = "models/nova/jalopy_seat.mdl",		icon = "entities/seat_jalopy",	pose = HandleRollercoasterAnimation },
+	{ id = "Chair_Office1",	label = "#spawnmenu.chair.office",		model = "models/nova/chair_office01.mdl",	icon = "entities/chair_office1",	pose = HandleRollercoasterAnimation },
+	{ id = "Seat_Jeep",		label = "#spawnmenu.seat.jeep",		model = "models/nova/jeep_seat.mdl",		icon = "entities/seat_jeep",		pose = HandleRollercoasterAnimation },
+	{ id = "Chair_Plastic",	label = "#spawnmenu.chair.plastic",			model = "models/nova/chair_plastic01.mdl",	icon = "entities/chair_plastic",	pose = HandleRollercoasterAnimation },
+	{ id = "Chair_Office2",	label = "#spawnmenu.chair.office_big",		model = "models/nova/chair_office02.mdl",	icon = "entities/chair_office2",	pose = HandleRollercoasterAnimation },
+	{ id = "Chair_Wood",	label = "#spawnmenu.chair.wooden",			model = "models/nova/chair_wood01.mdl",		icon = "entities/chair_wood",		pose = HandleRollercoasterAnimation },
+	{ id = "phx_seat",		label = "#spawnmenu.seat.simple_sit",		model = "models/props_phx/carseat2.mdl",	icon = "entities/phx_seat",		pose = HandlePHXSeatAnimation },
+	{ id = "phx_seat2",		label = "#spawnmenu.seat.simple_jeep",	model = "models/props_phx/carseat3.mdl",	icon = "entities/phx_seat2",		pose = HandlePHXVehicleAnimation },
+	{ id = "phx_seat3",		label = "#spawnmenu.seat.simple_airboat",	model = "models/props_phx/carseat2.mdl",	icon = "entities/phx_seat3",		pose = HandlePHXAirboatAnimation },
+	{ id = "Seat_Airboat",	label = "#spawnmenu.seat.airboat",			model = "models/nova/airboat_seat.mdl",		icon = "entities/seat_airboat",	pose = HandleRollercoasterAnimation },
+	{ id = "Seat_Jalopy",	label = "#spawnmenu.seat.jalopy",		model = "models/nova/jalopy_seat.mdl",		icon = "entities/seat_jalopy",	pose = HandleRollercoasterAnimation },
 }
 
 for _, seat in ipairs( SEATS ) do

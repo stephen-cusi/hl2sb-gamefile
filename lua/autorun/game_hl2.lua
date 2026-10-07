@@ -1,5 +1,5 @@
 --[[--------------------------------------------------------------------------
-	game_hl2.lua  --  GMod's lua/autorun/game_hl2.lua (211 lines), ported.
+	game_hl2.lua  --  GMod's lua/autorun/game_hl2.lua, ported.
 
 	This is the STOCK spawnmenu registry: the Half-Life 2 ammo / items / weapons
 	that GMod's Entities + Weapons tabs are built from.  The fork's Entities tab
@@ -9,9 +9,12 @@
 	weapons.Register fills, not the raw list).
 
 	Adaptations from GMod's file, all forced by this fork:
-	  * PrintName: GMod registers "#weapon_stunstick" style TOKENS and its
-	    engine resolves them; this fork's text layer does not, so the readable
-	    names are stored directly (the ITEM_NAME / WEAPON_NAME maps).
+	  * PrintName: GMod registers "#weapon_stunstick" style TOKENS.  The fork
+	    used to store readable names because nothing resolved the tokens; the
+	    menu now resolves them through language.GetPhrase against GMod's
+	    resource/localization/<lang>/entities.properties (the mod ships the
+	    files), so the GMod token form is back -- every stock name follows the
+	    UI language, like GMod.
 	  * language.FormatPhrase / localization packs do not exist here, so no
 	    "#spawnmenu.category.ammo_items" SubCategory -- everything lands in the
 	    "Half-Life 2" category, like GMod's without the language pack.
@@ -29,52 +32,6 @@ local listGetEntry = list.GetEntry or function( listid, name )
 	if ( t ~= nil ) then return t[ name ] end
 	return nil
 end
-
--- readable names (GMod resolves these from its localization; we store them)
-local ITEM_NAME = {
-	item_ammo_ar2           = "AR2 Ammo",
-	item_ammo_ar2_large     = "AR2 Ammo (Large)",
-	item_ammo_pistol        = "9mm Pistol Ammo",
-	item_ammo_pistol_large  = "9mm Pistol Ammo (Large)",
-	item_ammo_357           = ".357 Ammo",
-	item_ammo_357_large     = ".357 Ammo (Large)",
-	item_ammo_smg1          = "SMG Ammo",
-	item_ammo_smg1_large    = "SMG Ammo (Large)",
-	item_ammo_smg1_grenade  = "SMG Grenade",
-	item_ammo_crossbow      = "Crossbow Bolt",
-	item_box_buckshot       = "Shotgun Ammo",
-	item_ammo_ar2_altfire   = "AR2 Alt-Fire Ammo",
-	item_rpg_round          = "RPG Round",
-	item_battery            = "Suit Battery",
-	item_healthkit          = "Medkit",
-	item_healthvial         = "Health Vial",
-	item_suitcharger        = "Suit Charger",
-	item_healthcharger      = "Health Charger",
-	item_suit               = "HEV Suit",
-	prop_thumper            = "Thumper",
-	combine_mine            = "Combine Mine",
-	combine_mine_resistance = "Combine Mine (Resistance)",
-	npc_grenade_frag        = "Grenade",
-	grenade_helicopter      = "Helicopter Bomb",
-	weapon_striderbuster    = "Strider Buster",
-}
-
-local WEAPON_NAME = {
-	weapon_physcannon = "Gravity Gun",
-	weapon_stunstick  = "Stunstick",
-	weapon_frag       = "Grenade",
-	weapon_crossbow   = "Crossbow",
-	weapon_bugbait    = "Bug Bait",
-	weapon_rpg        = "RPG",
-	weapon_crowbar    = "Crowbar",
-	weapon_shotgun    = "Shotgun",
-	weapon_pistol     = "9mm Pistol",
-	weapon_slam       = "S.L.A.M.",
-	weapon_smg1       = "SMG",
-	weapon_ar2        = "Pulse Rifle",
-	weapon_357        = ".357 Magnum",
-	weapon_physgun    = "Physics Gun",
-}
 
 local function ADD_ITEM_DUPEFUNC( ply, data )
 	if ( IsValid( ply ) && gamemode.Call( "PlayerSpawnSENT", ply, data.Class ) == false ) then return NULL end
@@ -134,7 +91,7 @@ end
 local function ADD_ITEM( class, offset, extras, classOverride )
 
 	local base = {
-		PrintName    = ITEM_NAME[ classOverride or class ] or ( classOverride or class ),
+		PrintName    = "#" .. ( classOverride or class ),
 		ClassName    = class,
 		Category     = Category,
 		NormalOffset = offset or 32,
@@ -150,7 +107,7 @@ local function ADD_WEAPON( class )
 
 	local t = {
 		ClassName = class,
-		PrintName = WEAPON_NAME[ class ] or class,
+		PrintName = "#" .. class,
 		Category  = Category,
 		Author    = "VALVe",
 		Spawnable = true,

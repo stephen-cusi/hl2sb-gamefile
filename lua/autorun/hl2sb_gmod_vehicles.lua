@@ -46,32 +46,35 @@ end
 local HL2 = "Half-Life 2"
 
 -- id        - GMod's SPAWN NAME (the list key, and the entry's identity in the menu)
--- label     - what the cell prints
+-- label     - the "#token" the cell resolves through language.GetPhrase (GMod
+--             registers the same tokens in base_vehicles.lua; the properties
+--             files name them in the UI language, so the label follows
+--             cl_language instead of being hardcoded here)
 -- class     - the engine class to spawn
 -- model     - the model that makes it this vehicle
 -- script    - the vehiclescript KeyValue
 -- icon      - materials/<icon>.png; the menu falls back to entities/<class> by itself
 local VEHICLES =
 {
-	{ id = "Jeep",    label = "吉普车",     class = "prop_vehicle_jeep",
+	{ id = "Jeep",    label = "#spawnmenu.vehicle.jeep",        class = "prop_vehicle_jeep",
 	  model = "models/buggy.mdl",                  script = "scripts/vehicles/jeep_test.txt",
 	  icon = "entities/jeep" },
 
-	{ id = "Airboat", label = "汽艇",       class = "prop_vehicle_airboat",
+	{ id = "Airboat", label = "#spawnmenu.vehicle.airboat",     class = "prop_vehicle_airboat",
 	  model = "models/airboat.mdl",                script = "scripts/vehicles/airboat.txt",
 	  icon = "entities/airboat" },
 
-	{ id = "Pod",     label = "囚禁舱",     class = "prop_vehicle_prisoner_pod",
+	{ id = "Pod",     label = "#spawnmenu.vehicle.prisoner_pod", class = "prop_vehicle_prisoner_pod",
 	  model = "models/vehicles/prisoner_pod_inner.mdl", script = "scripts/vehicles/prisoner_pod.txt",
 	  icon = "entities/pod" },
 
-	{ id = "prop_vehicle_apc", label = "联合军 APC", class = "prop_vehicle_apc",
+	{ id = "prop_vehicle_apc", label = "#spawnmenu.vehicle.apc", class = "prop_vehicle_apc",
 	  model = "models/combine_apc.mdl",            script = "scripts/vehicles/apc.txt",
 	  icon = "entities/prop_vehicle_apc" },
 
 	-- Episode Two content: model and script both have to be there for the cell to do
 	-- anything, so it is conditional rather than always listed.
-	{ id = "Jalopy",  label = "肌肉车",     class = "prop_vehicle_jeep",
+	{ id = "Jalopy",  label = "#spawnmenu.vehicle.jalopy",     class = "prop_vehicle_jeep",
 	  model = "models/vehicle.mdl",                script = "scripts/vehicles/jalopy.txt",
 	  icon = "entities/jalopy" },
 }

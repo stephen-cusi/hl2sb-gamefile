@@ -1,0 +1,7 @@
+"UnlitGeneric"
+{
+	"$basetexture" "_rt_hl2sb_icon_models_props_wasteland_light_spotlight01_lamp_mdl"
+	"$vertexcolor" "1"
+	"$vertexalpha" "1"
+	"$nofog" "1"
+}

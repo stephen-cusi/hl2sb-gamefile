@@ -443,7 +443,11 @@ function PANEL:LoadModel()
 			-- camera 2.6x radius out -- at FOV 70 that framed the model at barely
 			-- half the cell.  Same direction, but pulled in so the model fills
 			-- the cell the way GMod's thumbnails do.
-			local dir = Vector( radius * 1.9, radius * 1.4, radius * 1.1 )
+			-- HL2SB (2026-10-07): the DIRECTION is GMod's icon signature now
+			-- too: equal x/y = 45 degrees of yaw and a z just under that
+			-- (~32 degrees of pitch), which is exactly how GMod's spawnmenu
+			-- icons sit -- two side faces and the top, evenly lit.
+			local dir = Vector( radius, radius, radius * 0.9 )
 			local len = dir:Length()
 			if ( len and len > 0 ) then dir = dir * ( radius * 1.65 / len ) end
 			self.Icon:SetCamPos( center + dir )

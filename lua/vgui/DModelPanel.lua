@@ -217,7 +217,7 @@ function PANEL:Paint( w, h )
 
 	self:DrawModel()
 
-	-- ⚠️ A control's PreDrawModel can install studio LOCAL LIGHTS
+	-- A control's PreDrawModel can install studio LOCAL LIGHTS
 	-- (render.SetLocalModelLights - the player model selector does exactly that for its
 	-- three coloured point lights).  Those are GLOBAL render state that survives this
 	-- draw: leaving them on lights every model and brush in the world with the preview's
@@ -249,6 +249,17 @@ end
 --- the model list unusable).  Returns nil when a required binding is missing;
 --- callers fall back to the live render.  The camera used is whatever the
 --- panel's vCamPos / vLookatPos / fFOV are at call time.
+---
+--- HL2SB (2026-10-07): session cache.  The .vmt lands in materials/spawnicon/
+--- and SURVIVES a map change / game restart, but the render target behind it is
+--- a materialsystem object that comes back empty after a restart -- a cell that
+--- trusted the on-disk .vmt alone drew nothing.  Each session therefore
+--- re-renders every snapshot ONCE (per model), then serves the rest of the
+--- session from the file.  Menu rebuilds within one map load, and every load
+--- after that, hit the cheap path.
+
+local g_SnapshotSession = {}		-- rt name -> rendered this session
+
 function PANEL:Snapshot( wide, tall )
 	if ( not IsValid( self.Entity ) ) then return end
 
@@ -262,6 +273,10 @@ function PANEL:Snapshot( wide, tall )
 	local base = "hl2sb_icon_" .. string.gsub( string.lower( mdl ), "[^%w]", "_" )
 	local rtname = "_rt_" .. base
 	local texpath = "spawnicon/" .. base
+
+	if ( g_SnapshotSession[ rtname ] and file.Exists( "materials/" .. texpath .. ".vmt", "GAME" ) ) then
+		return texpath
+	end
 
 	local rt = render.CreateNamedRenderTarget( rtname, wide, tall )
 	if ( not rt ) then return end
@@ -291,15 +306,30 @@ function PANEL:Snapshot( wide, tall )
 	render.PopRenderTarget()
 
 	-- A one-line material pointing $basetexture at the render target.  Written
-	-- AFTER the target exists so the texture name resolves.  The fork's
-	-- file.Write allows paths outside data/.
+	-- AFTER the target exists so the texture name resolves.
+	--
+	-- HL2SB (2026-10-07): the write MUST go to "GAME".  file.Write defaults to
+	-- DATA (the mod's data/ folder), so every snapshot vmt landed in
+	-- data/materials/spawnicon/ where the material system never looks -- the
+	-- cell bound a nonexistent material and drew the error checkerboard
+	-- ("Missing Vgui material spawnicon/hl2sb_icon_...").  The snapshot
+	-- pipeline had never actually delivered a texture; every icon that looked
+	-- right was the live-render fallback.  If the write still fails to land,
+	-- return nil so the caller stays on the live render instead of a broken
+	-- texture.
 	file.Write( "materials/" .. texpath .. ".vmt", "\"UnlitGeneric\"\n" ..
 		"{\n" ..
 		"\t\"$basetexture\" \"" .. rtname .. "\"\n" ..
 		"\t\"$vertexcolor\" \"1\"\n" ..
 		"\t\"$vertexalpha\" \"1\"\n" ..
 		"\t\"$nofog\" \"1\"\n" ..
-		"}\n" )
+		"}\n", "GAME" )
+
+	if ( not file.Exists( "materials/" .. texpath .. ".vmt", "GAME" ) ) then
+		return nil
+	end
+
+	g_SnapshotSession[ rtname ] = true
 
 	return texpath
 end
