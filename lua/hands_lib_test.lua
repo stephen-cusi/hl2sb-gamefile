@@ -62,9 +62,9 @@ check( "GM:PlayerSetHandsModel wired", GAMEMODE.PlayerSetHandsModel ~= nil )
 
 if ( ply.SetBodyGroups ~= nil ) then
   local ok = pcall( ply.SetBodyGroups, ply, "0000000" )
-  check( "SetBodyGroups shim runs without error", ok )
+  check( "SetBodyGroups (engine C binding) runs without error", ok )
 else
-  check( "SetBodyGroups shim present", false )
+  check( "SetBodyGroups present", false )
 end
 
 if ( SERVER ) then

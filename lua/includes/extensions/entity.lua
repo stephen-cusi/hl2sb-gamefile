@@ -67,21 +67,8 @@ if ( _R ~= nil and _R.CBaseEntity ~= nil and _R.CBaseEntity.PlaySequenceAndWait 
   end
 end
 
--- HL2SB (2026-09-27): GMod's Entity:SetBodyGroups( "0010000" ) -- one digit
--- per body group, left to right.  The engine only exposes the per-group
--- SetBodygroup( index, value ) on both realms, so parse the string onto those
--- calls (GM:PlayerSetHandsModel feeds it the hands bodygroups).
-if ( _R ~= nil and _R.CBaseEntity ~= nil and _R.CBaseEntity.SetBodyGroups == nil ) then
-  function _R.CBaseEntity:SetBodyGroups( str )
-    if ( self.GetNumBodyGroups == nil ) then return end
-    local numGroups = self:GetNumBodyGroups() or 0
-    str = tostring( str or "" )
-    for i = 1, #str do
-      if ( i > numGroups ) then break end
-      local n = tonumber( str:sub( i, i ) )
-      if ( n ~= nil ) then
-        self:SetBodygroup( i - 1, n )
-      end
-    end
-  end
-end
+-- HL2SB (2026-10-08): the Lua SetBodyGroups shim that used to live here is
+-- gone.  GMod's Entity:SetBodyGroups is the engine's own C binding (hex, one
+-- character per bodygroup) on both realms, and this fork's CBaseAnimating
+-- binding now carries the same thing - the Lua copy only shadowed it with
+-- decimal-only parsing.
