@@ -17,7 +17,7 @@
 -- So the two cl_* convars the player model selector writes ARE the answer; there is no
 -- second colour scheme in GMod.
 --
--- ⚠️ This file used to hand out a fixed four-colour palette picked from the userid
+-- This file used to hand out a fixed four-colour palette picked from the userid
 -- (`c = palette[ ( id % #palette ) + 1 ]; ply:SetPlayerColor( c )`).  That overwrote
 -- whatever the selector had just chosen, on every spawn - the colour survived until the
 -- player died and then snapped back to the palette entry: "调完颜色重生几次就没了"
