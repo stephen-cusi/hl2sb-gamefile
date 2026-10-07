@@ -15,6 +15,15 @@ local table = table
 local type = type
 local tostring = tostring
 local Warning = dbg.Warning
+-- TableInherit (below) iterates and type-checks: without seeall these would
+-- be nil inside the module environment and weapon.get() would raise
+-- "attempt to call a nil value (global 'pairs')" for every SWEP with a Lua
+-- base -- no weapon table, a model-less viewmodel, and a client crash in
+-- ResetSequenceInfo on the next weapon switch (crash_20261007_073817).
+local pairs = pairs
+-- istable comes from the extensions pass, whose relative order vs. this
+-- module is not guaranteed -- fall back to a local definition.
+local istable = istable or function( t ) return type( t ) == "table" end
 
 module( "weapon" )
 
@@ -25,6 +34,32 @@ local tWeapons = {}
 -- Input  : strName - Name of the weapon
 -- Output : table
 -------------------------------------------------------------------------------
+-- GMod's weapons.lua derives with a DEEP local TableInherit (subtables are
+-- merged field-by-field, e.g. a child SWEP that writes SWEP.Primary.Damage
+-- still sees the base's SWEP.Primary.RecoilRandom / ClipSize / DefaultClip).
+-- The global table.inherit is intentionally shallow (GMod semantics), so it
+-- can't be used here: child Primary/Secondary tables always exist (the engine
+-- seeds them), which would drop every base-only subtable field.  That is
+-- exactly how hl1sweps' weapon_hl1_357 lost Primary.RecoilRandom and aborted
+-- every shot inside SendRecoil.
+local function TableInherit( t, base )
+
+	for k, v in pairs( base ) do
+
+		if ( t[ k ] == nil ) then
+			t[ k ] = v
+		elseif ( k ~= "BaseClass" and istable( t[ k ] ) and istable( v ) ) then
+			TableInherit( t[ k ], v )
+		end
+
+	end
+
+	t[ "BaseClass" ] = base
+
+	return t
+
+end
+
 function get( strClassname )
   local tWeapon = tWeapons[ strClassname ]
   if ( not tWeapon ) then
@@ -50,7 +85,7 @@ function get( strClassname )
         Warning( "WARNING: Attempted to initialize weapon \"" .. strClassname .. "\" with non-existing base class \"" .. tostring( sBase ) .. "\"!\n" )
       end
     else
-      return table.inherit( tWeapon, tBaseWeapon )
+      return TableInherit( tWeapon, tBaseWeapon )
     end
   end
   return tWeapon

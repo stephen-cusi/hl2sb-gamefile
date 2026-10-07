@@ -181,6 +181,13 @@ local function TextureSize( texid )
 	return 32, 32
 end
 
+-- GMod: surface.GetTextureSize( textureID ) -> width, height
+-- (hl1sweps' SWEP:DoDrawCrosshair asks for it every frame to UV-map the
+-- crosshair sprite atlas).
+if ( surface.GetTextureSize == nil ) then
+	surface.GetTextureSize = TextureSize
+end
+
 if ( Material == nil ) then
 	-- PERF (2026-09-23): GMod caches Material() by path.  Without a cache, every
 	-- call from an ENT:Draw / HUDPaint (the usual addon idiom) built a fresh

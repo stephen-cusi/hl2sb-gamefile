@@ -377,6 +377,40 @@ function GM:ShouldDrawLocalPlayer( ply )
 end
 
 --[[---------------------------------------------------------
+	Name: gamemode:CalcViewModelView()
+	Desc: Called every frame by the engine to compute the view model's
+	position/angles.  Forwards to SWEP:GetViewModelPosition and then
+	SWEP:CalcViewModelView -- GMod base cl_init.lua:555 verbatim,
+	ported 2026-10-07 (hl1sweps positions every viewmodel through this
+	chain; without it the HL1 weapons drew at the bare eye transform).
+-----------------------------------------------------------]]
+function GM:CalcViewModelView( wep, vm, oldEyePos, oldEyeAng, eyePos, eyeAng )
+
+	if ( !IsValid( wep ) ) then return end
+
+	local vm_origin, vm_angles = eyePos, eyeAng
+
+	-- Controls the position of all viewmodels
+	local func = wep.GetViewModelPosition
+	if ( func ) then
+		local pos, ang = func( wep, eyePos*1, eyeAng*1 )
+		vm_origin = pos or vm_origin
+		vm_angles = ang or vm_angles
+	end
+
+	-- Controls the position of individual viewmodels
+	func = wep.CalcViewModelView
+	if ( func ) then
+		local pos, ang = func( wep, vm, oldEyePos*1, oldEyeAng*1, eyePos*1, eyeAng*1 )
+		vm_origin = pos or vm_origin
+		vm_angles = ang or vm_angles
+	end
+
+	return vm_origin, vm_angles
+
+end
+
+--[[---------------------------------------------------------
 	Name: gamemode:PreDrawViewModel()
 	Desc: Called before drawing the view model; return true to suppress it
 	(the engine then skips ViewModelDrawn/PostDrawViewModel too).

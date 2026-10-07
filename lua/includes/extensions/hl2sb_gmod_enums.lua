@@ -263,6 +263,10 @@ if ( rawget( _G, "RENDERGROUP_STATIC" ) == nil ) then RENDERGROUP_STATIC = 0 end
 if ( rawget( _G, "RENDERGROUP_OPAQUE" ) == nil ) then RENDERGROUP_OPAQUE = 7 end
 if ( rawget( _G, "RENDERGROUP_TRANSLUCENT" ) == nil ) then RENDERGROUP_TRANSLUCENT = 8 end
 if ( rawget( _G, "RENDERGROUP_TWOPASS" ) == nil ) then RENDERGROUP_TWOPASS = 9 end
+-- GMod's RENDERGROUP_BOTH ("draw in both the opaque and translucent pass")
+-- maps onto this engine's TWOPASS group -- that is the same two-pass concept,
+-- and the number is what CBaseScripted::GetRenderGroup compares against.
+if ( rawget( _G, "RENDERGROUP_BOTH" ) == nil ) then RENDERGROUP_BOTH = RENDERGROUP_TWOPASS end
 if ( rawget( _G, "RENDERGROUP_VIEWMODEL" ) == nil ) then RENDERGROUP_VIEWMODEL = 10 end
 if ( rawget( _G, "RENDERGROUP_OTHER" ) == nil ) then RENDERGROUP_OTHER = 13 end
 
@@ -294,3 +298,152 @@ if ( rawget( _G, "HUD_PRINTNOTIFY" ) == nil ) then HUD_PRINTNOTIFY = 1 end
 if ( rawget( _G, "HUD_PRINTCONSOLE" ) == nil ) then HUD_PRINTCONSOLE = 2 end
 if ( rawget( _G, "HUD_PRINTTALK" ) == nil ) then HUD_PRINTTALK = 3 end
 if ( rawget( _G, "HUD_PRINTCENTER" ) == nil ) then HUD_PRINTCENTER = 4 end
+
+------------------------------------------------------------------------------
+-- More GMod global enum families (2026-10-07, hl1sweps full binding audit).
+-- Same shape as the EF_*/MOVETYPE_* block above: the engine publishes the
+-- values under ITS OWN library names (_E.<lib> + flat <lib>_<member>), GMod
+-- spells them as other flat globals, and every addon written against GMod
+-- reads nil until aliased here.  Values always come from the engine tables so
+-- they cannot drift from what the C++ switches on.
+------------------------------------------------------------------------------
+
+-- FSOLID_* (engine lib SOLID_FLAG).  hl1sweps' projectiles set
+-- FSOLID_NOT_SOLID / FSOLID_VOLUME_CONTENTS / FSOLID_NOT_STANDABLE while
+-- flying; with the globals nil those SetSolidFlags(bit.bor(...)) calls died
+-- on "bit.bor: number expected, got nil" mid-projectile setup.
+local _SF = rawget( _G, "SOLID_FLAG" ) or _E.SOLID_FLAG
+if ( _SF ~= nil ) then
+	if ( rawget( _G, "FSOLID_NOT_SOLID" ) == nil ) then FSOLID_NOT_SOLID = _SF.NOT_SOLID end
+	if ( rawget( _G, "FSOLID_TRIGGER" ) == nil ) then FSOLID_TRIGGER = _SF.TRIGGER end
+	if ( rawget( _G, "FSOLID_NOT_STANDABLE" ) == nil ) then FSOLID_NOT_STANDABLE = _SF.NOT_STANDABLE end
+	if ( rawget( _G, "FSOLID_VOLUME_CONTENTS" ) == nil ) then FSOLID_VOLUME_CONTENTS = _SF.VOLUME_CONTENTS end
+	if ( rawget( _G, "FSOLID_FORCE_WORLD_ALIGNED" ) == nil ) then FSOLID_FORCE_WORLD_ALIGNED = _SF.FORCE_WORLD_ALIGNED end
+	if ( rawget( _G, "FSOLID_USE_TRIGGER_BOUNDS" ) == nil ) then FSOLID_USE_TRIGGER_BOUNDS = _SF.USE_TRIGGER_BOUNDS end
+	if ( rawget( _G, "FSOLID_ROOT_PARENT_ALIGNED" ) == nil ) then FSOLID_ROOT_PARENT_ALIGNED = _SF.ROOT_PARENT_ALIGNED end
+end
+
+-- MOVECOLLIDE_* (engine lib MOVE_COLLIDE).  The grenade-family entities set
+-- MOVECOLLIDE_FLY_BOUNCE / FLY_CUSTOM / FLY_SLIDE right after SetMoveType.
+local _MC = rawget( _G, "MOVECOLLIDE" ) or _E.MOVE_COLLIDE
+if ( _MC ~= nil ) then
+	if ( rawget( _G, "MOVECOLLIDE_DEFAULT" ) == nil ) then MOVECOLLIDE_DEFAULT = _MC.DEFAULT end
+	if ( rawget( _G, "MOVECOLLIDE_FLY_BOUNCE" ) == nil ) then MOVECOLLIDE_FLY_BOUNCE = _MC.FLY_BOUNCE end
+	if ( rawget( _G, "MOVECOLLIDE_FLY_CUSTOM" ) == nil ) then MOVECOLLIDE_FLY_CUSTOM = _MC.FLY_CUSTOM end
+	if ( rawget( _G, "MOVECOLLIDE_FLY_SLIDE" ) == nil ) then MOVECOLLIDE_FLY_SLIDE = _MC.FLY_SLIDE end
+end
+
+-- OBS_MODE_* (engine lib OBSERVER_MODE).  hl1sweps' view-model effects ask
+-- GetObserverMode() == OBS_MODE_IN_EYE to decide first-person drawing.
+local _OB = rawget( _G, "OBS_MODE" ) or _E.OBSERVER_MODE
+if ( _OB ~= nil ) then
+	if ( rawget( _G, "OBS_MODE_NONE" ) == nil ) then OBS_MODE_NONE = _OB.NONE end
+	if ( rawget( _G, "OBS_MODE_DEATHCAM" ) == nil ) then OBS_MODE_DEATHCAM = _OB.DEATHCAM end
+	if ( rawget( _G, "OBS_MODE_FREEZECAM" ) == nil ) then OBS_MODE_FREEZECAM = _OB.FREEZECAM end
+	if ( rawget( _G, "OBS_MODE_FIXED" ) == nil ) then OBS_MODE_FIXED = _OB.FIXED end
+	if ( rawget( _G, "OBS_MODE_IN_EYE" ) == nil ) then OBS_MODE_IN_EYE = _OB.IN_EYE end
+	if ( rawget( _G, "OBS_MODE_CHASE" ) == nil ) then OBS_MODE_CHASE = _OB.CHASE end
+	if ( rawget( _G, "OBS_MODE_ROAMING" ) == nil ) then OBS_MODE_ROAMING = _OB.ROAMING end
+end
+
+-- CHAN_* (engine lib SOUND_CHANNEL; gmod_globals.lua only carried VOICE).
+-- hl1sweps emits every pickup / impact / body sound through CHAN_ITEM,
+-- CHAN_BODY and CHAN_AUTO.
+local _SC = rawget( _G, "SOUND_CHANNEL" ) or _E.SOUND_CHANNEL
+if ( _SC ~= nil ) then
+	if ( rawget( _G, "CHAN_AUTO" ) == nil ) then CHAN_AUTO = _SC.AUTO end
+	if ( rawget( _G, "CHAN_WEAPON" ) == nil ) then CHAN_WEAPON = _SC.WEAPON end
+	if ( rawget( _G, "CHAN_VOICE" ) == nil ) then CHAN_VOICE = _SC.VOICE end
+	if ( rawget( _G, "CHAN_ITEM" ) == nil ) then CHAN_ITEM = _SC.ITEM end
+	if ( rawget( _G, "CHAN_BODY" ) == nil ) then CHAN_BODY = _SC.BODY end
+	if ( rawget( _G, "CHAN_STREAM" ) == nil ) then CHAN_STREAM = _SC.STREAM end
+	if ( rawget( _G, "CHAN_STATIC" ) == nil ) then CHAN_STATIC = _SC.STATIC end
+end
+
+-- MAT_* (engine lib MATERIAL_TYPE).  tr.MatType returns the same material
+-- character, so hl1sweps' per-material impact sound tables key on these.
+local _MT2 = rawget( _G, "MATERIAL_TYPE" ) or _E.MATERIAL_TYPE
+if ( _MT2 ~= nil ) then
+	if ( rawget( _G, "MAT_ANTLION" ) == nil ) then MAT_ANTLION = _MT2.ANTLION end
+	if ( rawget( _G, "MAT_BLOODYFLESH" ) == nil ) then MAT_BLOODYFLESH = _MT2.BLOODY_FLESH end
+	if ( rawget( _G, "MAT_CONCRETE" ) == nil ) then MAT_CONCRETE = _MT2.CONCRETE end
+	if ( rawget( _G, "MAT_DIRT" ) == nil ) then MAT_DIRT = _MT2.DIRT end
+	if ( rawget( _G, "MAT_EGGSHELL" ) == nil ) then MAT_EGGSHELL = _MT2.EGGSHELL end
+	if ( rawget( _G, "MAT_FLESH" ) == nil ) then MAT_FLESH = _MT2.FLESH end
+	if ( rawget( _G, "MAT_GRATE" ) == nil ) then MAT_GRATE = _MT2.GRATE end
+	if ( rawget( _G, "MAT_ALIENFLESH" ) == nil ) then MAT_ALIENFLESH = _MT2.ALIEN_FLESH end
+	if ( rawget( _G, "MAT_CLIP" ) == nil ) then MAT_CLIP = _MT2.CLIP end
+	if ( rawget( _G, "MAT_PLASTIC" ) == nil ) then MAT_PLASTIC = _MT2.PLASTIC end
+	if ( rawget( _G, "MAT_METAL" ) == nil ) then MAT_METAL = _MT2.METAL end
+	if ( rawget( _G, "MAT_SAND" ) == nil ) then MAT_SAND = _MT2.SAND end
+	if ( rawget( _G, "MAT_FOLIAGE" ) == nil ) then MAT_FOLIAGE = _MT2.FOLIAGE end
+	if ( rawget( _G, "MAT_COMPUTER" ) == nil ) then MAT_COMPUTER = _MT2.COMPUTER end
+	if ( rawget( _G, "MAT_SLOSH" ) == nil ) then MAT_SLOSH = _MT2.SLOSH end
+	if ( rawget( _G, "MAT_TILE" ) == nil ) then MAT_TILE = _MT2.TILE end
+	if ( rawget( _G, "MAT_VENT" ) == nil ) then MAT_VENT = _MT2.VENT end
+	if ( rawget( _G, "MAT_WOOD" ) == nil ) then MAT_WOOD = _MT2.WOOD end
+	if ( rawget( _G, "MAT_GLASS" ) == nil ) then MAT_GLASS = _MT2.GLASS end
+end
+
+-- NPC disposition D_* (Source's own Disposition_t, the same numbers GMod
+-- ships: D_ER=0 D_HT=1 D_FR=2 D_LI=3 D_NU=4).  Entity:AddEntityRelationship
+-- takes one; hl1sweps' hornet swarm passes D_NU.
+if ( rawget( _G, "D_ER" ) == nil ) then D_ER = 0 end
+if ( rawget( _G, "D_HT" ) == nil ) then D_HT = 1 end
+if ( rawget( _G, "D_FR" ) == nil ) then D_FR = 2 end
+if ( rawget( _G, "D_LI" ) == nil ) then D_LI = 3 end
+if ( rawget( _G, "D_NU" ) == nil ) then D_NU = 4 end
+
+-- RENDERMODE_* / kRender* (engine lib RENDER_MODE, i.e. RenderMode_t -- the
+-- SAME family GMod spells both ways) and kRenderFx* (engine lib
+-- RENDER_EFFECTS, RenderFx_t).  hl1sweps' gauss glow effects do
+-- SetRenderMode( RENDERMODE_GLOW ) + SetRenderFX( kRenderFxNoDissipation ).
+local _RM = rawget( _G, "RENDER_MODE" ) or _E.RENDER_MODE
+if ( _RM ~= nil ) then
+	if ( rawget( _G, "RENDERMODE_NORMAL" ) == nil ) then RENDERMODE_NORMAL = _RM.NORMAL end
+	if ( rawget( _G, "RENDERMODE_TRANSCOLOR" ) == nil ) then RENDERMODE_TRANSCOLOR = _RM.TRANSPARENT_COLOR end
+	if ( rawget( _G, "RENDERMODE_TRANSTEXTURE" ) == nil ) then RENDERMODE_TRANSTEXTURE = _RM.TRANSPARENT_TEXTURE end
+	if ( rawget( _G, "RENDERMODE_GLOW" ) == nil ) then RENDERMODE_GLOW = _RM.GLOW end
+	if ( rawget( _G, "RENDERMODE_TRANSALPHA" ) == nil ) then RENDERMODE_TRANSALPHA = _RM.TRANSPARENT_ALPHA end
+	if ( rawget( _G, "RENDERMODE_TRANSADD" ) == nil ) then RENDERMODE_TRANSADD = _RM.TRANSPARENT_ADD end
+	if ( rawget( _G, "RENDERMODE_ENVIRONMENTAL" ) == nil ) then RENDERMODE_ENVIRONMENTAL = _RM.ENVIRONMENTAL end
+	if ( rawget( _G, "RENDERMODE_TRANSADDFRAMEBLEND" ) == nil ) then RENDERMODE_TRANSADDFRAMEBLEND = _RM.TRANSPARENT_ADD_FRAME_BLEND end
+	if ( rawget( _G, "RENDERMODE_TRANSALPHAADD" ) == nil ) then RENDERMODE_TRANSALPHAADD = _RM.TRANSPARENT_ALPHA_ADD end
+	if ( rawget( _G, "RENDERMODE_WORLDGLOW" ) == nil ) then RENDERMODE_WORLDGLOW = _RM.WORLD_GLOW end
+	if ( rawget( _G, "kRenderNormal" ) == nil ) then kRenderNormal = _RM.NORMAL end
+	if ( rawget( _G, "kRenderTransColor" ) == nil ) then kRenderTransColor = _RM.TRANSPARENT_COLOR end
+	if ( rawget( _G, "kRenderTransTexture" ) == nil ) then kRenderTransTexture = _RM.TRANSPARENT_TEXTURE end
+	if ( rawget( _G, "kRenderGlow" ) == nil ) then kRenderGlow = _RM.GLOW end
+	if ( rawget( _G, "kRenderTransAlpha" ) == nil ) then kRenderTransAlpha = _RM.TRANSPARENT_ALPHA end
+	if ( rawget( _G, "kRenderTransAdd" ) == nil ) then kRenderTransAdd = _RM.TRANSPARENT_ADD end
+	if ( rawget( _G, "kRenderWorldGlow" ) == nil ) then kRenderWorldGlow = _RM.WORLD_GLOW end
+end
+
+local _RF = rawget( _G, "RENDER_EFFECTS" ) or _E.RENDER_EFFECTS
+if ( _RF ~= nil ) then
+	if ( rawget( _G, "kRenderFxNone" ) == nil ) then kRenderFxNone = _RF.NONE end
+	if ( rawget( _G, "kRenderFxPulseSlow" ) == nil ) then kRenderFxPulseSlow = _RF.PULSE_SLOW end
+	if ( rawget( _G, "kRenderFxPulseFast" ) == nil ) then kRenderFxPulseFast = _RF.PULSE_FAST end
+	if ( rawget( _G, "kRenderFxPulseSlowWide" ) == nil ) then kRenderFxPulseSlowWide = _RF.PULSE_SLOW_WIDE end
+	if ( rawget( _G, "kRenderFxPulseFastWide" ) == nil ) then kRenderFxPulseFastWide = _RF.PULSE_FAST_WIDE end
+	if ( rawget( _G, "kRenderFxFadeSlow" ) == nil ) then kRenderFxFadeSlow = _RF.FADE_SLOW end
+	if ( rawget( _G, "kRenderFxFadeFast" ) == nil ) then kRenderFxFadeFast = _RF.FADE_FAST end
+	if ( rawget( _G, "kRenderFxSolidSlow" ) == nil ) then kRenderFxSolidSlow = _RF.SOLID_SLOW end
+	if ( rawget( _G, "kRenderFxSolidFast" ) == nil ) then kRenderFxSolidFast = _RF.SOLID_FAST end
+	if ( rawget( _G, "kRenderFxStrobeSlow" ) == nil ) then kRenderFxStrobeSlow = _RF.STROBE_SLOW end
+	if ( rawget( _G, "kRenderFxStrobeFast" ) == nil ) then kRenderFxStrobeFast = _RF.STROBE_FAST end
+	if ( rawget( _G, "kRenderFxStrobeFaster" ) == nil ) then kRenderFxStrobeFaster = _RF.STROBE_FASTER end
+	if ( rawget( _G, "kRenderFxFlickerSlow" ) == nil ) then kRenderFxFlickerSlow = _RF.FLICKER_SLOW end
+	if ( rawget( _G, "kRenderFxFlickerFast" ) == nil ) then kRenderFxFlickerFast = _RF.FLICKER_FAST end
+	if ( rawget( _G, "kRenderFxNoDissipation" ) == nil ) then kRenderFxNoDissipation = _RF.NO_DISSIPATION end
+	if ( rawget( _G, "kRenderFxDistort" ) == nil ) then kRenderFxDistort = _RF.DISTORT end
+	if ( rawget( _G, "kRenderFxHologram" ) == nil ) then kRenderFxHologram = _RF.HOLOGRAM end
+	if ( rawget( _G, "kRenderFxExplode" ) == nil ) then kRenderFxExplode = _RF.EXPLODE end
+	if ( rawget( _G, "kRenderFxGlowShell" ) == nil ) then kRenderFxGlowShell = _RF.GLOW_SHELL end
+	if ( rawget( _G, "kRenderFxClampMinScale" ) == nil ) then kRenderFxClampMinScale = _RF.CLAMP_MIN_SCALE end
+	if ( rawget( _G, "kRenderFxEnvRain" ) == nil ) then kRenderFxEnvRain = _RF.ENVIRONMENT_RAIN end
+	if ( rawget( _G, "kRenderFxEnvSnow" ) == nil ) then kRenderFxEnvSnow = _RF.ENVIRONMENT_SNOW end
+	if ( rawget( _G, "kRenderFxSpotlight" ) == nil ) then kRenderFxSpotlight = _RF.SPOTLIGHT end
+	if ( rawget( _G, "kRenderFxRagdoll" ) == nil ) then kRenderFxRagdoll = _RF.RAGDOLL end
+	if ( rawget( _G, "kRenderFxPulseFastWider" ) == nil ) then kRenderFxPulseFastWider = _RF.PULSE_FAST_WIDER end
+end

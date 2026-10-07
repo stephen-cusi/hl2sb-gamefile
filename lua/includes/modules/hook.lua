@@ -283,6 +283,10 @@ end
 -- Output :
 -------------------------------------------------------------------------------
 function remove( strEventName, strHookName )
+  -- GMod semantics: removing a hook for an event nobody ever registered is
+  -- silent (hl1sweps' Initialize does hook.Remove on events it does not know
+  -- are empty, once per weapon spawn).
+  if ( tHooks[ strEventName ] == nil ) then return end
   if ( tHooks[ strEventName ][ strHookName ] ) then
     tHooks[ strEventName ][ strHookName ] = nil
   end

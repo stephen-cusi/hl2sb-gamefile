@@ -946,3 +946,72 @@ if ( hl2sb_EntityMeta ~= nil and hl2sb_EntityMeta.SetNoDraw == nil ) then
 	end
 
 	Msg( "[HL2SB]   Entity:SetNoDraw / GetNoDraw added (EF_NODRAW=" .. tostring( hl2sb_NoDraw ) .. ")\n" )end
+
+-- ===========================================================================
+-- HL2SB (2026-10-07): the Entity-shaped methods an EFFECT instance expects.
+--
+-- GMod's effect self answers Entity calls (EntIndex, SetRenderMode,
+-- SetRenderFX, ...).  This engine's effects are Lua tables driven by
+-- Init/Think/Render, and the engine stamps only SetRenderBoundsWS /
+-- GetTracerShootPos and the numeric property setters on each spawned copy
+-- (game/client/lua/lua_effects.cpp).  hl1sweps' effects use the rest:
+--
+--   effects/hl1_explosion/init.lua:11     DynamicLight( self:EntIndex() )
+--   effects/hl1_gauss_glow/init.lua:2-3   self:SetRenderMode( RENDERMODE_GLOW )
+--                                         self:SetRenderFX( kRenderFxNoDissipation )
+--
+-- With EntIndex missing, that Init dies on its first dynamic-light line --
+-- self.Time is never assigned and Think then errors on "field 'Time' is a
+-- nil value" every frame, so the explosion never draws at all.
+--
+-- The stamps go on the template through effects.Register, which is what the
+-- effect loader calls once per lua/effects/<name>.lua; the per-spawn shallow
+-- copy in lua_effects.cpp then carries them onto every live instance.  This
+-- file runs after the modules pass (effects.Register exists here) and well
+-- before the effect loading stage.  All three are additive: only installed
+-- when the template does not already define them.
+--
+-- EntIndex hands back a stable number per instance.  A dynamic-light id only
+-- needs identity, not a real entity index, and the weak-keyed id table lets
+-- a retired effect release its slot.  SetRenderMode / SetRenderFX store the
+-- mode on the instance: the affected effects draw their own sprites and
+-- particles and need no engine render mode to look right.
+-- ===========================================================================
+if ( CLIENT and type( effects ) == "table" and type( effects.Register ) == "function" ) then
+	local hl2sb_OldEffectRegister = effects.Register
+	local hl2sb_EffectIDs = setmetatable( {}, { __mode = "k" } )
+	local hl2sb_NextEffectID = 0
+
+	function effects.Register( t, name )
+		if ( type( t ) == "table" ) then
+			if ( t.EntIndex == nil ) then
+				function t:EntIndex()
+					local id = hl2sb_EffectIDs[ self ]
+					if ( id == nil ) then
+						hl2sb_NextEffectID = ( hl2sb_NextEffectID + 1 ) % 255
+						hl2sb_EffectIDs[ self ] = hl2sb_NextEffectID
+						id = hl2sb_NextEffectID
+					end
+
+					return id
+				end
+			end
+
+			if ( t.SetRenderMode == nil ) then
+				function t:SetRenderMode( mode )
+					self.__hl2sb_rendermode = mode
+				end
+			end
+
+			if ( t.SetRenderFX == nil ) then
+				function t:SetRenderFX( fx )
+					self.__hl2sb_renderfx = fx
+				end
+			end
+		end
+
+		return hl2sb_OldEffectRegister( t, name )
+	end
+
+	Msg( "[HL2SB]   EFFECT:EntIndex / SetRenderMode / SetRenderFX added\n" )
+end

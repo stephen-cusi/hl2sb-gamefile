@@ -670,7 +670,7 @@ if ( _G.ents ~= nil and _G.gEntList ~= nil ) then
 			local out = {}
 			if ( dir == nil or angleCos == nil ) then return out end
 
-			-- ⚠️ GMod's 4th argument changed meaning at some point: old addons
+			-- GMod's 4th argument changed meaning at some point: old addons
 			-- (scp0492base passes 155) hand an ANGLE IN DEGREES, the current wiki
 			-- documents the cosine of the half-angle.  A cosine is -1..1, so any
 			-- value above 1 can only be the legacy degrees form.
@@ -874,7 +874,7 @@ TEAM_SPECTATOR  = TEAM_SPECTATOR  or 1
 -- ===========================================================================
 -- 10. engine.ActiveGamemode()
 --
--- GMod: the active gamemode's folder name.  ⚠️ It was defined ONLY in the never-loaded
+-- GMod: the active gamemode's folder name.  It was defined ONLY in the never-loaded
 -- modules/gmod_compatibility/sh_init.lua:335 - via `Gamemodes.GetActiveName()`, a symbol
 -- from Experiment: Source that does not exist in this fork either - so addons calling it
 -- raised "attempt to call a nil value (method 'ActiveGamemode')".
@@ -1002,14 +1002,21 @@ end
 
 -- ---------------------------------------------------------------------------
 -- 3. Client stubs: DynamicLight( index ) and sound.PlayFile.
---    No dlight renderer and no IGModAudioChannel binding exist in this fork.
---    DynamicLight returns a dummy table so field writes stay harmless;
---    PlayFile reports a channel error so addons skip their VO gracefully
+--    DynamicLight is real since 2026-10-07: render.DynamicLight allocates an
+--    engine dlight and returns a live table view (field writes land in the
+--    light struct), so the global just forwards to it.  PlayFile reports a
+--    channel error so addons skip their VO gracefully
 --    (combustible_lemon checks `if soundChannel ~= nil` before storing it).
 -- ---------------------------------------------------------------------------
 if ( CLIENT ) then
-	DynamicLight = function( index, elight )
-		return { index = index, elight = elight == true }
+	if ( render ~= nil and render.DynamicLight ~= nil ) then
+		DynamicLight = function( index, elight )
+			return render.DynamicLight( index, elight == true )
+		end
+	else
+		DynamicLight = function( index, elight )
+			return { index = index, elight = elight == true }
+		end
 	end
 
 	sound = sound or {}
@@ -1021,5 +1028,31 @@ if ( CLIENT ) then
 			end
 		end
 	end
+end
+
+-- ---------------------------------------------------------------------------
+-- 4. EyeVector( ) -- GMod global (client): the forward vector of the main
+--    view.  The render library already exposes exactly that value as
+--    render.MainViewForward, so the global is just an alias for it.
+--    hl1sweps' RPG laser spot (ent_hl1_laser_spot) pulls its dot a few units
+--    back along this vector on every translucent pass.
+-- ---------------------------------------------------------------------------
+if ( CLIENT and EyeVector == nil and render ~= nil and render.MainViewForward ~= nil ) then
+	EyeVector = render.MainViewForward
+	Msg( "[HL2SB]   EyeVector added (render.MainViewForward alias)\n" )
+end
+
+-- ---------------------------------------------------------------------------
+-- 5. util.QuickTrace( startPos, delta, filter ) -- GMod's lighter trace.
+--    A plain util.TraceLine answers the same result for every consumer this
+--    tree has (hl1sweps' satchel charge detonation reads HitPos / HitNormal
+--    off the returned table); the trace-result contract already matches
+--    GMod's field semantics, Normal = ray direction, HitNormal = face normal.
+-- ---------------------------------------------------------------------------
+if ( util ~= nil and util.QuickTrace == nil ) then
+	function util.QuickTrace( startPos, delta, filter )
+		return util.TraceLine( { start = startPos, endpos = startPos + delta, filter = filter } )
+	end
+	Msg( "[HL2SB]   util.QuickTrace added (util.TraceLine wrapper)\n" )
 end
 
