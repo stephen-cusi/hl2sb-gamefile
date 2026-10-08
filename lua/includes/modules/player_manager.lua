@@ -433,6 +433,30 @@ function OnPlayerSpawn( ply, transition )
 		if ( type( tab.Init ) == "function" ) then
 			tab:Init()
 		end
+
+		-- GMod player_manager.OnPlayerSpawn 的类变量应用块（原版逐字，2026-10-08 补）。
+		-- 缺了它，player_default 的 CanUseFlashlight=true 永远不落到玩家身上：
+		-- GM:PlayerSwitchFlashlight 里 ply:CanUseFlashlight() 读 m_bFlashlight == true
+		-- 恒 false -> 手电每次被钩子静默否决（没声音没灯，日志零报错）。
+		-- HL2SB 偏差（都有守卫，缺字段的自定义类不炸出生链）：
+		--   * 每个字段先判 nil 再写（GMod 的类全继承 player_default 所以从不判）
+		--   * ShouldDropWeapon / SetNoCollideWithTeammates / SetAvoidPlayers 分叉
+		--     还没有绑定，跳过不写（掉枪走分叉既定的无条件路径）
+		if ( tab.SlowWalkSpeed ~= nil ) then ply:SetSlowWalkSpeed( tab.SlowWalkSpeed ) end
+		if ( tab.WalkSpeed ~= nil ) then ply:SetWalkSpeed( tab.WalkSpeed ) end
+		if ( tab.RunSpeed ~= nil ) then ply:SetRunSpeed( tab.RunSpeed ) end
+		if ( tab.CrouchedWalkSpeed ~= nil ) then ply:SetCrouchedWalkSpeed( tab.CrouchedWalkSpeed ) end
+		if ( tab.DuckSpeed ~= nil ) then ply:SetDuckSpeed( tab.DuckSpeed ) end
+		if ( tab.UnDuckSpeed ~= nil ) then ply:SetUnDuckSpeed( tab.UnDuckSpeed ) end
+		if ( tab.JumpPower ~= nil ) then ply:SetJumpPower( tab.JumpPower ) end
+		if ( tab.CanUseFlashlight ~= nil ) then ply:AllowFlashlight( tab.CanUseFlashlight ) end
+
+		if ( not transition ) then
+			if ( tab.MaxHealth ~= nil ) then ply:SetMaxHealth( tab.MaxHealth ) end
+			if ( tab.MaxArmor ~= nil ) then ply:SetMaxArmor( tab.MaxArmor ) end
+			if ( tab.StartHealth ~= nil ) then ply:SetHealth( tab.StartHealth ) end
+			if ( tab.StartArmor ~= nil ) then ply:SetArmor( tab.StartArmor ) end
+		end
 	end
 end
 

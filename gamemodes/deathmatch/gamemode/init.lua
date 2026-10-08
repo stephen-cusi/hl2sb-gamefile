@@ -154,6 +154,18 @@ function GM:PlayerSpawn( pPlayer, transition )
 		return PlayerSpawnChain( self, pPlayer, transition )
 	end
 end
+
+-- 手电开关的否决钩子（GMod base player.lua 同款）。
+-- C++ 在 CHL2MP_Player::FlashlightTurnOn/TurnOff 第一句派发它，参数
+-- ( ply, SwitchOn )：显式 false = 静默否决，nil/true = 放行（C++ 侧缺省放行，
+-- 所以本方法缺席时手电照样能开，但否决链是死的）。放 deathmatch（本引擎的
+-- base gamemode）而不是只依赖 base 端口那份——类级 CanUseFlashlight /
+-- ply:AllowFlashlight 和插件 hook.Add("PlayerSwitchFlashlight") 的语义都要
+-- 它接住。只在服务端派发，定义在 init.lua。
+function GM:PlayerSwitchFlashlight( ply, SwitchOn )
+	return ply:CanUseFlashlight()
+end
+
 function GM:Host_Say( pPlayer, p, teamonly )
 end
 
