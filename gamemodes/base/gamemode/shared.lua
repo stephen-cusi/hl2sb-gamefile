@@ -4,8 +4,6 @@
     HL2SB 的基础 gamemode —— 对应 GMod 的 gamemodes/base。
 
     和 GMod 版的差异（都是缺绑定导致的，不是设计选择）：
-      - drive.* 整个库 HL2SB 没有，所以 GM:Move / SetupMove / FinishMove /
-        StartEntityDriving / EndEntityDriving 只保留 player_manager 那一半。
       - GAMEMODE 全局由引擎在 luasrc_SetGamemode 里设好（等价 GMod 的 GAMEMODE）。
       - DEFINE_BASECLASS 是 GMod 的加载期文本宏，HL2SB 没有，
         子 gamemode 里要写 local BaseClass = baseclass.Get( "base" )。
@@ -26,6 +24,13 @@ local fOk, fErr = pcall( include, "player_shd.lua" )
 if ( not fOk ) then
 	dbg.Warning( "[base] player_shd.lua failed: " .. tostring( fErr ) .. "\n" )
 end
+
+-- HL2SB (2026-10-08): GMod 的玩家动画胶水层（原 deathmatch/gamemode/
+-- animations.lua，随 LUA_BASE_GAMEMODE 切换上提到 base——所有 gamemode 都
+-- 从这里继承 CalcMainActivity / UpdateAnimation / TranslateActivity /
+-- DoAnimationEvent）。文件内的分叉修正（FL_DUCKING、noclip 让位引擎层、
+-- 显式 ACT 名字映射）一个都不能丢。
+include( "animations.lua" )
 
 GM.Name      = "Base Gamemode"
 GM.Author    = "HL2SB"
@@ -206,6 +211,46 @@ end
 function GM:FinishMove( ply, mv )
 	if ( drive.FinishMove( ply, mv ) ) then return true end
 	if ( player_manager.RunClass( ply, "FinishMove", mv ) ) then return true end
+end
+
+-- ===========================================================================
+-- HL2SB (2026-10-08): 上提自 deathmatch shared.lua（GMod base player_shd.lua
+-- 同款）。noclip 的权限闸门：引擎 CC_Player_NoClip 切换前问一次，显式 false
+-- 否决。sandbox gamemode 会用自己的 sbox_noclip 版本覆盖这里。
+-- ===========================================================================
+
+--[[---------------------------------------------------------
+	Name: gamemode:PlayerNoClip( player, bool )
+	Desc: Player pressed the noclip key, return true if
+		 the player is allowed to noclip, false to block
+-----------------------------------------------------------]]
+function GM:PlayerNoClip( pl, on )
+	if ( !on ) then return true end
+	-- Allow noclip if we're in single player and living
+	return game.SinglePlayer() && IsValid( pl ) && pl:Alive()
+
+end
+
+-- ===========================================================================
+-- HL2SB (2026-10-03): GM:PlayerFootstep, verbatim from GMod
+-- (gamemodes/base/gamemode/player_shd.lua:31).  The portalgun plays its own
+-- in-portal footsteps by calling GAMEMODE:PlayerFootstep directly; without
+-- the default method that call died ("attempt to call a nil value (field
+-- 'PlayerFootstep')").  Return true suppresses the normal step sound.
+-- ===========================================================================
+
+--[[---------------------------------------------------------
+	Name: gamemode:PlayerFootstep( ply, vPos, iFoot, strSoundName, fVolume, pFilter )
+	Desc: Called when a player steps
+		pFilter is the recipient filter to use for effects/sounds
+			and is only valid SERVERSIDE. Clientside needs no filter!
+		Return true to not play normal sound
+-----------------------------------------------------------]]
+function GM:PlayerFootstep( ply, vPos, iFoot, strSoundName, fVolume, pFilter )
+	if ( IsValid( ply ) && !ply:Alive() ) then
+		return true
+	end
+
 end
 
 function GM:PlayerPostThink( ply )

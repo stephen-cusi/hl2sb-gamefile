@@ -5,8 +5,9 @@
 --===========================================================================--
 
 -- 必须和 C++ 的 LUA_BASE_GAMEMODE 一致（game/shared/lua/luamanager.h）。
--- 之前这里是 "deathmatch"，改成 GMod 结构后基础 gamemode 叫 "base"。
-_BASE_GAMEMODE = "deathmatch"
+-- 2026-10-08 切换：基础 gamemode 是 "base"（gamemodes/base/），deathmatch
+-- 降级为普通子 gamemode，与 sandbox / campaign 一样经 table.inherit 继承。
+_BASE_GAMEMODE = "base"
 
 require( "hook" )
 

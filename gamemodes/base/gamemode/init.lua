@@ -15,6 +15,17 @@ include( "npc.lua" )
 -- variable_edit.lua is not ported yet: it rides on the edit-variable
 -- channel, which has no dispatch point in this fork.
 
+-- HL2SB (2026-10-08): gm_save / gm_load（GMod sandbox save_load 的文件存储
+-- 适配版）。放 base 是本分叉的既定取舍——每个 gamemode 都从 base 继承，
+-- "命令随在"（deathmatch 里还有一份同款拷贝被它自己的 init.lua include，
+-- concommand.Add 在引擎侧对重名是去重的，双载安全）。
+include( "save_load.lua" )
+
+-- HL2SB (2026-10-08): 出生链别名。sandbox 的 GM:PlayerSpawn 设完
+-- player_sandbox 类后调 self.PlayerSpawnChain(...)（它的原版写法），导出
+-- 这个别名，sandbox / deathmatch 的覆盖版就不需要知道 base 的文件布局。
+GM.PlayerSpawnChain = GM.PlayerSpawn
+
 -------------------------------------------------------------------------------
 -- 出生 —— 这是整套玩家类体系的驱动点（GMod 在 base/gamemode/player.lua 里）
 --
@@ -137,7 +148,34 @@ end
 -------------------------------------------------------------------------------
 -- 载具
 -------------------------------------------------------------------------------
+
+-- HL2SB (2026-10-08): 上提自 deathmatch init.lua——GMod base gamemode 的
+-- SERVER GM:VehicleMove 逐字体（IN_DUCK 第三人称开关 + 滚轮拉远拉近）。
+-- 休眠是刻意的：本引擎不派发 VehicleMove（载具相机逻辑原生跑在
+-- CPropVehicleDriveable::HL2SB_UpdateCameraState，行为与本函数一致）。
+-- 若将来给 VehicleMove 加引擎派发，必须先删 C++ 写者——同坐一 tick 两次
+-- 翻转 = 第三人称开关抖回来的老 bug。
 function GM:VehicleMove( ply, vehicle, mv )
+
+	--
+	-- On duck toggle third person view
+	--
+	if ( mv:KeyPressed( IN_DUCK ) && vehicle.SetThirdPersonMode ) then
+		vehicle:SetThirdPersonMode( !vehicle:GetThirdPersonMode() )
+	end
+
+	--
+	-- Adjust the camera distance with the mouse wheel
+	--
+	local iWheel = ply:GetCurrentCommand():GetMouseWheel()
+	if ( iWheel != 0 && vehicle.SetCameraDistance ) then
+		-- The distance is a multiplier
+		-- Actual camera distance = ( renderradius + renderradius * dist )
+		-- so -1 will be zero.. clamp it there.
+		local newdist = math.Clamp( vehicle:GetCameraDistance() - iWheel * 0.03 * ( 1.1 + vehicle:GetCameraDistance() ), -1, 10 )
+		vehicle:SetCameraDistance( newdist )
+	end
+
 end
 
 -------------------------------------------------------------------------------
