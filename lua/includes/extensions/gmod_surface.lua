@@ -188,106 +188,25 @@ if ( surface.GetTextureSize == nil ) then
 	surface.GetTextureSize = TextureSize
 end
 
-if ( Material == nil ) then
-	-- PERF (2026-09-23): GMod caches Material() by path.  Without a cache, every
-	-- call from an ENT:Draw / HUDPaint (the usual addon idiom) built a fresh
-	-- table + closures per entity per frame -- pure GC churn on the render path.
-	local matCache = {}
-
-	function Material( path )
-		path = tostring( path )
-		local cached = matCache[ path ]
-		if ( cached ) then return cached end
-
-		local mat = { __path = path }
-
-		function mat:GetName() return self.__path end
-		function mat:IsError() return false end
-
-		-- HL2SB: pixel sampling, which the Derma skin needs AT LOAD TIME.
-		--
-		-- GWEN.CreateTextureBorder samples the atlas through this while it builds
-		-- its nine-slice borders, i.e. while lua/skins/default.lua is loading:
-		--
-		--     lua/derma/derma_gwen.lua:125:  return mat:GetColor( x, y )
-		--
-		-- This proxy only wraps a texture id, so it genuinely cannot read a pixel
-		-- (that needs IMaterial::GetLowResColorSample).  Returning white is what
-		-- lets the skin LOAD, and that is the whole point: without it
-		-- DefineSkin( "Default", ... ) at the end of the file never ran,
-		-- derma.DefaultSkin stayed empty, derma.SkinHook returned early for every
-		-- type ("if ( !func ) then return end") and NO Derma panel painted
-		-- anything -- the undo notice played its sound and drew nothing.
-		--
-		-- Only a few border pieces take their tint from here; a DPanel's own
-		-- background passes its colour straight to the draw call, so the notice
-		-- still looks right.
-		--
-		-- TODO(engine): bind a real Material( path ) returning an IMaterial --
-		-- public/lua/materialsystem/limaterial.cpp already has IMaterial:GetColor
-		-- -- and delete this whole proxy along with this stub.
-		function mat:GetColor( x, y )
-			return Color( 255, 255, 255, 255 )
-		end
-
-		function mat:GetTextureID()
-			if ( not self.__texid ) then
-				self.__texid = surface.GetTextureID( self.__path )
+-- HL2SB (2026-10-09): GMod's Material( name [, pngParameters ] ) verbatim
+-- from garrysmod/lua/includes/util.lua.  The engine C binding registers
+-- "C_Material" (GMod's split: this wrapper converts the words table into
+-- the 7-digit pngParameters digit string).  The old Lua table proxy is gone
+-- -- the engine hands out real IMaterials now (with GetColor for the GWEN
+-- skin's load-time atlas sampling, SetTexture/SetString/SetFloat/SetInt for
+-- the post-process stack).
+if ( CLIENT and C_Material ~= nil ) then
+	local C_Material = C_Material
+	function Material( name, words )
+		if ( words ~= nil ) then
+			local params = { "vertexlitgeneric", "nocull", "alphatest", "mips", "noclamp", "smooth", "ignorez" }
+			local str = ""
+			for k, v in ipairs( params ) do
+				str = str .. ( words[ v ] and "1" or "0" )
 			end
-
-			return self.__texid
+			return C_Material( name, str )
 		end
-
-		function mat:Width()
-			if ( not self.__w ) then
-				self.__w, self.__h = TextureSize( self:GetTextureID() )
-			end
-
-			return self.__w
-		end
-
-		function mat:Height()
-			if ( not self.__h ) then
-				self.__w, self.__h = TextureSize( self:GetTextureID() )
-			end
-
-			return self.__h
-		end
-
-		-- ITexture-shaped handle, for code that asks the material for its texture.
-		function mat:GetTexture()
-			return {
-				GetTextureID = function() return mat:GetTextureID() end,
-				GetName      = function() return mat.__path end,
-				Width        = function() return mat:Width() end,
-				Height       = function() return mat:Height() end,
-			}
-		end
-
-		-- HL2SB (2026-09-26): the GMod post-process stack (halo's pp/copy,
-		-- pp/add; bloom's pp/blurx) retargets material variables at draw time
-		-- through Material():SetTexture/SetString/SetFloat.  The writes go to
-		-- the ENGINE material via render.MaterialSetVar -- without this the
-		-- halo restore/composite quads sample stale textures and the whole
-		-- pipeline is dead.
-		function mat:SetTexture( name, tex )
-			render.MaterialSetVar( self.__path, name, tex )
-		end
-
-		function mat:SetString( name, value )
-			render.MaterialSetVar( self.__path, name, tostring( value ) )
-		end
-
-		function mat:SetFloat( name, value )
-			render.MaterialSetVar( self.__path, name, tonumber( value ) or 0 )
-		end
-
-		function mat:SetInt( name, value )
-			render.MaterialSetVar( self.__path, name, tonumber( value ) or 0 )
-		end
-
-		matCache[ path ] = mat
-		return mat
+		return C_Material( name )
 	end
 end
 

@@ -39,14 +39,20 @@ FileSystem
 			// system call.)
 
 			game+mod 			hl2sb
-			
+
 			game				|all_source_engine_paths|hl2/hl2_textures.vpk
 			game				|all_source_engine_paths|hl2/hl2_sound_vo_english.vpk
 			game				|all_source_engine_paths|hl2/hl2_sound_misc.vpk
 			game				|all_source_engine_paths|hl2/hl2_misc.vpk
 			game 				|all_source_engine_paths|hl2/hl2_pak.vpk
-			game				|all_source_engine_paths|hl2mp/hl2mp_english.vpk
-			game 				|all_source_engine_paths|hl2mp/hl2mp_pak.vpk
+			// HL2SB: hl2mp VPKs unmounted 2026-09-28 - content now provided by the
+			// hl2 + garrysmod mounts below; the hl2mp-only MENU materials the fork's
+			// GameUI needs (materials/vgui/gfx/vgui/hl2mp_logo|solid_background|
+			// trans_background|round_corner_*) were extracted into hl2sb loose, and
+			// the 3 loose .sw.vtx that only existed here are kept.  Restore these
+			// two lines if an hl2mp-only asset turns up missing.
+			// game				|all_source_engine_paths|hl2mp/hl2mp_english.vpk
+			// game 				|all_source_engine_paths|hl2mp/hl2mp_pak.vpk
 			// GMod's fallback content: the CS:S / HL2 assets GMod itself relies on
 			// (154 weapon .wav incl. the CS:S name set, ~8.2k materials, 373 models).
 			// GMod SWEPs and addons reference those names directly, so without this
@@ -61,23 +67,6 @@ FileSystem
 			// etc) reference materials/de_*, materials/cs_* and models/props/cs_*|de_*.
 			game				|all_source_engine_paths|sourceengine/content_cstrike_dir.vpk
 			platform			|all_source_engine_paths|platform/platform_misc.vpk
-
-			// Now search loose files.  We'll set the directory containing the gameinfo.txt file
-			// as the first "mod" search path (after any user customizations).  This is also the one
-			// that's used when writing to the "mod" path.
-			mod+mod_write+default_write_path		|gameinfo_path|.
-
-			// Add the hl2sb directory as a game search path.  This is also where where writes
-			// to the "game" path go.
-			game+game_write		hl2sb
-
-			// Where the game's binaries are
-			gamebin				hl2sb/bin
-
-			// Last, mount in shared HL2 loose files
-			game				|all_source_engine_paths|hl2
-			game 				|all_source_engine_paths|hl2mp
-			game 				|all_source_engine_paths|hl2sb
 
 			// GMod's own content: models (9.5k), materials (3.8k - including the
 			// whole materials/entities/*.png spawnmenu thumbnail set), maps,
@@ -98,8 +87,9 @@ FileSystem
 			//    right" the user reported.  "game+mod" is also the type GMod's
 			//    own gameinfo.txt uses for garrysmod.vpk.
 			//
-			// 2. LAST, after our own loose hl2sb content.  GMod's VPK collides
-			//    with 13 files this fork already ships loose - including
+			// 2. LAST, after the hl2 VPKs and our own loose hl2sb content
+			//    (2026-09-28 user directive: hl2 first, gmod last).  GMod's VPK
+			//    collides with 13 loose fork files - including
 			//    scripts/hudlayout.res, scripts/hudanimations.txt,
 			//    scripts/mod_textures.txt, scripts/game_sounds_manifest.txt,
 			//    scripts/surfaceproperties.txt and scripts/propdata*.txt.  Those
@@ -107,15 +97,39 @@ FileSystem
 			//    (paths are appended to the search list and searched from the
 			//    head), so the VPK has to sit after them or GMod's HUD layout /
 			//    HUD textures / surface properties would replace the fork's.
+			//    NOTE: loose gmod-extracted copies that differed from the hl2
+			//    version were restored into hl2sb for the same reason (179
+			//    files, see hl2sb_clear/_moved_manifest.txt).
 			//
 			// It cannot leak GMod's Lua into our Lua loader: the VPK holds 0
 			// lua/, 0 gamemodes/ and 0 addons/ entries (verified against its
 			// tree) - lua/ lives in the loose directory, which stays unmounted.
 			game+mod			|all_source_engine_paths|garrysmod/garrysmod_dir.vpk
+
+			// Now search loose files.  We'll set the directory containing the gameinfo.txt file
+			// as the first "mod" search path (after any user customizations).  This is also the one
+			// that's used when writing to the "mod" path.
+			mod+mod_write+default_write_path		|gameinfo_path|.
+
+			// Add the hl2sb directory as a game search path.  This is also where where writes
+			// to the "game" path go.
+			game+game_write		hl2sb
+
+			// Where the game's binaries are
+			gamebin				hl2sb/bin
+
+			// Last, mount in shared HL2 loose files
+			game				|all_source_engine_paths|hl2
+			// HL2SB: loose hl2mp dir unmounted 2026-09-28 together with the hl2mp
+			// VPK lines above - content is provided by hl2 + garrysmod mounts.
+			// game 				|all_source_engine_paths|hl2mp
+			game 				|all_source_engine_paths|hl2sb
+
 // HL2SB: the whole garrysmod directory is deliberately NOT mounted - that would make
 // the Lua loader enumerate GMod's own lua/ tree (thousands of files).  Only the VPKs
 // above are mounted: they carry materials/models/sounds/particles, and GMod's Lua is
-// not inside its VPKs.
+// not inside its VPKs.  (garrysmod_dir.vpk itself moved above the hl2 VPK block,
+// 2026-09-28 - see the comment there.)
  			game 				|all_source_engine_paths|garrysmod
 			platform			|all_source_engine_paths|platform
 
