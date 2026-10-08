@@ -335,3 +335,35 @@ function player.GetBySteamID64( ID )
 
 	return false
 end
+------------------------------------------------------------------------------
+-- HL2SB (2026-10-08): GMod-name conveniences the base gamemode calls.
+--
+--   StripWeapons    - GMod binding does not exist here; the engine spelling
+--                     is RemoveAllItems( true ) (drop everything + hull).
+--   Spectate        - alias of the engine's StartObserverMode binding.
+--   UnSpectate      - alias of StopObserverMode.
+--   Kill            - the engine only ships KillSilent; aliasing is a
+--                     semantic shortcut (no suicide death notice) that keeps
+--                     team-change paths from erroring.  Revisit when the
+--                     death-notice chain gets its parity round.
+------------------------------------------------------------------------------
+
+if ( meta.StripWeapons == nil ) then
+	function meta:StripWeapons()
+		self:RemoveAllItems( true )
+	end
+end
+
+if ( meta.Spectate == nil ) then
+	meta.Spectate = meta.StartObserverMode
+end
+
+if ( meta.UnSpectate == nil ) then
+	meta.UnSpectate = meta.StopObserverMode
+end
+
+if ( meta.Kill == nil ) then
+	function meta:Kill()
+		self:KillSilent()
+	end
+end

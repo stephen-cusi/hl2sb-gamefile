@@ -259,6 +259,11 @@ function GM:HUDDrawPickupHistory()
 
 end
 
+-- HL2SB (2026-10-08): the raw C++ event is now the fork-private
+-- "HL2SB_ItemPickup" (hud_killfeed.cpp); the three GMod names
+-- HUDItemPickedUp / HUDAmmoPickedUp / HUDWeaponPickedUp are re-dispatched
+-- from here with their wiki signatures through hook.Run, so addons hooking
+-- them see GMod arguments and the gamemode methods stay the fallback.
 -- ===========================================================================
 -- HL2SB delta 2: 引擎事件适配器。
 --
@@ -273,7 +278,7 @@ end
 -- （首参 userid 是数字）错调 GM:HUDItemPickedUp( itemName )。返回值本身被
 -- C++ 丢弃（END_LUA_CALL_HOOK 3, 0）。
 -- ===========================================================================
-hook.Add( "HUDItemPickedUp", "gmod_cl_hudpickup", function( userid, item, amount, weaponEntity, weaponFlag )
+hook.Add( "HL2SB_ItemPickup", "gmod_cl_hudpickup", function( userid, item, amount, weaponEntity, weaponFlag )
 
 	local ply = LocalPlayer()
 	if ( not IsValid( ply ) ) then return true end
@@ -290,7 +295,7 @@ hook.Add( "HUDItemPickedUp", "gmod_cl_hudpickup", function( userid, item, amount
 	-- 弹药事件带 "_ammo" 后缀；GMod 的 HUDAmmoPickedUp 收裸名、自己加后缀。
 	-- 服务端只在实收弹药 > 0 时发（满弹药静默，GMod 同）。
 	if ( string.sub( low, -5 ) == "_ammo" ) then
-		gm:HUDAmmoPickedUp( string.sub( item, 1, #item - 5 ), tonumber( amount ) or 0 )
+		hook.Run( "HUDAmmoPickedUp", string.sub( item, 1, #item - 5 ), tonumber( amount ) or 0 )
 		return true
 	end
 
@@ -307,7 +312,7 @@ hook.Add( "HUDItemPickedUp", "gmod_cl_hudpickup", function( userid, item, amount
 
 	if ( bWeapon ) then
 		if ( weaponEntity ~= nil ) then
-			gm:HUDWeaponPickedUp( weaponEntity )
+			hook.Run( "HUDWeaponPickedUp", weaponEntity )
 			return true
 		end
 
@@ -323,18 +328,16 @@ hook.Add( "HUDItemPickedUp", "gmod_cl_hudpickup", function( userid, item, amount
 			end
 
 			if ( wep ~= nil ) then
-				local gm2 = GAMEMODE or _G._GAMEMODE
-				if ( gm2 ~= nil ) then gm2:HUDWeaponPickedUp( wep ) end
+				hook.Run( "HUDWeaponPickedUp", wep )
 			else
 				-- 实体始终没拿到：以物品条兜底（GMod 语义里实体无效就不画，
 				-- 但用户要的是"总有通知"，物品条至少把名字报出来）。
-				local gm2 = GAMEMODE or _G._GAMEMODE
-				if ( gm2 ~= nil ) then gm2:HUDItemPickedUp( item ) end
+				hook.Run( "HUDItemPickedUp", item )
 			end
 		end )
 		return true
 	end
 
-	gm:HUDItemPickedUp( item )
+	hook.Run( "HUDItemPickedUp", item )
 	return true
 end )

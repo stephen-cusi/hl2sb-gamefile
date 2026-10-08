@@ -22,6 +22,32 @@ include( "cl_hudpickup.lua" )
 include( "taunt_camera.lua" )
 local TauntCam = TauntCamera()
 
+-- HL2SB (2026-10-08): GMod base gamemode client files, live via this include
+-- while LUA_BASE_GAMEMODE is still "deathmatch" (the same full-path pattern
+-- init.lua uses for the base init chain).  When the base flip lands, base
+-- cl_init.lua includes these itself and the two lines here come off.
+include( "gamemodes/base/gamemode/cl_targetid.lua" )
+include( "gamemodes/base/gamemode/cl_spawnmenu.lua" )
+
+-------------------------------------------------------------------------------
+-- HL2SB (2026-10-08): GMod base cl_init.lua:124-145 verbatim - team colour
+-- answered through the team library; cl_targetid's name/health text reads
+-- both.
+-------------------------------------------------------------------------------
+function GM:GetTeamColor( ent )
+
+	local team = TEAM_UNASSIGNED
+	if ( ent.Team ) then team = ent:Team() end
+	return GAMEMODE:GetTeamNumColor( team )
+
+end
+
+function GM:GetTeamNumColor( num )
+
+	return team.GetColor( num )
+
+end
+
 function GM:ActivateClientUI()
 end
 

@@ -72,3 +72,20 @@ end
 -- character per bodygroup) on both realms, and this fork's CBaseAnimating
 -- binding now carries the same thing - the Lua copy only shadowed it with
 -- decimal-only parsing.
+------------------------------------------------------------------------------
+-- HL2SB (2026-10-08): GMod extensions/entity.lua carries these two as plain
+-- Lua over a per-entity script field (m_bUnFreezable).  The physgun freeze
+-- chain (obj_player_extend.lua / base gamemode player.lua) reads them; GMod
+-- ships no C binding for either name.
+------------------------------------------------------------------------------
+
+local meta = FindMetaTable( "Entity" )
+if ( !meta ) then return end
+
+function meta:GetUnFreezable()
+	return self.m_bUnFreezable or false
+end
+
+function meta:SetUnFreezable( bFreeze )
+	self.m_bUnFreezable = tobool( bFreeze ) or false
+end

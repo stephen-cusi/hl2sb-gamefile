@@ -16,6 +16,10 @@
 -- 顺序重要：player_default 定义 TauntCamera 和 player_default 类，
 -- player_shd 只往引擎 metatable 上挂方法。万一 player_shd 出错，
 -- 也不能把 base gamemode 的注册拖死（否则所有 gamemode 都失去基类）。
+include( "obj_player_extend.lua" )
+
+-- GMod order continues: gravitygun is inlined in this file (the fork
+-- adaptation below), player_shd and the player class follow.
 include( "player_class/player_default.lua" )
 
 local fOk, fErr = pcall( include, "player_shd.lua" )
@@ -105,7 +109,7 @@ end
 -------------------------------------------------------------------------------
 -- GetMapRemainingTime —— 引擎每帧都会问，答错会让服务器无限重载地图
 --
--- ⚠️ 这个方法是 2026-09-11「地图每几秒自己重开一次」的根因，别删。
+-- 这个方法是 2026-09-11「地图每几秒自己重开一次」的根因，别删。
 --
 -- 引擎侧 CHL2MPRules::Think() 每帧做：
 --     if ( GetMapRemainingTime() < 0 ) { GoToIntermission(); return; }
@@ -190,14 +194,17 @@ end
 -- 移动钩子：HL2SB 没有 drive 库，只保留 player_manager 那半
 -------------------------------------------------------------------------------
 function GM:Move( ply, mv )
+	if ( drive.Move( ply, mv ) ) then return true end
 	if ( player_manager.RunClass( ply, "Move", mv ) ) then return true end
 end
 
 function GM:SetupMove( ply, mv, cmd )
+	if ( drive.StartMove( ply, mv, cmd ) ) then return true end
 	if ( player_manager.RunClass( ply, "StartMove", mv, cmd ) ) then return true end
 end
 
 function GM:FinishMove( ply, mv )
+	if ( drive.FinishMove( ply, mv ) ) then return true end
 	if ( player_manager.RunClass( ply, "FinishMove", mv ) ) then return true end
 end
 
@@ -205,9 +212,11 @@ function GM:PlayerPostThink( ply )
 end
 
 function GM:StartEntityDriving( ent, ply )
+	drive.Start( ply, ent )
 end
 
 function GM:EndEntityDriving( ent, ply )
+	drive.End( ply, ent )
 end
 
 function GM:PlayerDriveAnimate( ply )

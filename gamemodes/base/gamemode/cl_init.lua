@@ -10,6 +10,11 @@
 --------------------------------------------------------------------------]]--
 
 include( "shared.lua" )
+include( "cl_targetid.lua" )
+include( "cl_spawnmenu.lua" )
+-- cl_scoreboard / cl_hudpickup / cl_deathnotice / cl_pickteam / cl_voice are
+-- not ported to this folder yet; the live client equivalents currently live
+-- in deathmatch (cl_hudpickup) and lua/game/client (gmod_deathnotice).
 
 -------------------------------------------------------------------------------
 -- 生命周期
@@ -34,6 +39,28 @@ end
 -- 帧 / 视口
 -------------------------------------------------------------------------------
 function GM:HUDPaint()
+
+	hook.Run( "HUDDrawTargetID" )
+	hook.Run( "HUDDrawPickupHistory" )
+	hook.Run( "DrawDeathNotice", 0.85, 0.04 )
+
+end
+
+-------------------------------------------------------------------------------
+-- GMod base cl_init.lua:124-145 verbatim
+-------------------------------------------------------------------------------
+function GM:GetTeamColor( ent )
+
+	local team = TEAM_UNASSIGNED
+	if ( ent.Team ) then team = ent:Team() end
+	return GAMEMODE:GetTeamNumColor( team )
+
+end
+
+function GM:GetTeamNumColor( num )
+
+	return team.GetColor( num )
+
 end
 
 function GM:HUDShouldDraw( name )

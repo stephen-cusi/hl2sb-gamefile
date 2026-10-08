@@ -10,6 +10,10 @@
 --------------------------------------------------------------------------]]--
 
 include( "shared.lua" )
+include( "player.lua" )
+include( "npc.lua" )
+-- variable_edit.lua is not ported yet: it rides on the edit-variable
+-- channel, which has no dispatch point in this fork.
 
 -------------------------------------------------------------------------------
 -- 出生 —— 这是整套玩家类体系的驱动点（GMod 在 base/gamemode/player.lua 里）
@@ -33,65 +37,9 @@ local function CallHook( name, ... )
 end
 
 -------------------------------------------------------------------------------
--- Purpose: 团队制 gamemode 里没分队的玩家先当观察者
+-- PlayerSpawnAsSpectator / PlayerSpawn / PlayerLoadout / PlayerSetModel moved
+-- to player.lua (GMod's layout) - included above.
 -------------------------------------------------------------------------------
-function GM:PlayerSpawnAsSpectator( pl )
-	if ( pl.RemoveAllItems ~= nil ) then pl:RemoveAllItems( true ) end
-
-	if ( GAMEMODE.TeamBased and pl.Team ~= nil and pl:Team() == TEAM_UNASSIGNED ) then
-		return
-	end
-
-	if ( pl.SetTeam ~= nil ) then pl:SetTeam( TEAM_SPECTATOR ) end
-end
-
--------------------------------------------------------------------------------
--- Purpose: 玩家出生
--------------------------------------------------------------------------------
-function GM:PlayerSpawn( pl, transition )
-	if ( not IsValid( pl ) ) then return end
-
-	-- 团队制：没分队 -> 观察者
-	if ( self.TeamBased and pl.Team ~= nil ) then
-		local t = pl:Team()
-		if ( t == TEAM_SPECTATOR or t == TEAM_UNASSIGNED ) then
-			self:PlayerSpawnAsSpectator( pl )
-			return
-		end
-	end
-
-	-- 不是关卡切换才重置武器
-	if ( not transition and pl.UnSpectate ~= nil ) then
-		pl:UnSpectate()
-	end
-
-	player_manager.OnPlayerSpawn( pl, transition )
-	player_manager.RunClass( pl, "Spawn" )
-
-	if ( not transition ) then
-		CallHook( "PlayerLoadout", pl )
-	end
-
-	CallHook( "PlayerSetModel", pl )
-
-	if ( pl.SetupHands ~= nil ) then
-		pl:SetupHands()
-	end
-end
-
--------------------------------------------------------------------------------
--- Purpose: 出生装备 —— 全权交给玩家类
--------------------------------------------------------------------------------
-function GM:PlayerLoadout( pl )
-	player_manager.RunClass( pl, "Loadout" )
-end
-
--------------------------------------------------------------------------------
--- Purpose: 出生时设模型 —— 全权交给玩家类
--------------------------------------------------------------------------------
-function GM:PlayerSetModel( pl )
-	player_manager.RunClass( pl, "SetModel" )
-end
 
 -------------------------------------------------------------------------------
 -- Purpose: HL2SB 专用的桥

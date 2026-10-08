@@ -447,3 +447,27 @@ if ( _RF ~= nil ) then
 	if ( rawget( _G, "kRenderFxRagdoll" ) == nil ) then kRenderFxRagdoll = _RF.RAGDOLL end
 	if ( rawget( _G, "kRenderFxPulseFastWider" ) == nil ) then kRenderFxPulseFastWider = _RF.PULSE_FAST_WIDER end
 end
+-- ---------------------------------------------------------------------------
+-- HL2SB (2026-10-08): base-gamemode round.  GMod pushes these as engine
+-- globals; the fork had none of them.
+--
+--   SIM_NOTHING     - NextBot/anim ENTITY:PhysicsSimulate "do not simulate"
+--                     answer (base_anim.lua's default return).
+--   USE_*           - CBaseEntity::USE_TYPE spellings (baseentity.h order:
+--                     OFF, ON, SET, TOGGLE) - base_ai's Use handlers switch
+--                     on them.
+--   TEXT_FILTER_*   - util.FilterText filter classes (game content / chat /
+--                     name / all), engine ETextFilter order.
+--   STEPSOUNDTIME_WATER_FOOT lives engine-side next to its three siblings
+--   (lsrcinit.cpp) - not here, because the other three are C-pushed too.
+-- ---------------------------------------------------------------------------
+if ( rawget( _G, "SIM_NOTHING" ) == nil ) then SIM_NOTHING = 0 end
+if ( rawget( _G, "SIM_PHYSICS" ) == nil ) then SIM_PHYSICS = 1 end
+if ( rawget( _G, "USE_OFF" ) == nil ) then USE_OFF = 0 end
+if ( rawget( _G, "USE_ON" ) == nil ) then USE_ON = 1 end
+if ( rawget( _G, "USE_SET" ) == nil ) then USE_SET = 2 end
+if ( rawget( _G, "USE_TOGGLE" ) == nil ) then USE_TOGGLE = 3 end
+if ( rawget( _G, "TEXT_FILTER_GAMECONTENT" ) == nil ) then TEXT_FILTER_GAMECONTENT = 0 end
+if ( rawget( _G, "TEXT_FILTER_CHAT" ) == nil ) then TEXT_FILTER_CHAT = 1 end
+if ( rawget( _G, "TEXT_FILTER_NAME" ) == nil ) then TEXT_FILTER_NAME = 2 end
+if ( rawget( _G, "TEXT_FILTER_ALL" ) == nil ) then TEXT_FILTER_ALL = 3 end
