@@ -3,18 +3,18 @@ gameDir=d:\srceng\hl2sb
 selfName=hl2sb
 baseDirs=12
 found=4
-probe garrysmod gameinfo=1
-probe VPKEdit-Windows-Standalone-Compatibility-msvc-Release gameinfo=0
 probe Users gameinfo=0
-probe tool gameinfo=0
-probe hl2mp gameinfo=1
-probe cef_cache gameinfo=0
-probe bin gameinfo=0
-probe hl2sb数据包 gameinfo=1
+probe VPKEdit-Windows-Standalone-Compatibility-msvc-Release gameinfo=0
 probe hl2 gameinfo=1
-probe sourceengine gameinfo=0
+probe hl2sb数据包 gameinfo=1
+probe garrysmod gameinfo=1
+probe hl2mp gameinfo=1
+probe tool gameinfo=0
 probe platform gameinfo=0
-base dirs: bin,cef_cache,garrysmod,hl2,hl2mp,hl2sb,hl2sb数据包,platform,sourceengine,tool,Users,VPKEdit-Windows-Standalone-Compatibility-msvc-Release
+probe hl2sb_clear gameinfo=0
+probe bin gameinfo=0
+probe sourceengine gameinfo=0
+base dirs: bin,garrysmod,hl2,hl2mp,hl2sb,hl2sb_clear,hl2sb数据包,platform,sourceengine,tool,Users,VPKEdit-Windows-Standalone-Compatibility-msvc-Release
   garrysmod / garrysmod / 0
   hl2 / Half-Life 2 / 220
   hl2mp / HL2 Deathmatch / 320

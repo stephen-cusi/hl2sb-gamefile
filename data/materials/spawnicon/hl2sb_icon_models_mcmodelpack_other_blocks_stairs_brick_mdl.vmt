@@ -1,0 +1,7 @@
+"UnlitGeneric"
+{
+	"$basetexture" "_rt_hl2sb_icon_models_mcmodelpack_other_blocks_stairs_brick_mdl"
+	"$vertexcolor" "1"
+	"$vertexalpha" "1"
+	"$nofog" "1"
+}

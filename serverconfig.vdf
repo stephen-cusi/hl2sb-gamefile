@@ -3,7 +3,7 @@
 	"gmod_maxammo"		"9999"
 	"gmod_suit"		"0"
 	"hostname"		"222"
-	"map"		"gm_construct"
+	"map"		"sb_field"
 	"maxplayers"		"2"
 	"mp_falldamage"		"0"
 	"physgun_limited"		"0"
