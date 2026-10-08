@@ -1,5 +1,5 @@
 --[[--------------------------------------------------------------------------
-    gamemodes/base/content/lua/entities/lua_run/shared.lua
+    lua/entities/lua_run/shared.lua
 
     移植自 GMod 的 gamemodes/base/entities/entities/lua_run.lua。
 

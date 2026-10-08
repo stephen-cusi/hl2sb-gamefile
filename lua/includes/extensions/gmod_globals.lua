@@ -98,6 +98,59 @@ Model = Model or function( s )
 end
 
 -- ===========================================================================
+-- HL2SB (2026-10-08): base-gamemode round.  Four small GMod globals the
+-- ported base files (and stock addons) expect.
+--
+--   Format         - string.format alias (GMod extensions/string.lua spells
+--                    it out with a format cache; a straight alias answers
+--                    the same contract).
+--   MsgAll         - GMod prints to every client's console over a net
+--                    channel; this fork has no such channel, so this lands
+--                    on the server console only (same text, narrower
+--                    audience) until a net path exists.
+--   Entity( index )- ents.GetByIndex alias (GMod global).
+--   ents.FindInBox - the engine binding is spelled Entities.GetInBox here.
+--
+-- WARNING: this block MUST sit above the `if ( not _CLIENT )` section below -
+-- that section ends the server's pass with a bare `return`, and an earlier
+-- copy of this block at the end of the file was therefore client-only: the
+-- server's PlayerDeath hit "attempt to call a nil value (global 'MsgAll')"
+-- on the first suicide of a test session (2026-10-08).  Same trap the two
+-- blocks above and below already document.
+-- ===========================================================================
+if ( rawget( _G, "Format" ) == nil ) then
+	function Format( str, ... )
+		return string.format( str, ... )
+	end
+end
+
+if ( rawget( _G, "MsgAll" ) == nil ) then
+	function MsgAll( ... )
+		Msg( ... )
+	end
+end
+
+if ( rawget( _G, "Entity" ) == nil and ents ~= nil and ents.GetByIndex ~= nil ) then
+	function Entity( index )
+		return ents.GetByIndex( index )
+	end
+end
+
+if ( ents ~= nil and ents.FindInBox == nil and Entities ~= nil and Entities.GetInBox ~= nil ) then
+	function ents.FindInBox( mins, maxs, filter )
+		-- Entities.GetInBox's third argument is a partition flag mask, not a
+		-- GMod filter.  Pass numeric masks through; table/function filters
+		-- have no engine counterpart yet, so the call runs unfiltered there
+		-- (the base gamemode's spawn-point search calls this two-argument
+		-- form only).
+		if ( type( filter ) == "number" ) then
+			return Entities.GetInBox( mins, maxs, filter )
+		end
+		return Entities.GetInBox( mins, maxs )
+	end
+end
+
+-- ===========================================================================
 -- HL2SB: server-realm stand-ins for two client-only APIs that the ported GMod
 -- libraries touch at LOAD time.
 --
@@ -117,7 +170,7 @@ end
 -- function that yields nil (so `render.Foo()` is nil rather than an error), and
 -- net.Receive accepts a handler and drops it.
 --
--- ⚠️ This block MUST sit above the `if ( not _CLIENT )` section below: that
+-- WARNING: this block MUST sit above the `if ( not _CLIENT )` section below: that
 -- section ends with a bare `return`, so on the server the rest of this file
 -- never runs.  It used to be at the end of the file, where it was dead code and
 -- the two errors kept appearing every load (log lines properties.lua:175 and
@@ -267,7 +320,7 @@ if ( not _CLIENT ) then
 
 	-- GMod: ConVarExists( name ) -> boolean.
 	--
-	-- ⚠️ cod_c4 gates the creation of every one of its convars on it:
+	-- WARNING: cod_c4 gates the creation of every one of its convars on it:
 	--     addons/cod_c4/lua/entities/cod-c4/shared.lua:19  if !ConVarExists( ... ) then CreateConVar(...)
 	--     addons/cod_c4/lua/entities/cod-c4/shared.lua:46  if !ConVarExists( "C4_RedLight" ) then ...
 	-- As a nil global BOTH realms failed to load that file entirely

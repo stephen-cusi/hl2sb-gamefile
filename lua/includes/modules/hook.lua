@@ -206,12 +206,22 @@ end
 --
 -- Re-entering for the same event can never produce anything the first pass did
 -- not already ask for: the registered hooks were consulted before the gamemode
--- fallback, and the fallback is the last thing CallBody does.  So refuse it.
--- Refusing once per event (instead of recursing) also keeps the culprit's name
--- in the log exactly once -- that is the line to search for.
+-- fallback, and the fallback is the last thing CallBody does.
+--
+-- HL2SB (2026-10-08): flat refusal was too blunt.  NESTED dispatch of the same
+-- event is legitimate and GMod allows it: any ents.Create() inside an
+-- OnEntityCreated handler constructs the new entity right there and the engine
+-- re-dispatches OnEntityCreated for it - a map's scripted-entity burst hits
+-- this constantly, and every one of those nested dispatches was being dropped
+-- (ds_debug.log 2026-10-08 09:01, "re-entered hook.call ... recursion refused"
+-- during the vehicle spawn wave).  So the guard is now a DEPTH LIMIT instead:
+-- finite nesting passes, a true runaway loop still dies at the limit with the
+-- same once-per-event warning naming the event.
 -------------------------------------------------------------------------------
-local tCallChain = {}
+local tCallChain = {}   -- strEventName -> current nesting depth (number)
 local tReportedReentry = {}
+
+local HL2SB_MAX_HOOK_DEPTH = 16
 
 function call( strEventName, tGamemode, ... )
   -- HL2SB (2026-10-02): per-frame hot path.  The engine fires several hook
@@ -236,23 +246,29 @@ function call( strEventName, tGamemode, ... )
     end
   end
 
-  if ( tCallChain[ strEventName ] ) then
+  local nDepth = tCallChain[ strEventName ] or 0
+  if ( nDepth >= HL2SB_MAX_HOOK_DEPTH ) then
     if ( not tReportedReentry[ strEventName ] ) then
       tReportedReentry[ strEventName ] = true
-      Warning( "HL2SB: '" .. tostring( strEventName ) .. "' re-entered hook.call for the SAME event -- " ..
-               "recursion refused.  Something that handles this event (a registered hook or the gamemode " ..
-               "method) calls hook.call/hook.Run for it again; that used to blow the Lua stack and freeze " ..
-               "the game.  Reported once per event.\n" )
+      Warning( "HL2SB: '" .. tostring( strEventName ) .. "' recursed past the depth limit (" ..
+               tostring( HL2SB_MAX_HOOK_DEPTH ) .. ") -- dispatch refused.  Something that handles this event " ..
+               "(a registered hook or the gamemode method) calls hook.call/hook.Run for it in a loop; " ..
+               "that used to blow the Lua stack and freeze the game.  Reported once per event.\n" )
     end
     return nil
   end
 
-  -- pcall, not a bare call: if CallBody ever threw, the flag would stay set and
-  -- that event would be refused for the rest of the level.  This also names the
-  -- event in the error report, which the raw error path could not.
-  tCallChain[ strEventName ] = true
+  -- pcall, not a bare call: if CallBody ever threw, the depth bookkeeping would
+  -- stay wrong and the event would drift toward the limit for the rest of the
+  -- level.  This also names the event in the error report, which the raw error
+  -- path could not.
+  tCallChain[ strEventName ] = nDepth + 1
   local tRet = { xpcall( CallBody, HookErrorHandler, strEventName, tGamemode, ... ) }
-  tCallChain[ strEventName ] = nil
+  if ( nDepth > 0 ) then
+    tCallChain[ strEventName ] = nDepth
+  else
+    tCallChain[ strEventName ] = nil
+  end
 
   if ( tRet[ 1 ] == false ) then
     Warning( "ERROR: HOOK: '" .. tostring( strEventName ) .. "' Failed: " .. tostring( tRet[ 2 ] ) .. "\n" )

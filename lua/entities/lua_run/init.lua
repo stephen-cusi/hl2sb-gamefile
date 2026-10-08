@@ -1,5 +1,5 @@
 --[[--------------------------------------------------------------------------
-    gamemodes/base/content/lua/entities/lua_run/init.lua
+    lua/entities/lua_run/init.lua
 
     服务端半边。移植自 GMod 的 lua_run.lua。
 
