@@ -7,8 +7,9 @@
     cl_init.lua 的同款内容——那份"改编移植版"（HUD 泵 / CalcView 族 /
     undo 通知 / taunt 镜头 / 视图模型手部绘制）才是本引擎真正在跑的客户端
     gamemode 面，切换后它整体上提到 base，sandbox / campaign / deathmatch
-    都从这里继承。GMod 原版 cl_init 的 736 行里，记分板（cl_scoreboard）、
-    队伍选择面板（cl_pickteam）、语音面板（cl_voice）还没有移植，保持缺席。
+    都从这里继承。GMod 原版 cl_init 的 736 行里，记分板（cl_scoreboard）与
+    队伍选择面板（cl_pickteam）已移植（2026-10-10），语音面板（cl_voice）
+    还没有移植，保持缺席。
 
     与 deathmatch 那份的两处刻意偏差（都写在对应方法上方）：
       - GM:RenderScene 不定义：引擎契约是「返回 true = 跳过整个场景绘制」
@@ -25,6 +26,13 @@ include( "cl_spawnmenu.lua" )
 -- HL2SB (2026-10-08): 拾取通知条（GMod base cl_hudpickup.lua 的分叉移植版，
 -- 含 hud_killfeed item_pickup 事件 -> GM:HUD*PickedUp 的适配器）。
 include( "cl_hudpickup.lua" )
+
+-- HL2SB (2026-10-10): GMod base 的记分板（cl_scoreboard.lua 分叉移植版，
+-- +showscoreboard/-showscoreboard 按钮命令在文件尾注册，TAB 绑定走它们）。
+include( "cl_scoreboard.lua" )
+
+-- HL2SB (2026-10-10): GMod base 的选队面板（cl_pickteam.lua 移植版）。
+include( "cl_pickteam.lua" )
 
 -- HL2SB (2026-09-27): GMod 的 taunt 相机（player_class/taunt_camera.lua 逐字
 -- 版）。GMod 经 PLAYER:CalcView / PLAYER:CreateMove / PLAYER:ShouldDrawLocal
@@ -224,6 +232,19 @@ function GM:HideClientUI()
 end
 
 function GM:KeyInput( down, keynum, pszCurrentBinding )
+
+	-- GMod 的客户端在引擎侧把功能键直接派发给 gamemode 方法（F1 ShowHelp、
+	-- F2 ShowTeam、F3/F4 ShowSpare1/2）。本分叉引擎没有这层派发，从这里
+	-- 路由；方法存在才调（ShowTeam 由 cl_pickteam.lua 提供，ShowHelp 由
+	-- 子 gamemode 决定要不要给）。
+	if ( !down ) then return end
+
+	if ( keynum == KEY_F1 ) then
+		if ( self.ShowHelp != nil ) then self:ShowHelp() end
+	elseif ( keynum == KEY_F2 ) then
+		if ( self.ShowTeam != nil ) then self:ShowTeam() end
+	end
+
 end
 
 function GM:LevelInitPreEntity()

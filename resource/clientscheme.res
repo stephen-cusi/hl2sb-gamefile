@@ -917,6 +917,18 @@ Scheme
 				"additive"	"0"
 			}
 		}
+		"TargetIDSmall"
+		{
+			"1"
+			{
+				"name"		"Microsoft YaHei"
+				"tall"		"16"
+				"weight"	"700"
+				"range"		"0x0000 0x007F"	//	Basic Latin
+				"antialias" "1"
+				"additive"	"0"
+			}
+		}
 		"HL2MPTypeDeath"
 		{
 		   "1"
