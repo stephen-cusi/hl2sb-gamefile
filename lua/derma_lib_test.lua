@@ -182,7 +182,9 @@ print( "[DERMATEST] --- 6. DLabel ---" )
 
 do
 	local lbl = vgui.Create( "DLabel" )
-	Check( lbl.m_iAlign == 3, "DLabel default alignment is a_west (3)" )
+	Check( lbl.m_iAlign == 4, "DLabel default alignment is west (numpad 4)" )
+	lbl:SetContentAlignment( 5 )
+	Check( lbl:GetContentAlignment() == 5, "DLabel align 5 stored (center)" )
 
 	lbl:SetIsToggle( true )
 	Check( lbl:GetIsToggle() == true, "DLabel:SetIsToggle exists" )

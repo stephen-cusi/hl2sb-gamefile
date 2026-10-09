@@ -1171,7 +1171,7 @@ local function BuildMenu()
 	local hint = vgui.Create( "DLabel", frame )
 	hint:SetPos( frame:GetWide() - 330 - pad, pad + 4 )
 	hint:SetSize( 320, 18 )
-	hint:SetContentAlignment( 2 )
+	hint:SetContentAlignment( 9 )
 	hint:SetText( "" )
 
 	g_Frame, g_Grid, g_Side, g_Search, g_Hint = frame, grid, side, search, hint

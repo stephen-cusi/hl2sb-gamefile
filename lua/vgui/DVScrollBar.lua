@@ -132,24 +132,16 @@ function PANEL:SetUp( _barsize_, _canvassize_ )
 	self.CanvasSize = math.max( _canvassize_ - _barsize_, 1 )
 	self.Scroll = math.Clamp( self:GetScroll(), 0, self.CanvasSize )
 
-	-- GMod's original enables the bar only when the content overflows and
-	-- hides it otherwise (SetEnabled -> SetVisible( b )).  Deliberate deviation
-	-- requested for this fork: the strip stays visible with the grip filling
-	-- the whole track - CanvasSize clamps to 1, so BarScale approaches 1 and
-	-- scrolling a fitting page is a no-op.
-	self:SetEnabled( true )
+	-- GMod's original: the bar only exists while the content overflows
+	-- (SetEnabled -> SetVisible( b )); a fitting page shows no strip at all.
+	-- The previous fork deviation kept the strip permanently visible.
+	self:SetEnabled( _canvassize_ > _barsize_ )
 
 	self:InvalidateLayout()
 end
 
 function PANEL:OnMouseWheeled( dlta )
 	if ( !self:IsVisible() ) then return false end
-
-	-- Nothing to scroll (the strip stays visible with a full-track grip when
-	-- the content fits): feed the wheel to the parent container, like GMod
-	-- does for its hidden bar.
-
-	if ( self.CanvasSize <= 1 ) then return false end
 
 	-- We return true if the scrollbar changed.
 	-- If it didn't, we feed the mousehweeling to the parent panel

@@ -16,9 +16,10 @@ function PANEL:Init()
 	self.m_strFont = "DermaDefault"
 	self.m_colText = Color( 228, 228, 228, 255 )
 	self.m_bWrap = false
-	-- vgui2/GMod Label default alignment is a_west (3: vertically MIDDLE, left);
+	-- vgui2/GMod Label default alignment is a_west (vertically MIDDLE, left);
 	-- the old 0 here drew every taller-than-text label pinned to the top edge.
-	self.m_iAlign = 3
+	-- Stored in GMod's numpad numbering, where west is 4 (see SetContentAlignment).
+	self.m_iAlign = 4
 end
 
 function PANEL:SetText( strText )
@@ -157,17 +158,25 @@ function PANEL:GetWrappedLines( maxW )
 	return lines
 end
 
---- GMod: Panel:SetContentAlignment( align ) -- vgui2's Label alignment enum
---- (public/vgui_controls/Label.h): 0 a_northwest, 1 a_north, 2 a_northeast,
---- 3 a_west, 4 a_center, 5 a_east, 6 a_southwest, 7 a_south, 8 a_southeast.
---- Paint maps it below; the default (a_west, vertically centred) is what this
---- label has always drawn.
+--- GMod: Panel:SetContentAlignment( align ) -- GMod's numbering is a numpad grid,
+--- the same table DButton documents (its derma_gwen.lua:216-218 maps
+--- Right/Center/Left to 6/5/4, and cl_scoreboard.lua centres its title with 5):
+---
+---     7 8 9    northwest  north     northeast
+---     4 5 6    west       center    east
+---     1 2 3    southwest  south     southeast
+---
+--- (Stock vgui2's Label enum is the 0-based row-major table - a_west=3,
+--- a_center=4 - which is what this control used to map, so GMod-ported callers
+--- passing 5 for "center" rendered right-aligned text; the scoreboard title was
+--- the report that found it.)  Paint maps it below; the default (west) matches
+--- the engine Label this control replaces.
 function PANEL:SetContentAlignment( iAlign )
 	self.m_iAlign = iAlign
 end
 
 function PANEL:GetContentAlignment()
-	return self.m_iAlign or 3
+	return self.m_iAlign or 4
 end
 
 --- GMod: Panel:SetTextInset( x, y ) -- offset added to the text's own position.
@@ -399,11 +408,16 @@ function PANEL:Paint( w, h )
 
 	local tw, th = derma.GetTextSize( self.m_strFont, text )
 
-	-- vgui2's Label alignment enum (see SetContentAlignment above): the low digit
-	-- is the horizontal third, the high digit the vertical one.
-	local align = self.m_iAlign or 3
-	local ax = align % 3
-	local ay = math.floor( align / 3 )
+	-- GMod's numpad numbering (see SetContentAlignment above): shift to 0-based
+	-- columns/rows - ax 0 left / 1 centre / 2 right, ay 0 top / 1 middle / 2
+	-- bottom.  0 sits outside the grid and reads as northwest, like vgui2's
+	-- a_northwest default.
+	local align = self.m_iAlign or 4
+	local a = align - 1
+	if ( a < 0 ) then a = 6 end
+
+	local ax = a % 3
+	local ay = math.floor( a / 3 )
 
 	-- wrapped: draw every line, one under the other
 	if ( self.m_bWrap ) then

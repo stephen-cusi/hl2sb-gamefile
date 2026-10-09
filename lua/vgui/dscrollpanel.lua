@@ -189,9 +189,9 @@ function PANEL:PerformLayoutInternal()
 	local Wide = self:GetWide() - pad * 2
 	local YPos = 0
 
-	-- Reserve the bar strip (GMod's DVScrollBar width, 24px on touch) instead
-	-- of Dock(RIGHT).
-	local barW = BarWidth()
+	-- Reserve the bar strip (the bar reports its own width, 24px on touch)
+	-- instead of Dock(RIGHT); a scrollbar can narrow itself for a quieter look.
+	local barW = self.VBar.BarWidth and self.VBar:BarWidth() or BarWidth()
 	self.VBar:SetPos( self:GetWide() - barW, 0 )
 	self.VBar:SetSize( barW, self:GetTall() )
 
