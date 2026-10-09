@@ -168,3 +168,7 @@ include( "vgui/DForm.lua" )		-- https://wiki.facepunch.com/gmod/DForm (needs DCo
 include( "vgui/DTree_Node_Button.lua" )	-- https://wiki.facepunch.com/gmod/DTree_Node_Button
 include( "vgui/DTree_Node.lua" )	-- https://wiki.facepunch.com/gmod/DTree_Node (needs DListLayout + DTree_Node_Button)
 include( "vgui/DTree.lua" )		-- https://wiki.facepunch.com/gmod/DTree (needs DScrollPanel)
+
+-- the avatar panel (nosteam stand-in for GMod's AvatarImage: SetPlayer /
+-- SetSteamID reading data/avatars/*.png, see the file header)
+include( "vgui/AvatarImage.lua" )

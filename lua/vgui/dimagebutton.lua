@@ -24,9 +24,30 @@ function PANEL:SetImage( strPath, strBackup )
 	self.m_iTexture = nil
 
 	if ( strPath ~= "" and surface.CreateNewTextureID ) then
-		local id = surface.CreateNewTextureID()
-		-- binding: DrawSetTextureFile( id, path, linear<int>, load<bool> )
-		surface.DrawSetTextureFile( id, strPath, 1, true )
+		-- the true flag creates a PROCEDURAL texture id - the immediate RGBA
+		-- upload route below only lands on those (AvatarImage same pattern);
+		-- a plain id silently produces a blank icon.
+		local id = surface.CreateNewTextureID( true )
+		-- Image files go through the immediate decode-and-upload binding: the
+		-- texture-manager route behind DrawSetTextureFile resolves the name as
+		-- a MATERIAL (its file bind caches the texture size before the async
+		-- png download lands), which left scoreboard-sized icons blank.  The
+		-- immediate upload also survives level transitions, where the texture
+		-- manager drops its file entries.  Non-image names (vmt-backed paths)
+		-- fall through to the material route.
+		local uploaded = false
+		if ( surface.DrawSetTexturePNG ) then
+			-- the upload binding takes a filesystem path under GAME while the
+			-- material routes root names at materials/, so try both spellings
+			uploaded = surface.DrawSetTexturePNG( id, "materials/" .. strPath )
+			if ( !uploaded ) then
+				uploaded = surface.DrawSetTexturePNG( id, strPath )
+			end
+		end
+		if ( !uploaded ) then
+			-- binding: DrawSetTextureFile( id, path, linear<int>, load<bool> )
+			surface.DrawSetTextureFile( id, strPath, 1, true )
+		end
 		self.m_iTexture = id
 	end
 end
@@ -139,6 +160,10 @@ function PANEL:Paint( w, h )
 		local col = self.m_colImage
 		if ( col ) then
 			surface.DrawSetColor( col.r, col.g, col.b, col.a )
+		else
+			-- vgui multiplies textured draws by the current draw colour; a
+			-- previous panel's SetDrawColor bleeds in here without a reset
+			surface.DrawSetColor( 255, 255, 255, 255 )
 		end
 
 		surface.DrawSetTexture( self.m_iTexture )
