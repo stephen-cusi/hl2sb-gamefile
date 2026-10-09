@@ -3,18 +3,18 @@ gameDir=d:\srceng\hl2sb
 selfName=hl2sb
 baseDirs=13
 found=4
-probe VPKEdit-Windows-Standalone-Compatibility-msvc-Release gameinfo=0
-probe Users gameinfo=0
-probe bin gameinfo=0
-probe platform gameinfo=0
-probe tool gameinfo=0
 probe sourceengine gameinfo=0
-probe hl2sb数据包 gameinfo=1
+probe Users gameinfo=0
 probe hl2sb_clear gameinfo=0
-probe garrysmod gameinfo=1
-probe hl2 gameinfo=1
+probe bin gameinfo=0
+probe tool gameinfo=0
+probe VPKEdit-Windows-Standalone-Compatibility-msvc-Release gameinfo=0
 probe hl2mp gameinfo=1
+probe hl2sb数据包 gameinfo=1
 probe gm_physgun gameinfo=0
+probe hl2 gameinfo=1
+probe garrysmod gameinfo=1
+probe platform gameinfo=0
 base dirs: bin,garrysmod,gm_physgun,hl2,hl2mp,hl2sb,hl2sb_clear,hl2sb数据包,platform,sourceengine,tool,Users,VPKEdit-Windows-Standalone-Compatibility-msvc-Release
   garrysmod / garrysmod / 0
   hl2 / Half-Life 2 / 220

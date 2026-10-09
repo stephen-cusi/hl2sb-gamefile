@@ -7,4 +7,5 @@ firstpersonbody
 hl1sweps
 menu
 portalgun
+tarkov_hud
 windgrin_npc
