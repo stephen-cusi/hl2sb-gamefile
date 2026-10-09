@@ -53,27 +53,9 @@ if ( meta.SetWalkSpeed == nil ) then
 end
 
 -------------------------------------------------------------------------------
--- 分数（HL2SB 没有分数绑定，这里存 Lua 侧，供 team.lua / 记分板用）
+-- 分数 -- C++ 绑定（Frags/AddFrags/Deaths/AddDeaths，读引擎计数器）落地后
+-- 这组方法来自 lbaseplayer_shared.cpp，这里不再有 Lua 版双源。
 -------------------------------------------------------------------------------
-if ( meta.Frags == nil ) then
-	function meta:Frags()
-		return self.m_nHL2SBFrags or 0
-	end
-
-	function meta:AddFrags( n )
-		self.m_nHL2SBFrags = ( self.m_nHL2SBFrags or 0 ) + ( n or 1 )
-	end
-end
-
-if ( meta.Deaths == nil ) then
-	function meta:Deaths()
-		return self.m_nHL2SBDeaths or 0
-	end
-
-	function meta:AddDeaths( n )
-		self.m_nHL2SBDeaths = ( self.m_nHL2SBDeaths or 0 ) + ( n or 1 )
-	end
-end
 
 -------------------------------------------------------------------------------
 -- 聊天输出

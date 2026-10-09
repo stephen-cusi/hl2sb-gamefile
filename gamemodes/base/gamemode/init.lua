@@ -4,7 +4,7 @@
     服务端半边。对应 GMod 的 gamemodes/base/gamemode/init.lua。
 
     缺绑定而省略的部分（HL2SB 没有，写个假的只会掩盖问题）：
-      - ply:CreateRagdoll() / AddDeaths() / AddFrags()  —— 没有分数绑定
+      - ply:CreateRagdoll()（分数绑定 AddDeaths/AddFrags 已落地，2026-10-10）
       - GM:ShowTeam 的 ChatPrint + SendLua 团队选择界面
       - GM:CheckPassword 仍实现（只用到引擎的 sv_password 语义）
 --------------------------------------------------------------------------]]--
@@ -88,7 +88,26 @@ end
 -- 死亡 / 伤害
 -------------------------------------------------------------------------------
 function GM:DoPlayerDeath( ply, attacker, dmginfo )
-	-- HL2SB 没有 ragdoll / 分数绑定，只保留引擎侧的默认处理。
+
+	-- GMod 原文的计分：任何死法死亡数 +1（世界/NPC 击杀也算），
+	-- 只有攻击者是玩家才 +1 击杀，自杀 -1。引擎死亡管线不碰计数器
+	-- （2026-10-10 起：引擎派发 (ply, attacker, dmginfo) 与 GMod 同序同个数，
+	-- 原版反编译定案 arg2=attacker；multiplay 的 C++ 计分在 Lua SDK 构建下
+	-- 整段旁路，不会在这里之外二次计数。）
+	-- （GMod 原文开头还有 dmginfo:IsDamageType(DMG_REMOVENORAGDOLL) 判定 +
+	-- ply:CreateRagdoll()——本分叉还没有 CreateRagdoll 绑定，略过。）
+	ply:AddDeaths( 1 )
+
+	if ( attacker:IsValid() && attacker:IsPlayer() ) then
+
+		if ( attacker == ply ) then
+			attacker:AddFrags( -1 )
+		else
+			attacker:AddFrags( 1 )
+		end
+
+	end
+
 end
 
 function GM:PlayerShouldTakeDamage( ply, attacker )

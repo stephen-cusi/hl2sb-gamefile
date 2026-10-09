@@ -5,14 +5,11 @@
     Client realm, included from cl_init.lua.
 
     Deviations (missing-binding driven):
-      - AvatarImage / Player:ShowProfile are not ported (no Steam layer), so
-        the player row has no avatar button; the name label takes the space.
-      - DImageButton and the voice mute bindings (Player:IsMuted/SetMuted,
-        Player:Get/SetVoiceVolumeScale) are not ported, so the mute control
-        is omitted.
-      - Player:Team / Player:Ping have no C++ bindings yet; fallback locals
-        answer TEAM_UNASSIGNED / 0 and pick the real methods up the moment
-        the bindings land.
+      - Player:ShowProfile opens a Steam profile in GMod; with no Steam layer
+        the avatar button is a silent click target here.
+      - The mute button's volume wheel (Player:Get/SetVoiceVolumeScale) has no
+        binding in this fork, so the wheel and its PaintOver indicator are
+        omitted; the click toggles the mute.
       - DLabel:SetExpensiveShadow is not ported; the call is dropped.
       - GMod's client registers +showscoreboard/-showscoreboard in the
         engine; here they are concommand.Add'ed at the bottom (real engine
@@ -33,19 +30,12 @@ surface.CreateFont( "ScoreboardDefaultTitle", {
 	weight	= 800
 } )
 
-local plyMeta = FindMetaTable( "Player" )
-local TeamFn = plyMeta != nil and plyMeta.Team or nil
-local PingFn = plyMeta != nil and plyMeta.Ping or nil
-
-local function GetPlayerTeam( pl )
-	if ( TeamFn != nil ) then return TeamFn( pl ) end
-	return TEAM_UNASSIGNED or 0
-end
-
-local function GetPlayerPing( pl )
-	if ( PingFn != nil ) then return PingFn( pl ) end
-	return 0
-end
+-- GMod ships its team number constants as globals; this fork has no team
+-- module, so the constants the scoreboard sorts with are created here with
+-- GMod's values when absent.
+TEAM_UNASSIGNED = TEAM_UNASSIGNED or 0
+TEAM_CONNECTING = TEAM_CONNECTING or 1
+TEAM_SPECTATOR = TEAM_SPECTATOR or 2
 
 --
 -- This defines a new panel type for the player row. The player row is given a player
@@ -55,11 +45,30 @@ end
 local PLAYER_LINE = {
 	Init = function( self )
 
+		self.AvatarButton = self:Add( "DButton" )
+		self.AvatarButton:Dock( LEFT )
+		self.AvatarButton:SetSize( 32, 32 )
+		-- GMod opens the player's Steam profile here (Player:ShowProfile);
+		-- this fork has no Steam layer, so the click stays silent.
+		self.AvatarButton.DoClick = function() end
+
+		self.Avatar = vgui.Create( "AvatarImage", self.AvatarButton )
+		self.Avatar:SetSize( 32, 32 )
+		self.Avatar:SetMouseInputEnabled( false )
+
 		self.Name = self:Add( "DLabel" )
 		self.Name:Dock( FILL )
 		self.Name:SetFont( "ScoreboardDefault" )
 		self.Name:SetTextColor( Color( 93, 93, 93 ) )
 		self.Name:DockMargin( 8, 0, 0, 0 )
+
+		self.Mute = self:Add( "DImageButton" )
+		self.Mute:SetSize( 32, 32 )
+		self.Mute:Dock( RIGHT )
+		-- GMod wheels the player's voice volume on this button
+		-- (Player:Get/SetVoiceVolumeScale); no such binding in this fork, so
+		-- only the click-to-mute below is wired.
+		self.Mute:NoClipping( true )
 
 		self.Ping = self:Add( "DLabel" )
 		self.Ping:Dock( RIGHT )
@@ -93,6 +102,8 @@ local PLAYER_LINE = {
 
 		self.Player = pl
 
+		self.Avatar:SetPlayer( pl )
+
 		self:Think( self )
 
 	end,
@@ -120,15 +131,31 @@ local PLAYER_LINE = {
 			self.Deaths:SetText( self.NumDeaths )
 		end
 
-		if ( self.NumPing == nil || self.NumPing != GetPlayerPing( self.Player ) ) then
-			self.NumPing = GetPlayerPing( self.Player )
+		if ( self.NumPing == nil || self.NumPing != self.Player:Ping() ) then
+			self.NumPing = self.Player:Ping()
 			self.Ping:SetText( self.NumPing )
+		end
+
+		--
+		-- Change the icon of the mute button based on state
+		--
+		if ( self.Muted == nil || self.Muted != self.Player:IsMuted() ) then
+
+			self.Muted = self.Player:IsMuted()
+			if ( self.Muted ) then
+				self.Mute:SetImage( "icon32/muted.png" )
+			else
+				self.Mute:SetImage( "icon32/unmuted.png" )
+			end
+
+			self.Mute.DoClick = function( s ) self.Player:SetMuted( !self.Muted ) end
+
 		end
 
 		--
 		-- Connecting players go at the very bottom
 		--
-		if ( GetPlayerTeam( self.Player ) == TEAM_CONNECTING ) then
+		if ( self.Player:Team() == TEAM_CONNECTING ) then
 			self:SetZPos( 2000 + self.Player:EntIndex() )
 			return
 		end
@@ -158,7 +185,7 @@ local PLAYER_LINE = {
 			return Color( 230, 230, 230, 255 )
 		end
 
-		if ( GetPlayerTeam( self.Player ) == TEAM_CONNECTING ) then
+		if ( self.Player:Team() == TEAM_CONNECTING ) then
 			return Color( 200, 200, 200, 200 )
 		end
 
@@ -200,6 +227,12 @@ local SCORE_BOARD = {
 
 		self.Scores = self:Add( "DScrollPanel" )
 		self.Scores:Dock( FILL )
+
+		-- The bar only appears when the roster overflows (DVScrollBar:SetUp
+		-- enables on demand); hide its arrow buttons and narrow the strip so
+		-- the scoreboard stays quiet while it is up.
+		self.Scores.VBar:SetHideButtons( true )
+		self.Scores.VBar.BarWidth = function( s ) return 8 end
 
 	end,
 
@@ -260,7 +293,7 @@ end
 
 --[[---------------------------------------------------------
 	Name: gamemode:ScoreboardHide( )
-	Desc: Hides the scoreboard
+	Desc: Sets the scoreboard to visible
 -----------------------------------------------------------]]
 function GM:ScoreboardHide()
 
