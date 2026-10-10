@@ -1,9 +1,9 @@
 "GameInfo"
 {
-	game	"Half-Life 2: Sandbox"
+	game	"hl2box"
 	icon	"icon_hl2"
 	title	"HALF+LIFE'"
-	title2	"sandbox"
+	title2	"hl2box"
 	nomodels 0
 	nohimodel 1
 	nocrosshair 1
