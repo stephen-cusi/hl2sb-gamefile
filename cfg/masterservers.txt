@@ -7,8 +7,9 @@
 # localhost back inside the process and they never reach the network; use a
 # real adapter ip of the machine running the master (see ipconfig).
 #
-# Run the matching master server on that machine:
-#   python tools/hl2sb_master.py --fake 0.0.0.0 27010 <this machine's ip>
+# Run the matching master server on that machine (script lives in the
+# hl2sb-master-server repo):
+#   python hl2sb_master.py --fake 0.0.0.0 27010 <this machine's ip>
 # (--fake seeds six test servers so the internet tab has rows immediately;
 #  real game servers join the list automatically via heartbeat.)
 #
