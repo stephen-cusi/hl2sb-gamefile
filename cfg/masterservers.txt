@@ -1,0 +1,19 @@
+# hl2sb master server list - one ip:port per line
+# Parsed by the engine the first time the server browser queries the master
+# list; when this file is absent the built-in (third-party, currently dead)
+# defaults are used instead.
+#
+# NOTE: do NOT use 127.0.0.1 here.  The engine loops packets addressed to
+# localhost back inside the process and they never reach the network; use a
+# real adapter ip of the machine running the master (see ipconfig).
+#
+# Run the matching master server on that machine:
+#   python tools/hl2sb_master.py --fake 0.0.0.0 27010 <this machine's ip>
+# (--fake seeds six test servers so the internet tab has rows immediately;
+#  real game servers join the list automatically via heartbeat.)
+#
+# Local test master on this machine (WLAN adapter):
+192.168.1.101:27010
+#
+# For LAN play with friends, replace the line above with the master host's
+# LAN ip, e.g.:  192.168.1.101:27010

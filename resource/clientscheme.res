@@ -805,6 +805,19 @@ Scheme
 				"antialias" "1"
 			}
 		}
+		// Subtitle line on the main menu (gameinfo title2).  A normal text
+		// font: the logo font maps letters to artwork glyphs.
+		ClientTitleFont2
+		{
+			"1"
+			{
+				"name"  "Microsoft YaHei"
+				"tall"  "26"
+				"weight" "600"
+				"additive" "0"
+				"antialias" "1"
+			}
+		}
 		CreditsLogo
 		{
 			"1"
