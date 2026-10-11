@@ -123,10 +123,17 @@ hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移�
 - [ ] 游戏内热挂载（挂载游戏内容清单化）
 - [ ] gmod 地图天空盒白观感深挖（无效顶点格式 mesh）
 - [ ] SWEP 钩子补面：`TranslateFOV` / `HUDShouldDraw` / `AdjustMouseSensitivity` / `DrawWeaponSelection`
+- [ ] 主菜单 HTML 内核选型（搁置，2026-10-11）：menusystem 独立模块（引擎在 GameUI 旁加载、菜单离屏渲染成 RGBA 走 vgui 贴图上传）模块壳与管线已验证；RmlUi 首版已整体撤回——menu.html 是 AngularJS 单页应用，需真 DOM+JS 引擎，排版渲染器不适用。候选：
+  - Ultralight：轻量 WebKit，官方多架构二进制（含安卓），集成代码量最小；非商用免费、商用需授权
+  - CEF 原版：GMod 菜单同款 Chromium，兼容最高；每平台 100-200MB 且需 helper 子进程，官方二进制不含安卓（需自行出包）
+  - 系统 WebView：Windows WebView2 + 安卓系统 WebView，零体积真 Blink；需逐平台写贴图管道，Linux 无对应方案
+  - Sciter：最轻、渲染进缓冲最简单、免费含商用；自有 JS 方言跑不动 AngularJS 页面
+
+  恢复时重建模块壳（引擎加载点已随撤回删除）并接入离屏渲染。
 
 ## 四、刻意不做（勿再提）
 
-- [-] DHTML/CEF 全族（无浏览器层）
+- [-] 游戏内 DHTML/CEF 面板族（无浏览器层；主菜单 HTML 内核选型是独立搁置项，见 P3）
 - [-] Steam 头像/steamworks（nosteam 文件方案：`data/avatars/<steamid64|name>.png`）
 - [-] `IsMounted`/`engine.GetGames` 真实现（守卫恒 false 是 GMod 式注册文件依赖的语义）
 - [-] `util.GetModelMeshes`、Decal 系、`PixelVisible`、undo 二进制导出（GMod 本来就没有）
