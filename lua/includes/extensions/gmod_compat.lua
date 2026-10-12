@@ -938,6 +938,12 @@ GMOD_CHANNEL_PAUSED  = GMOD_CHANNEL_PAUSED  or 2
 GMOD_CHANNEL_STALLED = GMOD_CHANNEL_STALLED or 3
 
 COLLISION_GROUP_WEAPON = COLLISION_GROUP_WEAPON or 11
+-- GMod's COLLISION_GROUP_WORLD is 20 (a group past LAST_SHARED); the engine now
+-- publishes it as 20 too (public/lenumerations_shared.cpp). The "or 20" only
+-- helps if that global arrives nil; when the engine used to publish it as
+-- COLLISION_GROUP_DEBRIS(1) this line could NOT correct it (1 is truthy), which
+-- is why entities set to WORLD were treated as debris and box sweeps passed
+-- through them.
 COLLISION_GROUP_WORLD  = COLLISION_GROUP_WORLD  or 20
 
 -- GMod's MAT_ globals carry the raw gamematerial byte ('A'=65 .. 'Y'=89),
