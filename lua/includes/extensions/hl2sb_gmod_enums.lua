@@ -199,6 +199,35 @@ if ( FindMetaTable ~= nil ) then
 end
 
 ------------------------------------------------------------------------------
+-- Panel:ClearControls() - GMod's ControlPanel method, the call the tool-menu
+-- callbacks open with (spawnmenu.AddToolMenuOption callbacks start
+-- "panel:ClearControls()" before adding anything, so a reopened menu does not
+-- stack duplicates).  GMod's sandbox controlpanel.lua implements it as a
+-- plain self:Clear(); this fork's tool panels are plain Panel userdata with
+-- no generic Clear, so drop every child instead.  Guarded like AddControl
+-- above: never overwrite a class that defines its own.
+------------------------------------------------------------------------------
+if ( FindMetaTable ~= nil ) then
+	local PANEL_META = FindMetaTable( "Panel" )
+
+	if ( PANEL_META ~= nil and PANEL_META.ClearControls == nil ) then
+		function PANEL_META:ClearControls()
+			if ( self.Clear ~= nil ) then
+				self:Clear()
+				return
+			end
+
+			local children = self:GetChildren()
+			if ( children == nil ) then return end
+
+			for _, child in ipairs( children ) do
+				if ( IsValid( child ) ) then child:Remove() end
+			end
+		end
+	end
+end
+
+------------------------------------------------------------------------------
 -- EF_* / MOVETYPE_* globals (2026-09-29): GMod publishes these engine bit
 -- enums as plain globals; HL2SB publishes the MEMBER VALUES only into
 -- _E.<lib> (END_LUA_SET_ENUM_LIB writes _E[lib] = table and does NOT set a

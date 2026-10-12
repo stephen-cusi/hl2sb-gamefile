@@ -150,10 +150,16 @@ function surface.GetFontTall( font )
 end
 
 function surface.GetTextSize( font, text )
-  -- GMod: surface.GetTextSize( text ) measures with the font last set by
-  -- surface.SetFont (single string argument); the engine binding implements
-  -- that form.  Two arguments: ( font, text ) with names/containers unwrapped.
-  if ( text == nil and type( font ) == "string" ) then
+  -- GMod: surface.GetTextSize( text ) -- ONE argument, measured with the font
+  -- last set by surface.SetFont.  The C binding reads that argument with
+  -- luaL_checkstring semantics, so numbers are coerced to their string form
+  -- (math.Round returns a number: the NVG addon's HUD called
+  -- surface.GetTextSize( lightvalue ) and the old type=="string" gate dropped
+  -- it into the ( font, text ) path, where the missing second argument died
+  -- with "bad argument #2 to 'GetTextSize' (string expected, got nil)" every
+  -- frame).  Two arguments keep the legacy ( font, text ) spelling; font
+  -- containers unwrap as before.
+  if ( text == nil ) then
     return GetTextSize( font )
   end
   return GetTextSize( unwrapFont( font ), text )

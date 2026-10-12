@@ -116,6 +116,16 @@ function math.Remap( x, inMin, inMax, outMin, outMax )
 end
 
 -------------------------------------------------------------------------------
+-- TimeFraction(start, end, current) -- GMod verbatim (extensions/math.lua).
+-- Consumed by the ported panel animation system on every animated menu panel;
+-- without it every derma SizeTo/ColorTo dies with
+-- "attempt to call a nil value (field 'TimeFraction')".
+-------------------------------------------------------------------------------
+function math.TimeFraction( start, _end, current )
+  return ( current - start ) / ( _end - start )
+end
+
+-------------------------------------------------------------------------------
 -- EaseInOut(t) (0..1), a smoothstep-ish curve.
 -------------------------------------------------------------------------------
 function math.EaseInOut( t )

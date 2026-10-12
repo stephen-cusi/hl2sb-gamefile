@@ -1251,6 +1251,13 @@ else
 			return y
 		end,
 
+		-- GMod returns BOTH coordinates as two values; the NVG addon feeds
+		-- gui.MousePos() straight into gui.ScreenToVector() for its eye trace.
+		MousePos = function()
+			local x, y = Inputs.GetCursorPosition()
+			return x, y
+		end,
+
 		EnableScreenClicker = function(visible)
 			Surfaces.SetCursorAlwaysVisible(visible)
 		end,
