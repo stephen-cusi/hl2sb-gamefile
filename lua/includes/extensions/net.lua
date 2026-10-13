@@ -4,12 +4,18 @@
     Sits on top of the engine `net` library (game/shared/lua/lnet.cpp), which
     provides the primitives net.Start / net.WriteInt/UInt/String/Bit/Float/
     Double/Vector/Angle/Entity / net.Send / net.Broadcast (server) and
-    net.Receive / net.ReadInt/UInt/String/Bit/Float/Double/Vector/Angle/Entity
-    / ReadHeader (client).
+    net.SendToServer / net.ReadInt/UInt/String/Bit/Float/Double/Vector/Angle/
+    Entity / ReadHeader (client).
 
-    This file adds the GMod-style helpers that are pure Lua: WriteBool/ReadBool,
-    WriteColor/ReadColor, WriteEntity/ReadEntity, WritePlayer/ReadPlayer,
-    WriteType/ReadType, WriteTable/ReadTable.  GMod-only global type predicates
+    Like the reference implementation, the receiving half is pure Lua:
+    net.Receive stores callbacks in net.Receivers (names lowercased) and the
+    default net.Incoming reads the 16-bit pooled id header, resolves the name
+    through util.NetworkIDToString and dispatches.  Both functions can be
+    overridden by scripts - the C side only ever calls net.Incoming.
+
+    This file adds the GMod-style helpers that are pure Lua: WriteBool/
+    ReadBool, WriteEntity/ReadEntity, WritePlayer/ReadPlayer, WriteType/
+    ReadType, WriteTable/ReadTable.  GMod-only global type predicates
     (istable/isstring/isnumber/IsColor) are replaced with type() checks.
 
     Loaded every level from lua/includes/extensions/.
@@ -19,8 +25,38 @@ local net = net
 local type = type
 local tostring = tostring
 
--- net.Receivers map (recreated by the engine lib).
-net.Receivers = net.Receivers or {}
+net.Receivers = {}
+
+--
+-- Set up a function to receive network messages
+--
+function net.Receive( name, func )
+
+	net.Receivers[ name:lower() ] = func
+
+end
+
+--
+-- A message has been received from the network..
+--
+function net.Incoming( len, client )
+
+	local i = net.ReadHeader()
+	local strName = util.NetworkIDToString( i )
+
+	if ( !strName ) then return end
+
+	local func = net.Receivers[ strName:lower() ]
+	if ( !func ) then return end
+
+	--
+	-- len includes the 16 bit int which told us the message name
+	--
+	len = len - 16
+
+	func( len, client )
+
+end
 
 --[[---------------------------------------------------------
     WriteBool / ReadBool
@@ -42,14 +78,21 @@ function net.ReadBool()
 end
 
 --[[---------------------------------------------------------
-    WriteEntity / ReadEntity (index as a signed short)
+    WriteEntity / ReadEntity
+
+    Reference behavior (reference net.lua): the entity index goes over the
+    wire as an UNSIGNED MAX_EDICT_BITS value (net.WriteUInt/ReadUInt), not
+    through net.WriteInt's 32-bit signed default.  This branch's edict space
+    is 11 bits (public/const.h), mirroring how the reference uses 13.
 -----------------------------------------------------------]]
+local MAX_EDICT_BITS = 11
+
 function net.WriteEntity( ent )
-    net.WriteInt( IsValid( ent ) and ent:entindex() or 0 )
+    net.WriteUInt( IsValid( ent ) and ent:entindex() or 0, MAX_EDICT_BITS )
 end
 
 function net.ReadEntity()
-    local i = net.ReadInt()
+    local i = net.ReadUInt( MAX_EDICT_BITS )
     if not i or i <= 0 then return nil end
     return ents and ents.GetByIndex and ents.GetByIndex( i ) or nil
 end
