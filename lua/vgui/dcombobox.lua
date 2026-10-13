@@ -16,12 +16,24 @@ function PANEL:Init()
 	self.m_strLabel = ""
 	self.m_pDown = false
 
+	-- GMod's combo is a menu component (dcombobox.lua:SetIsMenu( true ), base
+	-- DButton): the click-away detector spares anything whose parent chain hits
+	-- a menu component, so pressing the combo does NOT close the dropdown it
+	-- just opened.  Without this the fork's polled click-away watcher (Think
+	-- poll, since the engine raises no VGUIMousePressed) saw the press land on
+	-- the combo -- not a menu -- and closed the freshly-opened dropdown, i.e.
+	-- "click the weapon box and the list snaps shut".
+	self.m_bIsMenu = true
+	self.m_bIsMenuComponent = true
+
 	self.m_Label = vgui.Create( "DLabel", self, "Label" )
 	self.m_Label:SetMouseInputEnabled( false )
+	self.m_Label.m_bIsMenuComponent = true	-- so a press landing on the label is spared too
 
 	self.m_pOptions = vgui.Create( "DPanel", nil, "Menu" )
 	self.m_pOptions:SetVisible( false )
 	self.m_pOptions.m_bIsMenu = true	-- the click-away watcher spares it
+	self.m_pOptions.m_bIsMenuComponent = true
 	self.m_pOptions.Paint = function( pnl, w, h )
 		derma.SkinHook( "Paint", "Menu", pnl, w, h )
 	end

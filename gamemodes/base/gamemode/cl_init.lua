@@ -7,9 +7,9 @@
     cl_init.lua 的同款内容——那份"改编移植版"（HUD 泵 / CalcView 族 /
     undo 通知 / taunt 镜头 / 视图模型手部绘制）才是本引擎真正在跑的客户端
     gamemode 面，切换后它整体上提到 base，sandbox / campaign / deathmatch
-    都从这里继承。GMod 原版 cl_init 的 736 行里，记分板（cl_scoreboard）与
-    队伍选择面板（cl_pickteam）已移植（2026-10-10），语音面板（cl_voice）
-    还没有移植，保持缺席。
+    都从这里继承。GMod 原版 cl_init 的 736 行里，记分板（cl_scoreboard）、
+    队伍选择面板（cl_pickteam）与语音面板（cl_voice）均已移植。GMod 的
+    cl_init.lua:9 以 include( "cl_voice.lua" ) 拉入语音 HUD，这里同样。
 
     与 deathmatch 那份的两处刻意偏差（都写在对应方法上方）：
       - GM:RenderScene 不定义：引擎契约是「返回 true = 跳过整个场景绘制」
@@ -33,6 +33,13 @@ include( "cl_scoreboard.lua" )
 
 -- HL2SB (2026-10-10): GMod base 的选队面板（cl_pickteam.lua 移植版）。
 include( "cl_pickteam.lua" )
+
+-- HL2SB (2026-10-13): GMod base 的语音 HUD（cl_voice.lua 逐字移植版）。
+-- 定义 GM:PlayerStartVoice / GM:PlayerEndVoice（C++ voice_status.cpp 每次
+-- 说话状态翻转经 hook.call 派发到这两个方法），并在 InitPostEntity 建出
+-- g_VoicePanelList（右上角，VoicePanelWide 宽、ScrH()*0.13 起）。GMod 的
+-- base cl_init.lua:9 同样以 include( "cl_voice.lua" ) 拉入。
+include( "cl_voice.lua" )
 
 -- HL2SB (2026-09-27): GMod 的 taunt 相机（player_class/taunt_camera.lua 逐字
 -- 版）。GMod 经 PLAYER:CalcView / PLAYER:CreateMove / PLAYER:ShouldDrawLocal
@@ -71,6 +78,117 @@ end
 function GM:GetTeamNumColor( num )
 
 	return team.GetColor( num )
+
+end
+
+-------------------------------------------------------------------------------
+-- HL2SB (2026-10-13): 聊天链 —— GMod base cl_init.lua:142-244 的五个聊天
+-- 钩子逐字移植（OnPlayerChat / OnChatTab / StartChat / FinishChat /
+-- ChatTextChanged）。C++ 侧接线：MsgFunc_SayText2 派发 GM:OnPlayerChat
+-- （返回真抑制默认打印）；聊天输入框四个钩子的引擎派发尚未接线，方法先就位。
+-- 唯一分叉适配（各处已注释）：player.Iterator 换 ipairs(player.GetAll())。
+-------------------------------------------------------------------------------
+
+-- GMod base cl_init.lua:146-182 verbatim —— 客户端聊天行的缺省渲染：
+-- *DEAD* / (TEAM) 前缀 + 队伍色名字 + 过滤后的文本，经 chat.AddText 上屏，
+-- 返回 true 抑制引擎侧的默认打印。util.FilterText 在本分叉是直通实现。
+function GM:OnPlayerChat( player, strText, bTeamOnly, bPlayerIsDead )
+
+	--
+	-- I've made this all look more complicated than it is. Here's the easy version
+	--
+	-- chat.AddText( player, color_white, ": ", strText )
+	--
+
+	local tab = {}
+
+	if ( bPlayerIsDead ) then
+		table.insert( tab, Color( 255, 30, 40 ) )
+		table.insert( tab, language.GetPhrase( "chat.dead" ) .. " " )
+	end
+
+	if ( bTeamOnly ) then
+		table.insert( tab, Color( 30, 160, 40 ) )
+		table.insert( tab, language.GetPhrase( "chat.team" ) .. " " )
+	end
+
+	if ( IsValid( player ) ) then
+		table.insert( tab, player )
+	else
+		table.insert( tab, language.GetPhrase( "chat.console" ) )
+	end
+
+	local filter_context = TEXT_FILTER_GAME_CONTENT
+	if ( bit.band( GetConVarNumber( "cl_chatfilters" ), 64 ) != 0 ) then filter_context = TEXT_FILTER_CHAT end
+
+	table.insert( tab, color_white )
+	table.insert( tab, ": " .. util.FilterText( strText, filter_context, IsValid( player ) and player or nil ) )
+
+	chat.AddText( unpack( tab ) )
+
+	return true
+
+end
+
+-- GMod base cl_init.lua:188-215 verbatim（一处适配）：TAB 补全最近玩家名。
+-- 分叉适配：本分叉客户端没有 player.Iterator 绑定（服务端才有），用
+-- player.GetAll() + ipairs 迭代同一组玩家，语义等价。
+function GM:OnChatTab( str )
+
+	str = string.TrimRight(str)
+
+	local LastWord
+	for word in string.gmatch( str, "[^ ]+" ) do
+		LastWord = word
+	end
+
+	if ( LastWord == nil ) then return str end
+
+	for k, v in ipairs( player.GetAll() ) do
+
+		local nickname = v:Nick()
+
+		if ( string.len( LastWord ) < string.len( nickname ) && string.find( string.lower( nickname ), string.lower( LastWord ), 0, true ) == 1 ) then
+
+			str = string.sub( str, 1, ( string.len( LastWord ) * -1 ) - 1 )
+			str = str .. nickname
+			return str
+
+		end
+
+	end
+
+	return str
+
+end
+
+-- GMod base cl_init.lua:228-232 verbatim —— 引擎开聊天框时派发；返回 true
+-- 可隐藏默认聊天框（引擎侧派发尚未接线，方法先就位）。
+function GM:StartChat( teamsay )
+
+	return false
+
+end
+
+-- GMod base cl_init.lua:237-238 verbatim。
+function GM:FinishChat()
+end
+
+-- GMod base cl_init.lua:243-244 verbatim。
+function GM:ChatTextChanged( text )
+end
+
+-- GMod base cl_init.lua:249-262 verbatim —— 系统聊天区消息（TextMsg →
+-- HUD_PRINTTALK）的缺省控制台镜像；返回 true 可抑制 C++ 侧默认打印。
+function GM:ChatText( playerindex, playername, text, filter )
+
+	if ( filter == "chat" ) then
+		Msg( playername, ": ", text, "\n" )
+	else
+		Msg( text, "\n" )
+	end
+
+	return false
 
 end
 

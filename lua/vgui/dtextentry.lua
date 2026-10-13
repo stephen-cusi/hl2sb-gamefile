@@ -71,6 +71,14 @@ function PANEL:Init()
 	self:SetMouseInputEnabled( true )
 	self:SetKeyBoardInputEnabled( true )
 
+	-- GMod: dtextentry.lua:55 -- opt in to dropping the keyboard when a click
+	-- lands away from the field.  The click-away handler in
+	-- lua/derma/hl2sb_derma_menus.lua reads this field, so only a DTextEntry (and
+	-- its subclasses: DComboBox/DNumSlider editors, the spawnmenu search, ...)
+	-- loses focus on an outside click.  Native engine text entries -- above all
+	-- the chatbox -- never set it and so keep their focus, exactly like GMod.
+	self.m_bLoseFocusOnClickAway = true
+
 	self.m_strPlaceholder = ""
 	self.m_strFont = "DermaDefault"
 

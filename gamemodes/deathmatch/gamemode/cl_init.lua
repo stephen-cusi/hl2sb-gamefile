@@ -28,6 +28,9 @@ local TauntCam = TauntCamera()
 -- cl_init.lua includes these itself and the two lines here come off.
 include( "gamemodes/base/gamemode/cl_targetid.lua" )
 include( "gamemodes/base/gamemode/cl_spawnmenu.lua" )
+-- HL2SB (2026-10-13): the base voice HUD (cl_voice.lua) now rides the base
+-- gamemode's own cl_init.lua include (LUA_BASE_GAMEMODE is "base", GMod's
+-- structure), so it is not pulled in here again.
 
 -------------------------------------------------------------------------------
 -- HL2SB (2026-10-08): GMod base cl_init.lua:124-145 verbatim - team colour

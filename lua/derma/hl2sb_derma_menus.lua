@@ -105,7 +105,10 @@ hook.Add( "Think", "HL2SB_DermaClickAway", function()
 
 			local pnl = hovered
 			while ( IsValid( pnl ) ) do
-				if ( pnl.m_bIsMenu ) then inMenu = true end
+				-- GMod's DermaDetectMenuFocus spares a panel whose parent chain
+				-- hits a menu component (m_bIsMenuComponent, e.g. a DComboBox or
+				-- the menu itself); the fork's menus also flag m_bIsMenu.
+				if ( pnl.m_bIsMenu or pnl.m_bIsMenuComponent ) then inMenu = true end
 				if ( focused ~= nil and pnl == focused ) then inFocused = true end
 				pnl = ( pnl.GetParent ~= nil ) and pnl:GetParent() or nil
 			end
@@ -114,8 +117,17 @@ hook.Add( "Think", "HL2SB_DermaClickAway", function()
 				CloseDermaMenus()
 			end
 
-			-- a text entry keeps the keyboard only while the press is inside it
-			if ( focused ~= nil and not inFocused and focused.KillFocus ~= nil ) then
+			-- GMod parity (lua/vgui/dtextentry.lua:419 TextEntryLoseFocus): only a
+			-- text entry that opted in through m_bLoseFocusOnClickAway drops its
+			-- keyboard when the click lands away from it.  The engine chat entry
+			-- (CBaseHudChatEntry, a native TextEntry) never sets that field, so
+			-- GMod leaves the chatbox focused wherever you click.  The old
+			-- UNCONDITIONAL KillFocus here stole the chat focus on the first click
+			-- away from the input strip -- and the cursor is parked on the chatbox
+			-- the moment it opens -- after which typing, ENTER and ESC all went
+			-- dead (they are handled by the chat entry) and the box stayed up with
+			-- the escape-to-show gate still set: the stuck chatbox.
+			if ( focused ~= nil and not inFocused and focused.m_bLoseFocusOnClickAway and focused.KillFocus ~= nil ) then
 				focused:KillFocus()
 			end
 		end
@@ -264,48 +276,87 @@ end
 --[[---------------------------------------------------------------------------
 	Derma_Anim - the tiny animation helper GMod's skins use for fades.
 
-	GMod's contract (gmod/derma/derma_animation.lua) is func( panel, anim,
-	delta, data ) with the panel FIRST -- a method like
-	`PANEL:AnimSlide( anim, delta, data )` binds self to the panel.  The
-	previous call here passed ( anim, name, panel, progress, data ), which made
-	DTree_Node's AnimSlide run with self = the animation TABLE and anim = the
-	NAME STRING -- node expansion died on "attempt to index a string value".
-
-	Like GMod, an anim is inert until Start() (Running), and Run() ticks it;
-	Active() answers Running.  The old Finished-at-creation made Active() true
-	and Run() crash on "Start == nil" for every anim that was never started.
+	GMod's contract (garrysmod/lua/derma/derma_animation.lua), now ported
+	verbatim (2026-10-13): func( panel, anim, delta, data ) with the panel
+	FIRST -- a method like `PANEL:AnimSlide( anim, delta, data )` binds self
+	to the panel.  An anim is inert until Start(); Run() ticks it; and when
+	the clock passes EndTime the NEXT Run() calls the function one last time
+	with Finished set and delta 1, so a cleanup branch inside the same
+	callback can act -- the base voice HUD's FadeOut removes its panel on
+	that pass, which the old stop-at-progress-1 version never did (panels
+	faded to invisible and stayed in the list forever).  Start() stamps
+	StartTime/EndTime (the old `self.Start = ...` also shadowed the Start
+	METHOD on the instance, so a second Start() call died on "attempt to
+	call a number value").  Active() keeps this fork's boolean answer --
+	GMod returns the raw Running flag, and truthiness matches everywhere.
 -----------------------------------------------------------------------------]]
 local DermaAnimation = {}
 DermaAnimation.__index = DermaAnimation
 
-function DermaAnimation:SetData( data ) self.Data = data end
-function DermaAnimation:Start( length, data )
-	self.Length = length or 1
-	self.Start = SysTime()
-	self.Running = true
-	self:SetData( data )
-end
-function DermaAnimation:Stop() self.Running = false end
-function DermaAnimation:Active() return self.Running == true end
 function DermaAnimation:Run()
-	if ( not self.Running ) then return end
 
-	local elapsed = SysTime() - ( self.Start or 0 )
-	local progress = elapsed / math.max( 0.0001, self.Length or 1 )
-	if ( progress < 0 ) then progress = 0 elseif ( progress > 1 ) then progress = 1 end
+	if ( !self.Running ) then return end
 
-	-- GMod's callback order: panel, anim, delta, data.
-	self.CallFunc( self.Panel, self, progress, self.Data )
-	if ( progress >= 1 ) then self.Running = false end
+	local time = SysTime()
+	local delta = ( time - self.StartTime ) / self.Length
+	delta = delta ^ ( 1.0 - ( delta - 0.5 ) )
+
+	-- If we have ended we run once more with the Finished member set
+	-- This allows us to clean up in the same function..
+	if ( time > self.EndTime ) then
+
+		self.Finished = true
+		self.Running = nil
+		delta = 1
+
+	end
+
+	self.Func( self.Panel, self, delta, self.Data )
+	self.Started = nil
+
 end
 
-function Derma_Anim( strName, panel, func )
-	local anim = setmetatable( {}, DermaAnimation )
-	anim.Name = strName
+function DermaAnimation:Start( Length, Data )
+
+	if ( self.Length == 0 ) then return end
+
+	self.Running = true
+	self.Started = true
+	self.Finished = nil
+	self.Length = Length
+	self.StartTime = SysTime()
+	self.EndTime = SysTime() + Length
+
+	self.Data = Data
+
+end
+
+function DermaAnimation:Stop()
+
+	if ( !self.Running ) then return end
+
+	self.Finished = true
+	self.Running = nil
+
+end
+
+function DermaAnimation:Active()
+
+	return self.Running == true
+
+end
+
+function Derma_Anim( name, panel, func )
+
+	local anim = {}
+	anim.Name = name
 	anim.Panel = panel
-	anim.CallFunc = func
-	anim.Running = false
+	anim.Func = func
+
+	setmetatable( anim, DermaAnimation )
+
 	return anim
+
 end
 
 print( "[HL2SB] derma helpers loaded (menus/modals/anim/skinhook)" )
