@@ -37,10 +37,12 @@ end
 local Errors = {}
 local MAX_KEPT = 50
 
-hook.add( "LuaError", "hl2sb_lua_errors", function( message, traceback )
+hook.add( "LuaError", "hl2sb_lua_errors", function( message, traceback, realm, addon )
     table.insert( Errors, 1, {
         message   = tostring( message ),
         traceback = tostring( traceback or "" ),
+        realm     = tostring( realm or "" ),
+        addon     = addon,
         time      = CurTime(),
         map       = game and game.GetMap and game.GetMap() or "?",
     } )
@@ -142,7 +144,11 @@ local function OpenErrors()
         local label = vgui.Create( sLabel, host, "Err" .. shown )
         label:SetPos( 16, y )
         label:SetSize( wWide - 48, 20 )
-        label:SetText( string.format( "[%.0fs] %s", entry.time or 0, summarise( entry.message ) ) )
+        local tag = ""
+        if ( entry.addon ~= nil and entry.addon ~= "" and entry.addon ~= "Other" ) then
+            tag = "[" .. entry.addon .. "] "
+        end
+        label:SetText( string.format( "[%.0fs] %s%s (%s)", entry.time or 0, tag, summarise( entry.message ), entry.realm or "" ) )
         Colour( label, COL_MESSAGE )
 
         -- The first frame of the traceback, which is where it actually broke.

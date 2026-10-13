@@ -11,8 +11,12 @@ if ( not _GAMEUI or MENU == nil ) then return end
 MENU.Errors = MENU.Errors or {}
 
 if ( hook ~= nil and hook.Add ~= nil ) then
-    hook.Add( "LuaError", "hl2sb_menu_errors", function( err )
-        MENU.Errors[ #MENU.Errors + 1 ] = tostring( err )
+    hook.Add( "LuaError", "hl2sb_menu_errors", function( err, traceback, realm, addon )
+        MENU.Errors[ #MENU.Errors + 1 ] = {
+            message = tostring( err ),
+            realm   = realm,
+            addon   = addon,
+        }
     end )
 end
 
@@ -25,15 +29,27 @@ MENU.Register( {
 
         local shown = 0
 
-        for i, err in ipairs( MENU.Errors ) do
+        for i, entry in ipairs( MENU.Errors ) do
             if ( shown < 40 ) then
                 shown = shown + 1
+
+                -- entries are tables now; tolerate a bare string defensively
+                local text
+                if ( type( entry ) == "table" ) then
+                    local tag = ""
+                    if ( entry.addon ~= nil and entry.addon ~= "" and entry.addon ~= "Other" ) then
+                        tag = "[" .. entry.addon .. "] "
+                    end
+                    text = tag .. entry.message .. ( entry.realm and ( " (" .. entry.realm .. ")" ) or "" )
+                else
+                    text = tostring( entry )
+                end
 
                 local lbl = vgui.Create( "Label", list )
                 if ( lbl ~= nil ) then
                     lbl:Dock( 1 )   -- DOCK_TOP
                     lbl:SetTall( 22 )
-                    lbl:SetText( "• " .. tostring( err ) )
+                    lbl:SetText( "• " .. text )
                     MENU.UseFont( lbl )
                 end
             end

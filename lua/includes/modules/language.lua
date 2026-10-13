@@ -232,6 +232,40 @@ AddTable(
 		en			= "None",
 		schinese	= "\u{65e0}",
 	},
+
+	-- GMod's error-notification phrases (lua/menu/errors.lua).  The fork now
+	-- fires GM:OnLuaError and draws the same top-left toast; these back the
+	-- "The addon "%s" is creating errors" text.  Values verbatim from GMod's
+	-- main_menu.properties, CJK kept as \u{} escapes so the file stays ASCII.
+	[ "errors.something" ] =
+	{
+		en			= "Something is creating script errors",
+		schinese	= "\u{6709}\u{63d2}\u{4ef6}\u{6b63}\u{5728}\u{53d1}\u{751f}\u{811a}\u{672c}\u{9519}\u{8bef}",
+	},
+
+	[ "errors.addon" ] =
+	{
+		en			= "The addon \"%s\" is creating errors, check the console for details",
+		schinese	= "\u{63d2}\u{4ef6}\u{201c}%s\u{201d}\u{6b63}\u{5728}\u{53d1}\u{751f}\u{9519}\u{8bef}\u{ff0c}\u{8bf7}\u{68c0}\u{67e5}\u{63a7}\u{5236}\u{53f0}\u{83b7}\u{53d6}\u{8be6}\u{7ec6}\u{4fe1}\u{606f}",
+	},
+
+	[ "errors.something_p" ] =
+	{
+		en			= "Something is creating script errors, check the Problems menu for details",
+		schinese	= "\u{6709}\u{4e9b}\u{4e1c}\u{897f}\u{6b63}\u{5728}\u{4ea7}\u{751f}\u{811a}\u{672c}\u{9519}\u{8bef}\u{ff0c}\u{8bf7}\u{68c0}\u{67e5}\u{95ee}\u{9898}\u{83dc}\u{5355}\u{4ee5}\u{4e86}\u{89e3}\u{8be6}\u{60c5}\u{3002}",
+	},
+
+	[ "errors.addon_p" ] =
+	{
+		en			= "The addon \"%s\" is creating errors, check the Problems menu for details",
+		schinese	= "\u{63d2}\u{4ef6}\u{201c}%s \u{201d}\u{6b63}\u{5728}\u{4ea7}\u{751f}\u{9519}\u{8bef}\u{ff0c}\u{8bf7}\u{67e5}\u{770b}\u{95ee}\u{9898}\u{83dc}\u{5355}\u{4ee5}\u{4e86}\u{89e3}\u{8be6}\u{60c5}\u{3002}",
+	},
+
+	[ "errors.problem" ] =
+	{
+		en			= "Encountered a problem \"%s\", check the Problems menu for details",
+		schinese	= "\u{9047}\u{5230}\u{4e86}\u{4e00}\u{4e2a}\u{95ee}\u{9898}\u{201c}%s\u{201d}\u{ff0c}\u{8bf7}\u{68c0}\u{67e5}\u{201c}\u{95ee}\u{9898}\u{201d}\u{83dc}\u{5355}\u{4ee5}\u{4e86}\u{89e3}\u{8be6}\u{60c5}",
+	},
 } )
 
 -------------------------------------------------------------------------------
