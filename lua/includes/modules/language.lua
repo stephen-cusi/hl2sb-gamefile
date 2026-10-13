@@ -214,6 +214,24 @@ AddTable(
 		en			= "Spawn 5",
 		schinese	= "\u{751f}\u{6210} 5 \u{4e2a}",
 	},
+
+	[ "hl2sb.spawnmenu.npc_weapon" ] =
+	{
+		en			= "NPC weapon",
+		schinese	= "NPC \u{6b66}\u{5668}",
+	},
+
+	[ "hl2sb.spawnmenu.npc_weapon_default" ] =
+	{
+		en			= "Default (NPC's own)",
+		schinese	= "\u{9ed8}\u{8ba4}\u{ff08}NPC \u{81ea}\u{5e26}\u{ff09}",
+	},
+
+	[ "hl2sb.spawnmenu.npc_weapon_none" ] =
+	{
+		en			= "None",
+		schinese	= "\u{65e0}",
+	},
 } )
 
 -------------------------------------------------------------------------------

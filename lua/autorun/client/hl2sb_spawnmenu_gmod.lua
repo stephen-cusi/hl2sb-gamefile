@@ -138,6 +138,89 @@ local function CategoryLabel( c )
 end
 
 -- ---------------------------------------------------------------------------
+-- global NPC weapon (v5, GMod's gmod_npcweapon)
+--
+-- GMod keeps one convar that "overrides the weapon all spawnmenu NPCs will spawn
+-- with" (gamemodes/sandbox/gamemode/spawnmenu/creationmenu/content/contenticon.lua):
+-- "" = the NPC's own default, "none" = unarmed, otherwise a class from
+-- list.Get( "NPCUsableWeapons" ).  The menu here sends the choice as the weapon
+-- slot of gm_spawnnpc (the engine applies it as `additionalequipment` before
+-- Spawn), and mirrors the choice to the engine's "gmod_npcweapon" convar so a
+-- non-menu spawn reads the same value.  Persistence is this archived CLIENT
+-- convar -- the engine cvar is a SERVER ConVar the client cannot write directly.
+-- ---------------------------------------------------------------------------
+
+local cvarNpcWep = ( CreateClientConVar ~= nil )
+	and CreateClientConVar( "hl2sb_spawnmenu_npcweapon", "", true, false,
+		"Weapon given to NPCs spawned from the spawn menu (empty = the NPC's own default, none = unarmed)" )
+	or nil
+
+local g_NpcWeaponCombo = nil
+
+local function GetNpcWeapon()
+	if ( cvarNpcWep ~= nil and cvarNpcWep.GetString ~= nil ) then
+		local ok, v = pcall( cvarNpcWep.GetString, cvarNpcWep )
+		if ( ok and isstring( v ) ) then return v end
+	end
+	return ""
+end
+
+local function SetNpcWeapon( v )
+	v = tostring( v or "" )
+
+	if ( cvarNpcWep ~= nil and cvarNpcWep.SetString ~= nil ) then
+		pcall( cvarNpcWep.SetString, cvarNpcWep, v )
+	end
+
+	-- mirror to the engine convar (best effort: a server-only ConVar is not
+	-- writable from the client, but where it IS present this keeps the two in
+	-- step for spawns that do not go through this menu)
+	if ( RunConsoleCommand ~= nil ) then
+		RunConsoleCommand( "gmod_npcweapon", v )
+	end
+end
+
+-- The choices the picker offers: Default, None, then every class GMod registered
+-- into NPCUsableWeapons (game_hl2.lua), titled in the UI language.
+local function NpcWeaponChoices()
+	local out = {
+		{ text = Phrase( "hl2sb.spawnmenu.npc_weapon_default" ), value = "" },
+		{ text = Phrase( "hl2sb.spawnmenu.npc_weapon_none" ),    value = "none" },
+	}
+
+	local reg = ( list ~= nil and list.Get ) and list.Get( "NPCUsableWeapons" ) or nil
+	if ( istable( reg ) ) then
+		local seen, weps = {}, {}
+		for _, entry in pairs( reg ) do
+			if ( istable( entry ) and isstring( entry.class ) and entry.class ~= "" and not seen[ entry.class ] ) then
+				seen[ entry.class ] = true
+				weps[ #weps + 1 ] = { value = entry.class, text = Phrase( tostring( entry.title or ( "#" .. entry.class ) ) ) }
+			end
+		end
+		table.sort( weps, function( a, b ) return string.lower( a.text ) < string.lower( b.text ) end )
+		for _, w in ipairs( weps ) do out[ #out + 1 ] = w end
+	end
+
+	return out
+end
+
+-- point the picker at the current value (falls back to the first choice when the
+-- stored value is no longer in the list)
+local function SyncNpcWeaponCombo()
+	local combo = g_NpcWeaponCombo
+	if ( combo == nil or not IsValid( combo ) or combo.Count == nil ) then return end
+
+	local want = GetNpcWeapon()
+	for i = 1, combo:Count() do
+		if ( combo:GetOptionData( i ) == want ) then
+			combo:ChooseOptionID( i )
+			return
+		end
+	end
+	if ( combo:Count() > 0 ) then combo:ChooseOptionID( 1 ) end
+end
+
+-- ---------------------------------------------------------------------------
 -- stock content (what no registry carries)
 -- ---------------------------------------------------------------------------
 
@@ -432,6 +515,10 @@ local function CollectNPCs()
 						and ( tonumber( data.SpawnFlags or data.TotalSpawnFlags ) or nil ) or nil,
 					skin       = ( data.Skin ~= nil ) and ( tonumber( data.Skin ) or nil ) or nil,
 					health     = ( data.Health ~= nil ) and ( tonumber( data.Health ) or nil ) or nil,
+					-- GMod's registration Weapons list: with the global picker
+					-- left on Default, one of these is chosen at random as the
+					-- spawn weapon (contenticon.lua "table.Random( obj.weapon )").
+					weapons    = ( istable( data.Weapons ) ) and data.Weapons or nil,
 				}
 				byKey[ e.key ] = e
 			end
@@ -568,12 +655,26 @@ local function SpawnEntry( e )
 	if ( e.cat == "weapon" ) then
 		line = "gm_giveswep " .. e.class
 	elseif ( e.cat == "npc" ) then
-		-- slot 2 is the weapon override (empty = the NPC's own / gmod_npcweapon),
-		-- slot 3 the display name for undo + kill feed, slot 4 the reskin model
-		-- (reskin packs register Class = a stock NPC + their own Model), slots
-		-- 5.. the registry KeyValues as name/value pairs
-		line = "gm_spawnnpc " .. e.class .. ' "" ' .. Q( e.name )
-			.. ( ( e.model and e.model ~= "" ) and ( " " .. Q( e.model ) ) or "" )
+		-- slot 2 is the weapon override.  GMod's rule (contenticon.lua): the
+		-- global picker wins when set ("" = Default, "none" = unarmed, else a
+		-- class); with Default, one of the entry's OWN Weapons is chosen at
+		-- random.  slot 3 the display name for undo + kill feed, slot 4 the
+		-- reskin model (reskin packs register Class = a stock NPC + their own
+		-- Model), slots 5.. the registry KeyValues as name/value pairs
+		local weapon = GetNpcWeapon()
+		if ( weapon == "" and istable( e.weapons ) and #e.weapons > 0 ) then
+			weapon = e.weapons[ math.random( #e.weapons ) ]
+		end
+		line = "gm_spawnnpc " .. e.class .. " " .. Q( weapon ) .. " " .. Q( e.name )
+			.. ( ( e.model and e.model ~= "" ) and ( " " .. Q( e.model ) ) or ' ""' )
+			-- the MODEL slot above is ALWAYS emitted, even when empty.  It has to
+			-- be there: the engine reads the model from slot 4 and the KeyValues
+			-- from slot 5 on, so an entry that has KeyValues but no model (every
+			-- stock citizen variant -- citizentype/SquadName) used to shift them
+			-- one slot left, and "citizentype" was consumed as the model path.
+			-- The result was that Citizen / Rebel / Medic / Refugee all lost
+			-- their citizentype and fell back to the SAME random Downtrodden
+			-- citizen -- "the menu only has one random citizen".
 		-- GMod ships list.Set( "NPC", ... ) data.KeyValues through gmod_spawnnpc's
 		-- net table; here they ride the concommand.  Without the hutao pack's
 		-- citizentype = 4 (CT_UNIQUE), npc_citizen rewrites the reskin model into
@@ -789,6 +890,24 @@ end
 local function MakeCell( e )
 	local icon = g_Layout.icon
 
+	-- GMod plays this on every content-icon click (contenticon.lua / SpawnIcon:
+	-- surface.PlaySound( "ui/buttonclickrelease.wav" )); the fork's cells never
+	-- did, so the menu was silent.  It has to be the CLICK, not SpawnEntry --
+	-- the right-click menu's options must stay silent.
+	local function CellClick( ent )
+		if ( surface ~= nil and surface.PlaySound ~= nil ) then
+			pcall( surface.PlaySound, "ui/buttonclickrelease.wav" )
+		end
+		SpawnEntry( ent )
+	end
+
+	-- Press feedback: GMod insets the icon by a border while the button is held
+	-- (contenticon.lua Paint: Border 0 -> 8, the image drawn 128-8-Border*2), so
+	-- the picture visibly shrinks under the finger.  Same here with a 6px inset.
+	local function PressPad( pnl )
+		return ( pnl.m_bDepressed or pnl.Depressed ) and 6 or 0
+	end
+
 	-- 1) a shipped icon image: static and exact, what GMod shows for anything
 	--    that ships one (materials/entities/<name>.png; IconOverride rides)
 	local iconPath = ProbeIconPath( e )
@@ -811,19 +930,20 @@ local function MakeCell( e )
 					surface.SetDrawColor( 45, 48, 52, 255 )
 					surface.DrawRect( 0, 0, w, h )
 
+					local pad = PressPad( pnl )
 					local bReady = not ( mat.IsError and mat:IsError() )
 					if ( bReady ) then
 						surface.SetMaterial( mat )
 						surface.SetDrawColor( 255, 255, 255, 255 )
-						surface.DrawTexturedRect( 0, 0, w, h )
+						surface.DrawTexturedRect( pad, pad, w - pad * 2, h - pad * 2 )
 					else
 						surface.SetDrawColor( 70, 75, 82, 255 )
-						surface.DrawOutlinedRect( 0, 0, w, h )
+						surface.DrawOutlinedRect( pad, pad, w - pad * 2, h - pad * 2 )
 					end
 					draw.SimpleText( label, "DermaDefault", w / 2, h - 8, Color( 220, 220, 220, 255 ), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
 				end
 				pcall( function() btn:SetTooltip( ( e.name or e.class ) .. "\n" .. e.class ) end )
-				btn.DoClick = function() SpawnEntry( e ) end
+				btn.DoClick = function() CellClick( e ) end
 				btn.DoRightClick = function() EntryMenu( e ) end
 				return btn, "image"
 			end
@@ -852,7 +972,7 @@ local function MakeCell( e )
 			local okSet, errSet = pcall( function() spicon:SetModel( mdl, 0, "" ) end )
 			if ( okSet ) then
 				pcall( function() spicon:SetTooltip( ( e.name or e.class ) .. "\n" .. mdl ) end )
-				spicon.DoClick = function() SpawnEntry( e ) end
+				spicon.DoClick = function() CellClick( e ) end
 				spicon.DoRightClick = function() EntryMenu( e ) end
 				spicon.OpenMenu = function() EntryMenu( e ) end
 				return spicon, "spawnicon"
@@ -874,12 +994,13 @@ local function MakeCell( e )
 		btn.Paint = function( pnl, w, h )
 			surface.SetDrawColor( 45, 48, 52, 255 )
 			surface.DrawRect( 0, 0, w, h )
+			local pad = PressPad( pnl )
 			surface.SetDrawColor( 70, 75, 82, 255 )
-			surface.DrawOutlinedRect( 0, 0, w, h )
+			surface.DrawOutlinedRect( pad, pad, w - pad * 2, h - pad * 2 )
 			draw.SimpleText( label, "DermaDefault", w / 2, h - 8, Color( 220, 220, 220, 255 ), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
 		end
 		pcall( function() btn:SetTooltip( ( e.name or e.class ) .. "\n" .. e.class ) end )
-		btn.DoClick = function() SpawnEntry( e ) end
+		btn.DoClick = function() CellClick( e ) end
 		btn.DoRightClick = function() EntryMenu( e ) end
 		return btn, "blank"
 	end
@@ -890,7 +1011,7 @@ local function MakeCell( e )
 	btn:SetWrap( true )
 		btn:SetContentAlignment( 5 )
 	btn:SetTooltip( ( e.name or e.class ) .. "\n" .. e.class )
-	btn.DoClick = function() SpawnEntry( e ) end
+	btn.DoClick = function() CellClick( e ) end
 	btn.DoRightClick = function() EntryMenu( e ) end
 	return btn, "text"
 end
@@ -1148,6 +1269,32 @@ local function BuildMenu()
 		tx = tx + tabW + 4
 	end
 
+	-- global NPC weapon picker (GMod's gmod_npcweapon): right-aligned in the top
+	-- row, left of nothing else.  It drives every NPC spawned from the NPCs tab.
+	local capW   = bTouch and 130 or 92
+	local comboW = bTouch and 200 or 180
+	local comboX = frame:GetWide() - pad - comboW
+	local capX   = comboX - capW - 6
+
+	local wepCaption = vgui.Create( "DLabel", frame )
+	wepCaption:SetText( Phrase( "hl2sb.spawnmenu.npc_weapon" ) )
+	wepCaption:SetPos( capX, pad + 3 )
+	wepCaption:SetSize( capW, btnH )
+	wepCaption:SetContentAlignment( 8 )		-- right, so it hugs the combo
+
+	local combo = vgui.Create( "DComboBox", frame )
+	combo:SetPos( comboX, pad )
+	combo:SetSize( comboW, btnH )
+	local choices = NpcWeaponChoices()
+	for _, c in ipairs( choices ) do
+		combo:AddChoice( c.text, c.value, false )
+	end
+	combo.OnSelect = function( self, index, value, data )
+		SetNpcWeapon( data or "" )
+	end
+	g_NpcWeaponCombo = combo
+	SyncNpcWeaponCombo()
+
 	-- category sidebar
 	local topY = pad + btnH + 6
 	local side = vgui.Create( "DPanelList", frame )
@@ -1167,11 +1314,14 @@ local function BuildMenu()
 	grid:SetSpacing( spacing )
 	grid:SetPadding( 6 )
 
-	-- hint
+	-- hint: sits between the tabs and the NPC-weapon picker, left-aligned
+	local hintX = tx + 12
+	local hintW = capX - 8 - hintX
+	if ( hintW < 40 ) then hintW = 40 end
 	local hint = vgui.Create( "DLabel", frame )
-	hint:SetPos( frame:GetWide() - 330 - pad, pad + 4 )
-	hint:SetSize( 320, 18 )
-	hint:SetContentAlignment( 9 )
+	hint:SetPos( hintX, pad + 4 )
+	hint:SetSize( hintW, 18 )
+	hint:SetContentAlignment( 4 )
 	hint:SetText( "" )
 
 	g_Frame, g_Grid, g_Side, g_Search, g_Hint = frame, grid, side, search, hint
@@ -1229,6 +1379,7 @@ local function Open()
 
 	g_Search:SetValue( "" )
 	SetActiveTab( g_ActiveTab or "entities" )
+	SyncNpcWeaponCombo()
 	g_Frame:SetVisible( true )
 	g_Frame:MakePopup()
 	g_Frame:MoveToFront()

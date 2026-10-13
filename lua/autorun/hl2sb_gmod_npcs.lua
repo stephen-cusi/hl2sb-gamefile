@@ -12,8 +12,9 @@
 	    as Lua globals, so the numeric values ride inline (same numbers as
 	    the engine headers: SF_NPC_DROP_HEALTHKIT = 1<<3, SF_CITIZEN_MEDIC
 	    = 1<<17, SF_CITIZEN_RANDOM_HEAD = 1<<18, SF_FLOOR_TURRET_CITIZEN =
-	    0x200, SF_NPC_NO_PLAYER_PUSHAWAY = 1<<14; CT_DOWNTRODDEN=0,
-	    CT_REFUGEE=1, CT_REBEL=2, CT_UNIQUE=3).
+	    0x200, SF_NPC_NO_PLAYER_PUSHAWAY = 1<<14; CT_DEFAULT=0,
+	    CT_DOWNTRODDEN=1, CT_REFUGEE=2, CT_REBEL=3, CT_UNIQUE=4 -- the enum
+	    in npc_citizen17.h, do NOT shift these).
 	  * Names stay the "#class" tokens GMod registers.  language.GetPhrase
 	    resolves them against GMod's resource/localization files (copied into
 	    the mod's resource/localization/), which name every built-in NPC in
@@ -23,9 +24,9 @@
 	  * The IsMounted( "lostcoast" / "hl1" / "portal" ) blocks are kept
 	    verbatim; this fork answers false and they skip themselves.
 	  * data.Weapons (GMod gives freshly spawned NPCs one of their listed
-	    weapons) is stored but not dispatched: the fork's gm_spawnnpc takes a
-	    single weapon override, not a random pick out of a list.  KeyValues,
-	    SpawnFlags, Skin and Health DO ride -- the menu forwards them.
+	    weapons) is forwarded: the spawn menu picks one at random when its
+	    global NPC-weapon picker is on Default (see hl2sb_spawnmenu_gmod.lua).
+	    KeyValues, SpawnFlags, Skin and Health ride the same way.
 	  * autorun/*.lua runs on BOTH realms (GMod keeps its copy there too);
 	    the list is client-side spawn data and is harmless on the server.
 ----------------------------------------------------------------------------]]
@@ -112,7 +113,7 @@ AddNPC( {
 AddNPC( {
 	Class = "npc_citizen",
 	Category = Category,
-	KeyValues = { citizentype = 0, SquadName = "resistance" }, -- CT_DOWNTRODDEN
+	KeyValues = { citizentype = 1, SquadName = "resistance" }, -- CT_DOWNTRODDEN
 	Weapons = { "" } -- Tells the spawnmenu that this NPC can use weapons, but doesn't have any default ones
 } )
 
@@ -121,7 +122,7 @@ AddNPC( {
 	Class = "npc_citizen",
 	Category = Category,
 	SpawnFlags = 262144, -- SF_CITIZEN_RANDOM_HEAD
-	KeyValues = { citizentype = 2, SquadName = "resistance" }, -- CT_REBEL
+	KeyValues = { citizentype = 3, SquadName = "resistance" }, -- CT_REBEL
 	Weapons = { "weapon_pistol", "weapon_smg1", "weapon_ar2", "weapon_shotgun", "weapon_rpg" }
 }, "Rebel" )
 
@@ -129,7 +130,7 @@ AddNPC( {
 	Class = "npc_citizen",
 	Category = Category,
 	Model = "models/odessa.mdl",
-	KeyValues = { citizentype = 3, SquadName = "resistance" }, -- CT_UNIQUE
+	KeyValues = { citizentype = 4, SquadName = "resistance" }, -- CT_UNIQUE (keeps the model)
 	Weapons = { "" }
 }, "npc_odessa" )
 
@@ -138,7 +139,7 @@ AddNPC( {
 	Class = "npc_citizen",
 	Category = Category,
 	SpawnFlags = SERVER and bit.bor( 8, 131072 ) or nil, -- SF_NPC_DROP_HEALTHKIT | SF_CITIZEN_MEDIC
-	KeyValues = { citizentype = 2, SquadName = "resistance" }, -- CT_REBEL
+	KeyValues = { citizentype = 3, SquadName = "resistance" }, -- CT_REBEL (medic = Group03m)
 	Weapons = { "weapon_pistol", "weapon_smg1", "weapon_ar2" }
 }, "Medic" )
 
@@ -146,7 +147,7 @@ AddNPC( {
 	Name = "#npc_citizen_refugee",
 	Class = "npc_citizen",
 	Category = Category,
-	KeyValues = { citizentype = 1, SquadName = "resistance" }, -- CT_REFUGEE
+	KeyValues = { citizentype = 2, SquadName = "resistance" }, -- CT_REFUGEE
 	Weapons = { "weapon_pistol", "weapon_smg1" }
 }, "Refugee" )
 
@@ -494,7 +495,7 @@ AddNPC( {
 AddNPC( {
 	Class = "npc_citizen",
 	Category = Category,
-	KeyValues = { citizentype = 2, SquadName = "overwatch", Hostile = "1" }, -- CT_REBEL
+	KeyValues = { citizentype = 3, SquadName = "overwatch", Hostile = "1" }, -- CT_REBEL
 	Weapons = { "weapon_pistol", "weapon_smg1", "weapon_ar2", "weapon_shotgun", "weapon_rpg" }
 }, "npc_citizen_rebel_enemy" )
 
