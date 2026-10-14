@@ -6,6 +6,10 @@
 
 include( "ammo.lua" )
 
+-- HL2SB: 沙盒上限体系的本体（GMod 同位文件、同位 include——GMod 把它放在
+-- sandbox/gamemode/shared.lua，双 realm 都加载；客户端靠网络化的 Count.* 读数）。
+include( "player_extension.lua" )
+
 GM.Name			= "Sandbox"
 GM.Homepage		= "http://www.andrewmcwatters.com/hl2sb/"
 GM.Developer	= "Team Sandbox"

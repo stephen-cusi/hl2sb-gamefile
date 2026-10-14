@@ -6,6 +6,9 @@
 
 include( "shared.lua" )
 include( "player_class/player_sandbox.lua" )
+-- HL2SB: 生成上限的 gamemode 层（GMod 同位文件、同位 include）。必须有：
+-- 引擎侧生成命令与复制/粘贴都靠 gamemode.Call( "PlayerSpawn.." ) 问这里。
+include( "player.lua" )
 
 -------------------------------------------------------------------------------
 -- HL2SB: Sandbox convars aligning with GMod's sandbox settings.
@@ -102,79 +105,11 @@ function GM:EntityTakeDamage( ent, info )
   end
 end
 
--- Player limit methods matching standard GMod sandbox behavior.
-g_SBoxObjects = g_SBoxObjects or {}
-
-local plymeta = FindMetaTable( "Player" )
-if ( plymeta ~= nil ) then
-  function plymeta:GetCount( countType )
-    local key = ( self.UniqueID ~= nil and self:UniqueID() ) or self:EntIndex()
-    local tab = g_SBoxObjects[ key ]
-    if ( not tab or not tab[ countType ] ) then return 0 end
-
-    local c = 0
-    for k, v in pairs( tab[ countType ] ) do
-      if ( IsValid( v ) ) then
-        c = c + 1
-      else
-        tab[ countType ][ k ] = nil
-      end
-    end
-    return c
-  end
-
-  function plymeta:AddCount( countType, ent )
-    if ( not IsValid( ent ) ) then return end
-    local key = ( self.UniqueID ~= nil and self:UniqueID() ) or self:EntIndex()
-    g_SBoxObjects[ key ] = g_SBoxObjects[ key ] or {}
-    g_SBoxObjects[ key ][ countType ] = g_SBoxObjects[ key ][ countType ] or {}
-
-    table.insert( g_SBoxObjects[ key ][ countType ], ent )
-
-    if ( ent.CallOnRemove ~= nil ) then
-      ent:CallOnRemove( "SBoxCountUpdate_" .. tostring( ent:EntIndex() ), function()
-        if ( IsValid( self ) ) then
-          self:GetCount( countType )
-        end
-      end )
-    end
-  end
-
-  if ( plymeta.CheckLimit == nil ) then
-    function plymeta:CheckLimit( str )
-      if ( game.SinglePlayer() ) then return true end
-
-      local c = cvars.Number( "sbox_max" .. str, -1 )
-      if ( c < 0 ) then return true end
-
-      local count = self:GetCount( str )
-
-      local ret = hook.Run( "PlayerCheckLimit", self, str, count, c )
-      if ( ret != nil ) then
-        if ( not ret and SERVER and self.LimitHit ~= nil ) then self:LimitHit( str ) end
-        return ret
-      end
-
-      if ( count >= c ) then
-        if ( SERVER and self.LimitHit ~= nil ) then self:LimitHit( str ) end
-        return false
-      end
-
-      return true
-    end
-  end
-
-  if ( plymeta.LimitHit == nil ) then
-    function plymeta:LimitHit( str )
-      -- HL2SB: GMod routes the hit to the client's GM:LimitHit (sandbox
-      -- cl_init.lua: notification + error sound).  A bare hook.Run('LimitHit')
-      -- on the client had no consumer and printed nothing.
-      if ( self.SendLua ~= nil ) then
-        self:SendLua( string.format( "if GAMEMODE and GAMEMODE.LimitHit then GAMEMODE:LimitHit( %q ) end", str ) )
-      end
-    end
-  end
-end
+-- 上限体系（CheckLimit / GetCount / AddCount / LimitHit）在
+-- sandbox/gamemode/player_extension.lua —— GMod 同位文件，由 shared.lua
+-- include（双 realm）。这里早先内联过一份简化版，已删除：它用的是
+-- cvars.Number 的 -1 兜底（查不到 convar 就静默放行）、计数不网络化，
+-- 且与 GMod 的语义（默认 0、Count.* 同步、批量刷新）不一致。
 
 local tSpawnPointClassnames = {
   "info_player_deathmatch",
