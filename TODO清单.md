@@ -83,11 +83,13 @@ hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移�
 - [x] 武器钩子批（2026-10-13）：PlayerDroppedWeapon/PlayerAmmoChanged/PlayerSwitchWeapon/PostEntityFireBullets/EntityEmitSound/WeaponEquip + GravGunPickupAllowed/Punt/OnPickedUp/OnDropped 全派发；SWEP 侧 TranslateFOV/HUDShouldDraw/AdjustMouseSensitivity/DrawWeaponSelection 四钩子接线
 - [x] net 库 GMod 形态（直接 Lua 传输 + 全量测试套件）
 - [x] FireBullets 参数钳制（Num 1-128、Force 0-100，GMod 同界；防超规格 SWEP 打爆粒子顶点池）
+- [x] Sandbox 属性放行与世界交互：GM:CanProperty / GM:CanDrive / GM:PlayerDriveAnimate / GM:LimitHit + 3D 世界提示（cl_worldtips.lua，AddWorldTip + GM:PaintWorldTips）+ 提示系统（cl_hints.lua，GM:AddHint/ThrowHint）
+- [x] variable_edit（base 侧 GM:VariableEdited / GM:CanEditVariable 移植）
 
 ### 部分
 
 - [~] halo：`IMaterial:SetString` 数值向量解析未落地（halo.lua 已用 SetFloat 绕开，黑屏不影响；但第三方插件若用 SetString 传 "[1 1 1]" 向量仍会黑）；DrawScreenQuad 2D 推送已修（MODEL 矩阵括号）
-- [~] 物理枪对齐：见 P1（已逐项反编译定案，纯机械）
+- [x] 物理枪对齐（2026-10-14 落地）
 - [~] NextBot：base_nextbot + C++ 侧在；API 差异未清点
 - [~] duplicator：模块在，工具枪存档端到端未验
 - [~] 字体/选队/成就显示：随场景补
@@ -97,19 +99,21 @@ hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移�
 
 ### P1
 
-- [ ] 物理枪对齐清单（已逐项反编译定案，纯机械活；2026-10-14 核实现状：teleportDistance 仍 250、maxAngular 仍 5400、gm_snapangles 仍 45、DampingFactor/gm_snapgrid 未建、SecondaryAttack 是空桩、无 45678 质量逻辑）：
-  - [ ] ConVar：`physgun_teleportDistance`→0、`physgun_maxAngular`→5000、`gm_snapangles`→0；新增 `physgun_DampingFactor`(0.8)、`gm_snapgrid`(0)；加 REPLICATED 与范围边界
-  - [ ] 质量：抓取抬升到 45678 + 哨兵 -1 + 车辆类名判定
-  - [ ] 冻结走 SecondaryAttack + 0.5s 双攻击冷却门
-  - [ ] 动画二态：持物 RECOIL1 / 空闲 IDLE
-  - [ ] 删扫描循环声（参考双端零音效）
-  - [ ] R 键 10ms 闸；hold 门掩码精确化
+- [x] 物理枪对齐清单（2026-10-14 落地，引擎 01a798760/11dc7d0cc/07749645f/dc414be2 + 内容 dc87ce8）：
+  - [x] ConVar：`physgun_teleportDistance`=0、`physgun_maxAngular`=5000、`gm_snapangles`=45；新增 `physgun_DampingFactor`(0.8)、`gm_snapgrid`(0)；全加 REPLICATED 与边界
+  - [x] 质量：抓取抬升到 45678 + 车辆判定保留原质量 + 恢复质量逻辑
+  - [x] 冻结走 SecondaryAttack + 0.5s 双攻击冷却门 + ACT_VM_PRIMARYATTACK(181) 动画
+  - [x] 视空间无俯仰限制 E 旋转 + Shift+E 45 度吸附
+  - [x] 抓取端点与光束端点坐标系单次逆变换对齐（消灭抓 NPC/道具拐弯）；UTIL_TraceEntity 实体扫掠门控（消灭拖拽遁地）
+  - [x] 滚轮在 CInput::KeyEvent 拦截武器切换，服务端正常消耗累加器拉近推远
+  - [x] 删扫描循环声（参考双端零音效）
+  - [x] R 键 GM:OnPhysgunReload 解冻并通知 UnfrozeObjects 气泡与音效
 - [ ] halo：`IMaterial:SetString` 数值向量解析（"$color [1 1 1]" 黑屏根因；halo.lua 自身已绕开，此项为第三方插件兼容）
 - [ ] `GM:CalcView` 载具派发第二轮：解 First Person Body 车内振动的帧序问题后重接（历史见"缺口"节）
 
 ### P2
 
-- [ ] `variable_edit.lua`（引擎侧派发缺）
+- [x] `variable_edit.lua`（GM:VariableEdited / GM:CanEditVariable 移植落地）
 - [ ] NPC 客户端 `m_iMaxHealth` 网络化（玩家侧已修；判满血/可治疗的 GMod SWEP 全部误判——2026-10-14 核实 DT_BaseCombatCharacter 仍无此字段）
 - [ ] duplicator + 工具枪端到端验证（存档/复制粘贴全链）
 - [ ] vphysics ragdoll 加固：ledge 遍历守卫、坏对象定位探针、workshop .phy 加载期校验

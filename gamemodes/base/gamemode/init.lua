@@ -12,8 +12,7 @@
 include( "shared.lua" )
 include( "player.lua" )
 include( "npc.lua" )
--- variable_edit.lua is not ported yet: it rides on the edit-variable
--- channel, which has no dispatch point in this fork.
+include( "variable_edit.lua" )
 
 -- HL2SB (2026-10-08): gm_save / gm_load（GMod sandbox save_load 的文件存储
 -- 适配版）。放 base 是本分叉的既定取舍——每个 gamemode 都从 base 继承，

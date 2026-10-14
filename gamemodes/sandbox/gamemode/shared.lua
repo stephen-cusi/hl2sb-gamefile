@@ -136,3 +136,125 @@ function GM:PlayerNoClip( pl, on )
 	return GetConVarNumber( "sbox_noclip" ) > 0
 
 end
+
+--[[---------------------------------------------------------
+   Name: gamemode:CanProperty( pl, property, ent )
+   Desc: Can the player do this property, to this entity?
+-----------------------------------------------------------]]
+function GM:CanProperty( pl, property, ent )
+
+	--
+	-- Always a chance some bastard got through
+	--
+	if ( !IsValid( ent ) ) then return false end
+
+	--
+	-- If we have a toolsallowed table, check to make sure the toolmode is in it
+	-- This is used by things like map entities
+	--
+	if ( ent.m_tblToolsAllowed ) then
+
+		local vFound = false
+		for k, v in pairs( ent.m_tblToolsAllowed ) do
+			if ( property == v ) then vFound = true end
+		end
+
+		if ( !vFound ) then return false end
+
+	end
+
+	--
+	-- Who can who bone manipulate?
+	--
+	if ( property == "bonemanipulate" ) then
+
+		if ( game.SinglePlayer() ) then return true end
+
+		if ( ent:IsNPC() ) then return GetConVarNumber( "sbox_bonemanip_npc" ) != 0 end
+		if ( ent:IsPlayer() ) then return GetConVarNumber( "sbox_bonemanip_player" ) != 0 end
+
+		return GetConVarNumber( "sbox_bonemanip_misc" ) != 0
+
+	end
+
+	--
+	-- Weapons can only be property'd if nobody is holding them
+	--
+	if ( ent:IsWeapon() and IsValid( ent:GetOwner() ) ) then
+		return false
+	end
+
+	-- Give the entity a chance to decide
+	if ( ent.CanProperty ) then
+		return ent:CanProperty( pl, property )
+	end
+
+	return true
+
+end
+
+--[[---------------------------------------------------------
+   Name: gamemode:CanDrive( pl, ent )
+   Desc: Return true to let the entity drive.
+-----------------------------------------------------------]]
+function GM:CanDrive( pl, ent )
+
+	local classname = ent:GetClass()
+
+	--
+	-- Only let physics based NPCs be driven for now
+	--
+	if ( ent:IsNPC() ) then
+
+		if ( classname == "npc_cscanner" ) then return true end
+		if ( classname == "npc_clawscanner" ) then return true end
+		if ( classname == "npc_manhack" ) then return true end
+		if ( classname == "npc_turret_floor" ) then return true end
+		if ( classname == "npc_rollermine" ) then return true end
+
+		return false
+
+	end
+
+	if ( classname == "prop_dynamic" ) then return false end
+	if ( classname == "prop_door" ) then return false end
+
+	return true
+
+end
+
+--[[---------------------------------------------------------
+	To update the player's animation during a drive
+-----------------------------------------------------------]]
+function GM:PlayerDriveAnimate( ply )
+
+	local driving = ply:GetDrivingEntity()
+	if ( !IsValid( driving ) ) then return end
+
+	ply:SetPlaybackRate( 1 )
+	ply:ResetSequence( ply:SelectWeightedSequence( ACT_HL2MP_IDLE_MAGIC ) )
+
+	--
+	-- Work out the direction from the player to the entity, and set parameters
+	--
+	local DirToEnt = driving:GetPos() - ( ply:GetPos() + Vector( 0, 0, 50 ) )
+	local AimAng = DirToEnt:Angle()
+
+	if ( AimAng.p > 180 ) then
+		AimAng.p = AimAng.p - 360
+	end
+
+	ply:SetPoseParameter( "aim_yaw",		0 )
+	ply:SetPoseParameter( "aim_pitch",		AimAng.p )
+	ply:SetPoseParameter( "move_x",			0 )
+	ply:SetPoseParameter( "move_y",			0 )
+	ply:SetPoseParameter( "move_yaw",		0 )
+	ply:SetPoseParameter( "move_scale",		0 )
+
+	AimAng.p = 0
+	AimAng.r = 0
+
+	ply:SetRenderAngles( AimAng )
+	ply:SetEyeTarget( driving:GetPos() )
+
+end

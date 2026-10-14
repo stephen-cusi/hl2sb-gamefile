@@ -11,6 +11,10 @@ end
 include( "shared.lua" )
 include( "in_main.lua" )
 include( "scripted_controls/buildmenu.lua" )
+include( "cl_worldtips.lua" )
+include( "cl_hints.lua" )
+
+local BaseClass = gamemode.Get( "base" )
 
 local bor = bit.bor
 local FONTFLAG_ANTIALIAS = _E.FONTFLAG.ANTIALIAS
@@ -57,4 +61,35 @@ end
 
 function GM:ContextMenuOpen()
   return true
+end
+
+function GM:LimitHit( name )
+
+	local str = "#SBoxLimit_" .. name
+	local translated = language.GetPhrase( str )
+	if ( str == translated ) then
+		-- No translation available, apply our own
+		local strPhrase = language.GetPhrase( "hint.hitXlimit" )
+		if ( strPhrase and strPhrase != "hint.hitXlimit" and strPhrase:find( "%%" ) ) then
+			translated = language.FormatPhrase( "hint.hitXlimit", language.GetPhrase( name ) )
+		else
+			translated = "You have hit the " .. language.GetPhrase( name ) .. " limit!"
+		end
+	end
+
+	self:AddNotify( translated, NOTIFY_ERROR, 6 )
+	surface.PlaySound( "buttons/button10.wav" )
+
+end
+
+function GM:HUDPaint()
+
+	self:PaintWorldTips()
+
+	-- Draw all of the default stuff
+	local base = BaseClass or ( gamemode and gamemode.Get and gamemode.Get( "base" ) )
+	if ( base and base.HUDPaint ) then
+		base.HUDPaint( self )
+	end
+
 end

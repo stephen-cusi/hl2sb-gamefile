@@ -31,6 +31,7 @@ end
 -- DoAnimationEvent）。文件内的分叉修正（FL_DUCKING、noclip 让位引擎层、
 -- 显式 ACT 名字映射）一个都不能丢。
 include( "animations.lua" )
+include( "variable_edit.lua" )
 
 GM.Name      = "Base Gamemode"
 GM.Author    = "HL2SB"
