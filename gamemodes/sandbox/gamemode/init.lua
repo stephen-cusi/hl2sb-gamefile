@@ -8,54 +8,162 @@ include( "shared.lua" )
 include( "player_class/player_sandbox.lua" )
 
 -------------------------------------------------------------------------------
--- HL2SB (2026-09-28): GMod 沙盒开关，配合开始游戏界面的侧栏
--- (gameui CreateMultiplayerGameDialog)。名字/默认值/语义对齐 GMod：
---   sbox_weapons  - 出生时是否发放默认 HL2 武器组（player_sandbox.lua:47
---                   的 cvars.Bool 消费；convar 缺失时它恒 true，勾选框将
---                   无效，所以这里必须真正建出来）
---   sbox_godmode  - 全玩家无敌（下面 GM:EntityTakeDamage 门闩消费）
--- 侧栏把玩家的勾选写进 ServerConfig.vdf（gameui 在发 map 命令前落盘），
--- 这里在 convar 建好之后立刻回灌 -- 不走 listenserver.cfg 是因为那份 exec
--- 的时机（gamerules 构造排队）对 Lua 侧 convar 的创建顺序没有保证。
+-- HL2SB: Sandbox convars aligning with GMod's sandbox settings.
+-- Values are read from ServerConfig.vdf and applied so that all start-game
+-- settings take effect on the server.
 -------------------------------------------------------------------------------
-local sbox_weapons = CreateConVar( "sbox_weapons", "1",
-  { FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED, FCVAR_SERVER_CAN_EXECUTE },
-  "If enabled, each player will receive default Half-Life 2 weapons on each spawn" )
+local SBOX_DEFAULTS = {
+  { "sbox_weapons", "1", "If enabled, each player will receive default Half-Life 2 weapons on each spawn" },
+  { "sbox_godmode", "0", "If enabled, all players will be invincible" },
+  { "sbox_noclip", "1", "If enabled, players are able to use noclip" },
+  { "sbox_playershurtplayers", "1", "If enabled, players will be able to hurt each other" },
+  { "physgun_limited", "0", "Prevent the Physics Gun from picking up certain map entities" },
+  { "sbox_maxprops", "200", "Maximum props a single player can create" },
+  { "sbox_maxragdolls", "10", "Maximum ragdolls a single player can create" },
+  { "sbox_maxvehicles", "4", "Maximum vehicles a single player can create" },
+  { "sbox_maxeffects", "200", "Maximum effect props a single player can create" },
+  { "sbox_maxballoons", "100", "Maximum balloons a single player can create" },
+  { "sbox_maxcameras", "10", "Maximum cameras a single player can create" },
+  { "sbox_maxnpcs", "10", "Maximum NPCs a single player can create" },
+  { "sbox_maxsents", "100", "Maximum entities a single player can create" },
+  { "sbox_maxdynamite", "10", "Maximum dynamites a single player can create" },
+  { "sbox_maxlamps", "3", "Maximum lamps a single player can create" },
+  { "sbox_maxlights", "5", "Maximum lights a single player can create" },
+  { "sbox_maxwheels", "50", "Maximum wheels a single player can create" },
+  { "sbox_maxthrusters", "50", "Maximum thrusters a single player can create" },
+  { "sbox_maxhoverballs", "50", "Maximum hoverballs a single player can create" },
+  { "sbox_maxbuttons", "50", "Maximum buttons a single player can create" },
+  { "sbox_maxemitters", "20", "Maximum emitters a single player can create" },
+  { "sbox_maxconstraints", "2000", "Maximum non rope-based constraints a single player can create" },
+  { "sbox_maxropeconstraints", "1000", "Maximum rope-based constraints a single player can create" },
+  { "sbox_bonemanip_npc", "1", "If enabled then manipulating NPC bones will be allowed" },
+  { "sbox_bonemanip_player", "0", "If enabled then manipulating Player bones will be allowed" },
+  { "sbox_bonemanip_misc", "0", "If enabled then manipulating the bones of other entities will be allowed" },
+  { "sbox_persist", "", "Enables persistence mode" },
+  { "mp_falldamage", "0", "Realistic fall damage" },
+  { "gmod_maxammo", "9999", "Maximum ammo reserves" },
+  { "gmod_suit", "0", "Half-Life 2 aux suit power stuff" },
+}
 
-local sbox_godmode = CreateConVar( "sbox_godmode", "0",
-  { FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED, FCVAR_SERVER_CAN_EXECUTE },
-  "If enabled, all players will be invincible" )
-
-local sbox_noclip = CreateConVar( "sbox_noclip", "1",
-  { FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED, FCVAR_SERVER_CAN_EXECUTE },
-  "If enabled, players are able to use noclip" )
+local cvFlags = { FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_REPLICATED }
+for _, def in ipairs( SBOX_DEFAULTS ) do
+  local name, defaultVal, helpText = def[ 1 ], def[ 2 ], def[ 3 ]
+  if ( GetConVar == nil or GetConVar( name ) == nil ) then
+    CreateConVar( name, defaultVal, cvFlags, helpText )
+  end
+end
 
 local function HL2SB_ApplyStartOptions()
   if ( file == nil or file.Read == nil ) then return end
 
   local txt = file.Read( "ServerConfig.vdf", "GAME" )
-  if ( txt == nil ) then return end
+  if ( txt == nil or txt == "" ) then return end
 
-  local weapons = string.match( txt, '"sbox_weapons"%s+"([%d]+)"' )
-  local godmode = string.match( txt, '"sbox_godmode"%s+"([%d]+)"' )
-
-  if ( weapons ~= nil ) then
-    sbox_weapons:SetInt( tonumber( weapons ) or 1 )
-  end
-  if ( godmode ~= nil ) then
-    sbox_godmode:SetInt( tonumber( godmode ) or 0 )
+  for k, v in string.gmatch( txt, '"([%w_]+)"%s+"([^"]*)"' ) do
+    if ( k ~= "ServerConfig" and k ~= "map" and k ~= "hostname" and k ~= "sv_password" and k ~= "maxplayers" and k ~= "sv_lan" ) then
+      local cv = ( GetConVar ~= nil and GetConVar( k ) ) or nil
+      if ( cv == nil and CreateConVar ~= nil ) then
+        cv = CreateConVar( k, v, cvFlags )
+      end
+      if ( cv ~= nil and cv.SetString ~= nil ) then
+        cv:SetString( v )
+      end
+    end
   end
 end
 
 HL2SB_ApplyStartOptions()
 
--- 全玩家无敌。GMod 的门闩在 GM:PlayerShouldTakeDamage（sandbox init.lua:87），
--- 但分叉的引擎没有派发那个 hook；分叉的统一伤害漏斗是 baseentity.cpp 的
--- GM:EntityTakeDamage（返回 true 整起事件被拦），规则等价落地到这里。
--- 只拦玩家：炸药桶、NPC、世界物件照常可破坏。
+function GM:Initialize()
+  HL2SB_ApplyStartOptions()
+end
+
+-- Damage funnel: handles global god mode and player vs player damage settings.
 function GM:EntityTakeDamage( ent, info )
-  if ( ent:IsPlayer() and cvars.Bool( "sbox_godmode", false ) ) then
+  if ( ent == nil or not ent:IsPlayer() ) then return end
+
+  if ( cvars.Bool( "sbox_godmode", false ) ) then
     return true
+  end
+
+  if ( info ~= nil and info.GetAttacker ~= nil ) then
+    local attacker = info:GetAttacker()
+    if ( attacker ~= nil and attacker:IsValid() and attacker:IsPlayer() and ent ~= attacker ) then
+      if ( not cvars.Bool( "sbox_playershurtplayers", true ) ) then
+        return true
+      end
+    end
+  end
+end
+
+-- Player limit methods matching standard GMod sandbox behavior.
+g_SBoxObjects = g_SBoxObjects or {}
+
+local plymeta = FindMetaTable( "Player" )
+if ( plymeta ~= nil ) then
+  function plymeta:GetCount( countType )
+    local key = ( self.UniqueID ~= nil and self:UniqueID() ) or self:EntIndex()
+    local tab = g_SBoxObjects[ key ]
+    if ( not tab or not tab[ countType ] ) then return 0 end
+
+    local c = 0
+    for k, v in pairs( tab[ countType ] ) do
+      if ( IsValid( v ) ) then
+        c = c + 1
+      else
+        tab[ countType ][ k ] = nil
+      end
+    end
+    return c
+  end
+
+  function plymeta:AddCount( countType, ent )
+    if ( not IsValid( ent ) ) then return end
+    local key = ( self.UniqueID ~= nil and self:UniqueID() ) or self:EntIndex()
+    g_SBoxObjects[ key ] = g_SBoxObjects[ key ] or {}
+    g_SBoxObjects[ key ][ countType ] = g_SBoxObjects[ key ][ countType ] or {}
+
+    table.insert( g_SBoxObjects[ key ][ countType ], ent )
+
+    if ( ent.CallOnRemove ~= nil ) then
+      ent:CallOnRemove( "SBoxCountUpdate_" .. tostring( ent:EntIndex() ), function()
+        if ( IsValid( self ) ) then
+          self:GetCount( countType )
+        end
+      end )
+    end
+  end
+
+  if ( plymeta.CheckLimit == nil ) then
+    function plymeta:CheckLimit( str )
+      if ( game.SinglePlayer() ) then return true end
+
+      local c = cvars.Number( "sbox_max" .. str, -1 )
+      if ( c < 0 ) then return true end
+
+      local count = self:GetCount( str )
+
+      local ret = hook.Run( "PlayerCheckLimit", self, str, count, c )
+      if ( ret != nil ) then
+        if ( not ret and SERVER and self.LimitHit ~= nil ) then self:LimitHit( str ) end
+        return ret
+      end
+
+      if ( count >= c ) then
+        if ( SERVER and self.LimitHit ~= nil ) then self:LimitHit( str ) end
+        return false
+      end
+
+      return true
+    end
+  end
+
+  if ( plymeta.LimitHit == nil ) then
+    function plymeta:LimitHit( str )
+      if ( self.SendLua ~= nil ) then
+        self:SendLua( string.format( "hook.Run('LimitHit',%q)", str ) )
+      end
+    end
   end
 end
 

@@ -690,6 +690,7 @@ Open = function()
     local optsH = ( TOUCH and ( mapBottom + 8 ) or mapBottom ) - optY - ( TOUCH and 76 or 64 )
     optsH = math.max( ROW_H * 3, optsH )
     Record( optsViewport, optX, optY, optW, optsH )
+    if ( optsViewport.SetKeyBoardInputEnabled ~= nil ) then optsViewport:SetKeyBoardInputEnabled( true ) end
 
     local optScroll, optMaxScroll, optCanvasH = 0, 0, 0
     local optsCanvas = nil   -- assigned below; the scroll closures use the upvalue
@@ -716,6 +717,18 @@ Open = function()
 
     optsCanvas = vgui.Panel( optsViewport, "startOptsCanvas" )
     Record( optsCanvas, 0, 0, optW - 16, math.max( optCanvasH, optsH ) )
+    if ( optsCanvas.SetKeyBoardInputEnabled ~= nil ) then optsCanvas:SetKeyBoardInputEnabled( true ) end
+
+    local function FocusTextEntry( target )
+        if ( target == nil ) then return end
+        if ( target.SetKeyBoardInputEnabled ~= nil ) then pcall( target.SetKeyBoardInputEnabled, target, true ) end
+        if ( target.SetEditable ~= nil ) then pcall( target.SetEditable, target, true ) end
+        if ( target.RequestFocus ~= nil ) then pcall( target.RequestFocus, target ) end
+        if ( frame ~= nil and frame.OnRequestFocus ~= nil ) then
+            pcall( frame.OnRequestFocus, frame, target, target )
+        end
+        if ( target.SelectAllText ~= nil ) then pcall( target.SelectAllText, target ) end
+    end
 
     if ( #rows == 0 ) then
         local lbl = vgui.Create( "Label", optsCanvas )
@@ -733,6 +746,7 @@ Open = function()
 
         local wrap = vgui.Panel( optsCanvas, "startOpt_" .. i )
         Record( wrap, 0, y0, optW - 16, rowH )
+        if ( wrap.SetKeyBoardInputEnabled ~= nil ) then wrap:SetKeyBoardInputEnabled( true ) end
         wrap.OnMouseWheeled = function( pnl, delta ) OptsScrollBy( delta ) end
 
         local lbl = vgui.Create( "Label", wrap )
@@ -760,25 +774,110 @@ Open = function()
                 end
             end
         else
-        local te = vgui.TextEntry( wrap, "startte_" .. i )
-        if ( te ~= nil ) then
-            ApplyFont( te, FONT_ROW )
-            Record( te, optW - entryW - 8, ( rowH - ( TOUCH and 34 or 24 ) ) / 2, entryW, TOUCH and 34 or 24 )
-            te:SetText( savedValue )
-            widgets.texts[ s.name ] = te
-            -- clicking anywhere on the row focuses the entry: at 150px wide the
-            -- box itself is an easy miss, and a missed click reads as "the
-            -- option cannot be typed into"
-            wrap.OnMousePressed = function( pnl, code )
-                if ( code != MOUSE_LEFT ) then return end
-                Say( "[HL2SB] startgamedialog: settings row clicked: " .. s.name )
-                if ( te.RequestFocus ~= nil ) then pcall( te.RequestFocus, te ) end
+            local isNum = ( s.stype == "Numeric" )
+            local boxH = TOUCH and 34 or 24
+            local boxY = ( rowH - boxH ) / 2
+            local teX = optW - entryW - 8
+            local teW = entryW
+
+            if ( isNum ) then
+                local btnW = TOUCH and 30 or 24
+                local gap = 4
+                local teWidth = entryW - btnW * 2 - gap * 2
+
+                local btnMinus = vgui.Button( wrap, "startbtn_minus_" .. i, "-", frame, "" )
+                if ( btnMinus ~= nil ) then
+                    ApplyFont( btnMinus, FONT_ROW )
+                    Record( btnMinus, teX, boxY, btnW, boxH )
+                    btnMinus.Paint = function( pnl, w, h )
+                        if ( DrawFilledRect == nil ) then return end
+                        DrawSetColor( 52, 56, 62, 255 )
+                        FillRect( 0, 0, w, h )
+                        DrawSetColor( 90, 95, 102, 255 )
+                        DrawOutlinedRect( 0, 0, w, h )
+                    end
+                end
+
+                local te = vgui.TextEntry( wrap, "startte_" .. i )
+                if ( te ~= nil ) then
+                    ApplyFont( te, FONT_ROW )
+                    Record( te, teX + btnW + gap, boxY, teWidth, boxH )
+                    te:SetText( savedValue )
+                    if ( te.SetEditable ~= nil ) then te:SetEditable( true ) end
+                    if ( te.SetKeyBoardInputEnabled ~= nil ) then te:SetKeyBoardInputEnabled( true ) end
+                    if ( te.SetAllowNumericInputOnly ~= nil ) then te:SetAllowNumericInputOnly( true ) end
+                    if ( te.SelectAllOnFocusAlways ~= nil ) then te:SelectAllOnFocusAlways( true ) end
+                    widgets.texts[ s.name ] = te
+
+                    te.OnMousePressed = function( pnl, code )
+                        if ( code != MOUSE_LEFT ) then return end
+                        FocusTextEntry( te )
+                    end
+                    wrap.OnMousePressed = function( pnl, code )
+                        if ( code != MOUSE_LEFT ) then return end
+                        FocusTextEntry( te )
+                    end
+                end
+
+                local btnPlus = vgui.Button( wrap, "startbtn_plus_" .. i, "+", frame, "" )
+                if ( btnPlus ~= nil ) then
+                    ApplyFont( btnPlus, FONT_ROW )
+                    Record( btnPlus, teX + btnW + gap + teWidth + gap, boxY, btnW, boxH )
+                    btnPlus.Paint = function( pnl, w, h )
+                        if ( DrawFilledRect == nil ) then return end
+                        DrawSetColor( 52, 56, 62, 255 )
+                        FillRect( 0, 0, w, h )
+                        DrawSetColor( 90, 95, 102, 255 )
+                        DrawOutlinedRect( 0, 0, w, h )
+                    end
+                end
+
+                local function StepValue( delta )
+                    if ( te == nil ) then return end
+                    local cur = tonumber( EntryValue( te ) ) or tonumber( s.default ) or 0
+                    local step = 1
+                    if ( cur >= 500 ) then step = 50
+                    elseif ( cur >= 100 ) then step = 10
+                    elseif ( cur >= 20 ) then step = 5
+                    end
+                    local nextVal = math.max( 0, cur + delta * step )
+                    te:SetText( tostring( nextVal ) )
+                    config[ s.name ] = tostring( nextVal )
+                end
+
+                if ( btnMinus ~= nil ) then
+                    btnMinus.OnMousePressed = function( pnl, code )
+                        if ( code != MOUSE_LEFT ) then return end
+                        StepValue( -1 )
+                    end
+                end
+                if ( btnPlus ~= nil ) then
+                    btnPlus.OnMousePressed = function( pnl, code )
+                        if ( code != MOUSE_LEFT ) then return end
+                        StepValue( 1 )
+                    end
+                end
+            else
+                local te = vgui.TextEntry( wrap, "startte_" .. i )
+                if ( te ~= nil ) then
+                    ApplyFont( te, FONT_ROW )
+                    Record( te, teX, boxY, teW, boxH )
+                    te:SetText( savedValue )
+                    if ( te.SetEditable ~= nil ) then te:SetEditable( true ) end
+                    if ( te.SetKeyBoardInputEnabled ~= nil ) then te:SetKeyBoardInputEnabled( true ) end
+                    if ( te.SelectAllOnFocusAlways ~= nil ) then te:SelectAllOnFocusAlways( true ) end
+                    widgets.texts[ s.name ] = te
+
+                    te.OnMousePressed = function( pnl, code )
+                        if ( code != MOUSE_LEFT ) then return end
+                        FocusTextEntry( te )
+                    end
+                    wrap.OnMousePressed = function( pnl, code )
+                        if ( code != MOUSE_LEFT ) then return end
+                        FocusTextEntry( te )
+                    end
+                end
             end
-            -- temporary probes: if a click prints "entry focused" but keys
-            -- still do nothing, the break is in keyboard routing, not focus
-            te.OnSetFocus = function( pnl ) Say( "[HL2SB] startgamedialog: entry focused: " .. s.name ) end
-            te.OnKillFocus = function( pnl ) Say( "[HL2SB] startgamedialog: entry unfocused: " .. s.name ) end
-        end
         end
     end
 
@@ -827,12 +926,17 @@ Open = function()
             if ( r.SetVisible ~= nil ) then r:SetVisible( m_PlayersExpanded ) end
             -- opaque row backing: without it the row text floats over the
             -- settings content underneath and reads as a ghost
-            if ( r.PaintBackground ~= nil ) then
-                r.PaintBackground = function( pnl, w, h )
-                    if ( DrawFilledRect == nil ) then return end
-                    DrawSetColor( 58, 62, 68, 255 )
-                    FillRect( 0, 0, w, h )
+            r.Paint = function( pnl, w, h )
+                if ( DrawFilledRect == nil ) then return end
+                local bSelected = ( m_PlayerCount == n )
+                if ( bSelected ) then
+                    DrawSetColor( 255, 200, 0, 80 )
+                else
+                    DrawSetColor( 46, 50, 56, 255 )
                 end
+                FillRect( 0, 0, w, h )
+                DrawSetColor( bSelected and 255 or 70, bSelected and 180 or 74, bSelected and 40 or 80, 255 )
+                DrawOutlinedRect( 0, 0, w, h )
             end
         end
         playerRows[ #playerRows + 1 ] = r
@@ -895,40 +999,13 @@ Open = function()
             end
         elseif ( cmd == "toggleplayers" ) then
             m_PlayersExpanded = not m_PlayersExpanded
-            for _, r in ipairs( playerRows ) do
-                if ( r ~= nil and r.SetVisible ~= nil ) then r:SetVisible( m_PlayersExpanded ) end
-                -- the settings viewport is a LATER sibling and would sit on top
-                -- of the expanded rows (painting over them AND eating their
-                -- clicks - the "transparent / cannot click" report); raise the
-                -- rows above it while they are open
-                if ( m_PlayersExpanded and r ~= nil and r.MoveToFront ~= nil ) then
-                    pcall( r.MoveToFront, r )
-                end
-            end
-            if ( playersBtn ~= nil and playersBtn.SetText ~= nil ) then
-                playersBtn:SetText( PlayerLabel( m_PlayerCount ) )
-            end
-            if ( HL2SB_MenuLayout ~= nil ) then HL2SB_MenuLayout( frame ) end
+            Reopen()
         elseif ( StartsWith( cmd, "mpsel_" ) ) then
             local n = tonumber( string.sub( cmd, 7 ) )
             if ( n ~= nil ) then
-                local bBoundary = ( n <= 1 ) != ( m_PlayerCount <= 1 )
                 m_PlayerCount = n
                 m_PlayersExpanded = false
-                if ( bBoundary ) then
-                    -- crossing the single player row swaps the whole settings
-                    -- set (small singleplayer sidebar vs the sandbox caps list)
-                    Reopen()
-                else
-                    -- live update: same settings set, just reflect the pick
-                    for _, r in ipairs( playerRows ) do
-                        if ( r ~= nil and r.SetVisible ~= nil ) then r:SetVisible( false ) end
-                    end
-                    if ( playersBtn ~= nil and playersBtn.SetText ~= nil ) then
-                        playersBtn:SetText( PlayerLabel( m_PlayerCount ) )
-                    end
-                    if ( HL2SB_MenuLayout ~= nil ) then HL2SB_MenuLayout( frame ) end
-                end
+                Reopen()
             end
         end
     end

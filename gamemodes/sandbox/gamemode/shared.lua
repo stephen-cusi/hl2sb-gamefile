@@ -138,6 +138,34 @@ function GM:PlayerNoClip( pl, on )
 end
 
 --[[---------------------------------------------------------
+   Name: gamemode:PhysgunPickup( ply, ent )
+   Desc: Return true if player can pick up entity with physics gun
+-----------------------------------------------------------]]
+function GM:PhysgunPickup( ply, ent )
+
+	if ( ent == nil or not IsValid( ent ) ) then return false end
+	if ( ent.PhysgunDisabled ) then return false end
+
+	local EntClass = ent:GetClass()
+	if ( EntClass == "player" or ( ent.IsPlayer and ent:IsPlayer() ) ) then return false end
+
+	if ( cvars.Bool( "physgun_limited", false ) ) then
+		if ( string.find( EntClass, "prop_dynamic" ) ) then return false end
+		if ( string.find( EntClass, "prop_door" ) ) then return false end
+		if ( EntClass == "func_physbox" and ent.HasSpawnFlags and ent:HasSpawnFlags( 32768 ) ) then return false end
+		if ( string.find( EntClass, "prop_" ) and ent.HasSpawnFlags and ( ent:HasSpawnFlags( 8 ) or ent:HasSpawnFlags( 1 ) ) ) then return false end
+		if ( EntClass != "func_physbox" and string.find( EntClass, "func_" ) ) then return false end
+	else
+		if ( EntClass != "func_physbox" and string.find( EntClass, "func_" ) ) then
+			return false
+		end
+	end
+
+	return true
+
+end
+
+--[[---------------------------------------------------------
    Name: gamemode:CanProperty( pl, property, ent )
    Desc: Can the player do this property, to this entity?
 -----------------------------------------------------------]]

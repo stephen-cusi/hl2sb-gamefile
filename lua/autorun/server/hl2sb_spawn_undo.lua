@@ -232,10 +232,25 @@ local function PlaceInFront( ply, ent, dist )
 	ent:SetPos( pos )
 end
 
+--- Deduce limit category from entity class for sandbox limits.
+local function GetLimitType( class )
+	if ( class == "prop_physics" or string.find( class, "prop_physics" ) ) then return "props" end
+	if ( class == "prop_ragdoll" ) then return "ragdolls" end
+	if ( class == "prop_effect" ) then return "effects" end
+	if ( string.sub( class, 1, 4 ) == "npc_" ) then return "npcs" end
+	if ( string.sub( class, 1, 13 ) == "prop_vehicle_" ) then return "vehicles" end
+	return "sents"
+end
+
 --- Create, place, spawn and register one entity.  `setup` runs BEFORE Spawn, which is
 --- where keyvalues have to be set (the NPC's equipment, for instance).
-local function SpawnAndRecord( ply, class, model, setup )
+local function SpawnAndRecord( ply, class, model, setup, customLimit )
 	if ( ply == nil or not IsValid( ply ) ) then return nil end
+
+	local limitType = customLimit or GetLimitType( class )
+	if ( ply.CheckLimit ~= nil and not ply:CheckLimit( limitType ) ) then
+		return nil
+	end
 
 	local ent = ents.Create( class )
 	if ( not IsValid( ent ) ) then
@@ -266,6 +281,10 @@ local function SpawnAndRecord( ply, class, model, setup )
 	if ( not IsValid( ent ) ) then
 		Fail( "Spawn", tostring( class ), tostring( model ), "- the engine removed it" )
 		return nil
+	end
+
+	if ( ply.AddCount ~= nil ) then
+		ply:AddCount( limitType, ent )
 	end
 
 	RecordUndo( ply, ent, "SENT", "#undo.generic.entity (" .. NiceName( class ) .. ")" )
@@ -340,46 +359,60 @@ concommand.Add( "gm_spawnvehicle", function( ply, cmd, args )
 
 	Note( "gm_spawnvehicle", tostring( class ), tostring( model ), tostring( script ) )
 
-	SpawnAndRecord( ply, class, model, function( ent )
-		-- GMod's content type hands the entry's KeyValues to the spawn; the vehicle
-		-- script is the one that matters (a pod with the wrong script has no seat in
-		-- it), and `limitview` is what GMod always pins on a pod/seat.
-		if ( script ~= nil and script ~= "" ) then
-			ent:SetKeyValue( "vehiclescript", script )
+		SpawnAndRecord( ply, class, model, function( ent )
+			-- GMod's content type hands the entry's KeyValues to the spawn; the vehicle
+			-- script is the one that matters (a pod with the wrong script has no seat in
+			-- it), and `limitview` is what GMod always pins on a pod/seat.
+			if ( script ~= nil and script ~= "" ) then
+				ent:SetKeyValue( "vehiclescript", script )
+			end
+
+			if ( class == "prop_vehicle_prisoner_pod" ) then
+				ent:SetKeyValue( "limitview", "0" )
+			end
+		end, "vehicles" )
+	end, nil, "Spawn a vehicle (GMod)" )
+
+	concommand.Add( "gm_spawnnpc", function( ply, cmd, args )
+		if ( not IsValid( ply ) ) then return end
+
+		local class = args ~= nil and args[ 1 ] or nil
+		if ( class == nil or class == "" ) then return end
+
+		-- the weapon an NPC spawns with, set once from the spawn menu.  It comes as the
+		-- SECOND ARGUMENT: this fork binds no CreateConVar, so there is no gmod_npcweapon
+		-- cvar to read (GMod keeps it in one; here the menu simply sends its choice).
+		-- A cvar is still consulted when one exists, so both routes work.
+		--
+		-- It has to be applied BEFORE Spawn - it is a keyvalue, and this fork's NPC
+		-- equipment support (additionalequipment) reads it at spawn time.
+		local weapon = ( args ~= nil and args[ 2 ] ) or ""
+
+		if ( weapon == "" and _G.GetConVarString ~= nil ) then
+			weapon = GetConVarString( "gmod_npcweapon" ) or ""
 		end
 
-		if ( class == "prop_vehicle_prisoner_pod" ) then
-			ent:SetKeyValue( "limitview", "0" )
+		Note( "gm_spawnnpc", tostring( class ), "weapon=" .. tostring( weapon ) )
+
+		SpawnAndRecord( ply, class, nil, function( ent )
+			if ( weapon ~= "" ) then
+				ent:SetKeyValue( "additionalequipment", weapon )
+			end
+		end, "npcs" )
+	end, nil, "Spawn an NPC with the configured weapon (GMod)" )
+
+	concommand.Add( "gm_spawnprop", function( ply, cmd, args )
+		if ( not IsValid( ply ) ) then return end
+
+		local model = args ~= nil and args[ 1 ] or nil
+		if ( model == nil or model == "" ) then return end
+
+		if ( string.sub( model, 1, 7 ) ~= "models/" ) then
+			model = "models/" .. model
 		end
-	end )
-end, nil, "Spawn a vehicle (GMod)" )
 
-concommand.Add( "gm_spawnnpc", function( ply, cmd, args )
-	if ( not IsValid( ply ) ) then return end
-
-	local class = args ~= nil and args[ 1 ] or nil
-	if ( class == nil or class == "" ) then return end
-
-	-- the weapon an NPC spawns with, set once from the spawn menu.  It comes as the
-	-- SECOND ARGUMENT: this fork binds no CreateConVar, so there is no gmod_npcweapon
-	-- cvar to read (GMod keeps it in one; here the menu simply sends its choice).
-	-- A cvar is still consulted when one exists, so both routes work.
-	--
-	-- It has to be applied BEFORE Spawn - it is a keyvalue, and this fork's NPC
-	-- equipment support (additionalequipment) reads it at spawn time.
-	local weapon = ( args ~= nil and args[ 2 ] ) or ""
-
-	if ( weapon == "" and _G.GetConVarString ~= nil ) then
-		weapon = GetConVarString( "gmod_npcweapon" ) or ""
-	end
-
-	Note( "gm_spawnnpc", tostring( class ), "weapon=" .. tostring( weapon ) )
-
-	SpawnAndRecord( ply, class, nil, function( ent )
-		if ( weapon ~= "" ) then
-			ent:SetKeyValue( "additionalequipment", weapon )
-		end
-	end )
-end, nil, "Spawn an NPC with the configured weapon (GMod)" )
+		Note( "gm_spawnprop", tostring( model ) )
+		SpawnAndRecord( ply, "prop_physics", model, nil, "props" )
+	end, nil, "Spawn a prop (GMod)" )
 
 print( "[HL2SB] hl2sb_spawn_undo.lua loaded (GMod-style undo recording)" )
