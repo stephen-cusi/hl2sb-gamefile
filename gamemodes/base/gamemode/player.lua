@@ -47,7 +47,11 @@ end
 -----------------------------------------------------------]]
 function GM:OnPhysgunReload( weapon, ply )
 
-	ply:PhysgunUnfreeze()
+	local num = ply:PhysgunUnfreeze()
+
+	if ( isnumber( num ) and num > 0 ) then
+		ply:SendLua( string.format( "GAMEMODE:UnfrozeObjects(%d)", num ) )
+	end
 
 end
 

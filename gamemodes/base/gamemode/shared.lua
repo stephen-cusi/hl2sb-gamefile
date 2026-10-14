@@ -54,8 +54,16 @@ function GM:PropBreak( attacker, prop )
 end
 
 function GM:PhysgunPickup( ply, ent )
+	if ( ent == nil or ent.IsValid == nil or not ent:IsValid() ) then return false end
+
 	-- 不让物理枪抓玩家（GMod 同款默认行为）
-	if ( ent ~= nil and ent.IsPlayer ~= nil and ent:IsPlayer() ) then return false end
+	if ( ent.IsPlayer ~= nil and ent:IsPlayer() ) then return false end
+
+	-- GMod 对齐：除 func_physbox 外，排除所有地图笔刷实体（玻璃、门、梯子等）
+	local EntClass = ent:GetClass()
+	if ( EntClass ~= "func_physbox" and string.find( EntClass, "func_" ) ) then
+		return false
+	end
 
 	return true
 end
