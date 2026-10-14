@@ -3,6 +3,7 @@
 hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移植打钩清单。
 图例：`[x]` 完成 / `[ ]` 待做 / `[~]` 部分完成 / `[-]` 刻意不做（含理由）。
 库清单基准：GMod wiki 全部 88 个 Lua 库（经 libgmod 权威绑定表核对，2026-10-10）。
+最近全量复核：2026-10-14（聊天/语音/错误体系/武器钩子批/physenv/SendLua 等项据仓内代码逐条核实后更新）。
 
 ## 一、Lua 库（对照 GMod 88 库）
 
@@ -19,6 +20,7 @@ hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移�
 - [x] `bit`
 - [x] `debugoverlay`
 - [x] `system`
+- [x] `physenv`（Get/SetGravity、Get/SetAirDensity、PerformanceSettings、Simulation 系列全表；仅 SetPerformanceSettings 是直通桩）
 - [~] `engine`（`IsMounted` 守卫恒 false，见"刻意不做"）
 - [~] `ents` / `entity` / `game` / `gameevent`
 - [~] `navmesh`（NextBot 侧有面，API 差异未全量清点）
@@ -41,11 +43,10 @@ hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移�
 
 ### 缺口（GMod 有、我们没有）
 
-- [ ] `physenv`（GetGravity/SetGravity/GetAirDensity/SetAirDensity/GetPerformanceSettings）
 - [ ] `serverlist`（服务器列表查询）
 - [ ] `mesh`（IMesh 动态网格）
-- [ ] `SendLua` 通道（现为收下不做事）
-- [ ] `GM:CalcView` 载具派发（第一人称身体插件的载具眼睛吸附依赖）
+- [x] ~~`SendLua` 通道~~（已实现：走 lua_run_cl 控制台命令传输，Entity:SendLua + BroadcastLua，2026-10-14 核实 lbaseentity_shared.cpp）
+- [ ] `GM:CalcView` 载具派发——2026-10-04 做过一版又回滚（First Person Body 车内 pose-zero→强制 SetupBones 序列导致座位模型每帧振动，b58583e4..b4d639bf 有完整记录）；等 addon 侧帧序问题解决后再接
 
 ## 二、Gamemode 与游戏系统
 
@@ -75,54 +76,55 @@ hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移�
 - [x] HL2 十武器 + physgun + toolgun
 - [x] 击杀播报 HUD + 游戏事件扩展
 - [x] gmod 地图可进（顶点格式除零修复；天空盒白为遗留观感）
+- [x] 聊天链全环：GM:OnPlayerChat（MsgFunc_SayText2 派发，返回真抑制默认打印）+ chat.AddText（C++ 绑定，实体/颜色混排）+ OnChatTab/ChatTextChanged/StartChat/FinishChat（hud_basechat.cpp 引擎派发）+ base cl_init 五钩子逐字移植
+- [x] 语音 HUD：base cl_voice.lua（GM:PlayerStartVoice/PlayerEndVoice + 右上说话面板列表）+ util.IsPlayerSpeaking（真响度通道）+ Player:Set/GetVoiceVolumeScale（按 steamid 记忆）
+- [x] Lua 错误体系（2026-10-14）：GM:OnLuaError 五参派发（error/realm/stack 帧表/addon 名/id）+ 遗留 LuaError 四参兼容 + hook 回调崩溃统一上报 + GMod 式左上错误提示条（HUDPaint 载体）+ 错误菜单带 realm/addon 标注
+- [x] RunString/RunStringEx 全局 + lua_run/_cl 走同核（GLua 改写、空串/字节码拒收、handleError 语义）
+- [x] 武器钩子批（2026-10-13）：PlayerDroppedWeapon/PlayerAmmoChanged/PlayerSwitchWeapon/PostEntityFireBullets/EntityEmitSound/WeaponEquip + GravGunPickupAllowed/Punt/OnPickedUp/OnDropped 全派发；SWEP 侧 TranslateFOV/HUDShouldDraw/AdjustMouseSensitivity/DrawWeaponSelection 四钩子接线
+- [x] net 库 GMod 形态（直接 Lua 传输 + 全量测试套件）
+- [x] FireBullets 参数钳制（Num 1-128、Force 0-100，GMod 同界；防超规格 SWEP 打爆粒子顶点池）
 
 ### 部分
 
-- [~] halo：`IMaterial:SetString` 数值向量解析、DrawScreenQuad 内建 2D 推送两项引擎修复未落地
+- [~] halo：`IMaterial:SetString` 数值向量解析未落地（halo.lua 已用 SetFloat 绕开，黑屏不影响；但第三方插件若用 SetString 传 "[1 1 1]" 向量仍会黑）；DrawScreenQuad 2D 推送已修（MODEL 矩阵括号）
 - [~] 物理枪对齐：见 P1（已逐项反编译定案，纯机械）
-- [~] 语音：引擎录制停止修复已部署；语音面板（cl_voice）未移植
 - [~] NextBot：base_nextbot + C++ 侧在；API 差异未清点
-- [~] 聊天链：服务端 PlayerSay 在；OnPlayerChat/chat.AddText 客户端半环缺
 - [~] duplicator：模块在，工具枪存档端到端未验
 - [~] 字体/选队/成就显示：随场景补
+- [~] 聊天框外观：功能链全通，但仍是 HL2MP 的 C++ 聊天框皮肤，非 GMod 的 Lua 皮肤聊天框
 
 ## 三、TODO（按优先级）
 
 ### P1
 
-- [ ] 物理枪对齐清单（已逐项反编译定案，纯机械活）：
+- [ ] 物理枪对齐清单（已逐项反编译定案，纯机械活；2026-10-14 核实现状：teleportDistance 仍 250、maxAngular 仍 5400、gm_snapangles 仍 45、DampingFactor/gm_snapgrid 未建、SecondaryAttack 是空桩、无 45678 质量逻辑）：
   - [ ] ConVar：`physgun_teleportDistance`→0、`physgun_maxAngular`→5000、`gm_snapangles`→0；新增 `physgun_DampingFactor`(0.8)、`gm_snapgrid`(0)；加 REPLICATED 与范围边界
   - [ ] 质量：抓取抬升到 45678 + 哨兵 -1 + 车辆类名判定
   - [ ] 冻结走 SecondaryAttack + 0.5s 双攻击冷却门
   - [ ] 动画二态：持物 RECOIL1 / 空闲 IDLE
   - [ ] 删扫描循环声（参考双端零音效）
   - [ ] R 键 10ms 闸；hold 门掩码精确化
-- [ ] halo：`IMaterial:SetString` 数值向量解析（"$color [1 1 1]" 黑屏根因）
-- [ ] halo：`render.DrawScreenQuad` 内建 2D 视口推送
-- [ ] 物理枪+halo 重做轮收尾（此前一轮重写丢失，E3/E4 现状需先核对）
-- [ ] 语音面板移植：说话开始/结束事件 → `PlayerStartVoice`/`PlayerEndVoice` 钩子；`Player:IsPlayerSpeaking` 绑定
+- [ ] halo：`IMaterial:SetString` 数值向量解析（"$color [1 1 1]" 黑屏根因；halo.lua 自身已绕开，此项为第三方插件兼容）
+- [ ] `GM:CalcView` 载具派发第二轮：解 First Person Body 车内振动的帧序问题后重接（历史见"缺口"节）
 
 ### P2
 
-- [ ] 聊天链客户端半环：`OnPlayerChat` / `chat.AddText`
-- [ ] `SendLua` 通道（client-only Lua 队列）
 - [ ] `variable_edit.lua`（引擎侧派发缺）
-- [ ] `SetVoiceVolumeScale`（滚轮绑定）
-- [ ] `physenv` 库（Get/SetGravity、AirDensity、PerformanceSettings）
-- [ ] NPC 客户端 `m_iMaxHealth` 网络化（玩家侧已修；判满血/可治疗的 GMod SWEP 全部误判）
+- [ ] NPC 客户端 `m_iMaxHealth` 网络化（玩家侧已修；判满血/可治疗的 GMod SWEP 全部误判——2026-10-14 核实 DT_BaseCombatCharacter 仍无此字段）
 - [ ] duplicator + 工具枪端到端验证（存档/复制粘贴全链）
 - [ ] vphysics ragdoll 加固：ledge 遍历守卫、坏对象定位探针、workshop .phy 加载期校验
+- [ ] AddCSLuaFile + Lua 缓存文件（LCF）管线：方案已交付（激活 luacachefile.cpp 休眠管线 + 服务端绑定 + 客户端解包），等拍板；落地后传送枪进图会开始报 "Couldn't find cl_fonts.lua"（GMod 正确行为）
+- [ ] OnLuaError 配套余项： spam guard（GMod 5 错/1s 同款）、`lua_error_url` POST 上报、错误菜单 Problems 式分组
 
 ### P3
 
 - [ ] `cl_deathnotice` 与 C++ 击杀播报的共存策略
-- [ ] `player_pickup`（+use 携带）子系统
+- [ ] `player_pickup`（+use 携带）子系统（HL2 物理炮的 OnPlayerPhysicsPickup/Drop 钩子已在 physcannon 路径；GMod 式 +use 携带本体未做）
 - [ ] 运行时探针：`gm_snapangles 0` 时 E+SHIFT 写 NaN 的实测（静态已证实的原版 bug）；2x 抓距 vs 束半距意图确认
 - [ ] NextBot API 差异全量清点
 - [ ] `serverlist` / `frame_blend` / `video` 库（待需求）
 - [ ] 游戏内热挂载（挂载游戏内容清单化）
 - [ ] gmod 地图天空盒白观感深挖（无效顶点格式 mesh）
-- [ ] SWEP 钩子补面：`TranslateFOV` / `HUDShouldDraw` / `AdjustMouseSensitivity` / `DrawWeaponSelection`
 - [ ] 主菜单 HTML 内核选型（搁置，2026-10-11）：menusystem 独立模块（引擎在 GameUI 旁加载、菜单离屏渲染成 RGBA 走 vgui 贴图上传）模块壳与管线已验证；RmlUi 首版已整体撤回——menu.html 是 AngularJS 单页应用，需真 DOM+JS 引擎，排版渲染器不适用。候选：
   - Ultralight：轻量 WebKit，官方多架构二进制（含安卓），集成代码量最小；非商用免费、商用需授权
   - CEF 原版：GMod 菜单同款 Chromium，兼容最高；每平台 100-200MB 且需 helper 子进程，官方二进制不含安卓（需自行出包）
