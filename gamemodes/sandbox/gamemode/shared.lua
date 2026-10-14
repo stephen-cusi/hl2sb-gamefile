@@ -256,6 +256,8 @@ end
 -----------------------------------------------------------]]
 function GM:PlayerDriveAnimate( ply )
 
+	if ( !IsValid( ply ) or ply.GetDrivingEntity == nil ) then return end
+
 	local driving = ply:GetDrivingEntity()
 	if ( !IsValid( driving ) ) then return end
 

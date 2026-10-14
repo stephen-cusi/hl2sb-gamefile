@@ -74,7 +74,13 @@ end
 
 HL2SB_ApplyStartOptions()
 
+-- HL2SB: chain to shared.lua's GM:Initialize (the mp_falldamage / mp_flashlight
+-- server commands).  Gamemode inheritance is resolved before this file's body
+-- runs, so redefining the method on the same GM table silently REPLACED it --
+-- the shared half never ran again.
+local SharedInitialize = GM.Initialize
 function GM:Initialize()
+  if ( SharedInitialize ~= nil ) then SharedInitialize( self ) end
   HL2SB_ApplyStartOptions()
 end
 
@@ -160,8 +166,11 @@ if ( plymeta ~= nil ) then
 
   if ( plymeta.LimitHit == nil ) then
     function plymeta:LimitHit( str )
+      -- HL2SB: GMod routes the hit to the client's GM:LimitHit (sandbox
+      -- cl_init.lua: notification + error sound).  A bare hook.Run('LimitHit')
+      -- on the client had no consumer and printed nothing.
       if ( self.SendLua ~= nil ) then
-        self:SendLua( string.format( "hook.Run('LimitHit',%q)", str ) )
+        self:SendLua( string.format( "if GAMEMODE and GAMEMODE.LimitHit then GAMEMODE:LimitHit( %q ) end", str ) )
       end
     end
   end

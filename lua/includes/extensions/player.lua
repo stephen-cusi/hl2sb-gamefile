@@ -367,3 +367,26 @@ if ( meta.Kill == nil ) then
 		self:KillSilent()
 	end
 end
+
+if ( meta.GetDrivingEntity == nil ) then
+	function meta:GetDrivingEntity()
+		return nil
+	end
+end
+
+if ( meta.IsDrivingEntity == nil ) then
+	function meta:IsDrivingEntity()
+		return false
+	end
+end
+
+if ( meta.GetDrivingMode == nil ) then
+	function meta:GetDrivingMode()
+		return 0
+	end
+end
+
+if ( meta.SetDrivingEntity == nil ) then
+	function meta:SetDrivingEntity( ent, modeid )
+	end
+end
