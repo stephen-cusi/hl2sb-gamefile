@@ -300,9 +300,23 @@ local function SafeCall( fn, ... )
 	return a, b, c
 end
 
+-- HL2SB: 引擎本体（lsrcinit）注册过 game.SinglePlayer（gpGlobals->maxClients <= 1，
+-- 服务端语义准确）。这里旧版整函数覆盖成 engine.GetMaxClients —— 但本引擎没有
+-- 这个绑定，兜底恒 true，把多人局判成单机；GMod 的契约是"单机不设限"（
+-- player_extension.lua CheckLimit 第一行），沙盒上限因此整体失效。改为：优先用
+-- engine.GetMaxClients（有绑定才走），否则回退覆盖前的引擎绑定；两者都拿不到
+-- 才回答 false（按多人算，让限制体系说话）。
+local EngineSinglePlayer = game.SinglePlayer
+
 function game.SinglePlayer()
-	if ( engine == nil or engine.GetMaxClients == nil ) then return true end
-	return ( SafeCall( engine.GetMaxClients ) or 1 ) <= 1
+	if ( engine ~= nil and engine.GetMaxClients ~= nil ) then
+		return ( SafeCall( engine.GetMaxClients ) or 1 ) <= 1
+	end
+	if ( EngineSinglePlayer ~= nil ) then
+		local ok, v = pcall( EngineSinglePlayer )
+		if ( ok and v ~= nil ) then return v == true end
+	end
+	return false
 end
 
 game.IsSinglePlayer = game.SinglePlayer

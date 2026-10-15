@@ -180,9 +180,9 @@ Category = "#spawnmenu.category.other"
 ADD_WEAPON( "weapon_physgun" )
 
 -- NPC Weapons (GMod's game_hl2.lua): the list the spawn menu's NPC-weapon picker
--- and the engine-side validity check (gm_spawnnpc) both read.  GMod keys these by
--- the weapon class; the title is the same "#class" token the rest of the menu
--- resolves through language.GetPhrase.
+-- and the server-side validity check (commands.lua InternalSpawnNPC) both read.
+-- GMod keys these by the weapon class; the title is the same "#class" token the
+-- rest of the menu resolves through language.GetPhrase.
 local function ADD_NPC_WEAPON( class )
 	list.Add( "NPCUsableWeapons", { class = class, title = "#" .. class, category = "Half-Life 2" } )
 end

@@ -104,10 +104,12 @@ if ( meta.SwitchToDefaultWeapon == nil ) then
 end
 
 -------------------------------------------------------------------------------
--- 网络：GMod 用 ply:SendLua 让客户端执行一段 Lua。
--- HL2SB 有 net 库，但没有“执行任意 Lua”的通道，这里退化成空操作。
+-- 网络：SendLua。
+-- 这里曾有一个"退化成空操作"的垫片（if meta.SendLua == nil 罩了个空函数）。
+-- 守卫本身有缺陷：SendLua 的 C 绑定注册在 Entity 元表上（lbaseentity_shared
+-- 的实体方法表），Player 元表要经 __index 回退才够得着，所以 meta.SendLua
+-- 对 Player 元表自身恒为 nil，垫片永远安装、永远遮蔽真正的引擎绑定——
+-- 服务端 ply:SendLua 从此全部静默丢包（上限提示/错误提示/提示语全灭）。
+-- GMod 的 SendLua 是引擎方法、没有 Lua 垫片；引擎绑定（stufftext 到客户端
+-- 的 lua_run_cl）是现成的，删掉垫片让 C 绑定接管即可。
 -------------------------------------------------------------------------------
-if ( meta.SendLua == nil ) then
-	function meta:SendLua( code )
-	end
-end

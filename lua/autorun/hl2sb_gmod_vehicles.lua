@@ -68,9 +68,13 @@ local VEHICLES =
 	  model = "models/vehicles/prisoner_pod_inner.mdl", script = "scripts/vehicles/prisoner_pod.txt",
 	  icon = "entities/pod" },
 
+	-- GMod's registration gives the APC `Health = 0` ("Indestructible",
+	-- base_vehicles.lua): MakeVehicle applies it with SetHealth/SetMaxHealth
+	-- after Spawn, and the engine's CPropAPC::OnTakeDamage answers 0 damage
+	-- while m_iHealth == 0 (vehicle_apc.cpp) -- that is the whole mechanism.
 	{ id = "prop_vehicle_apc", label = "#spawnmenu.vehicle.apc", class = "prop_vehicle_apc",
 	  model = "models/combine_apc.mdl",            script = "scripts/vehicles/apc.txt",
-	  icon = "entities/prop_vehicle_apc" },
+	  icon = "entities/prop_vehicle_apc", health = 0 },
 
 	-- Episode Two content: model and script both have to be there for the cell to do
 	-- anything, so it is conditional rather than always listed.
@@ -98,6 +102,13 @@ for _, v in ipairs( VEHICLES ) do
 			Model		= v.model,
 			Category	= HL2,
 			IconOverride	= v.icon,
+
+			-- GMod's optional registration fields MakeVehicle reads: Health
+			-- (only the APC carries it, see its table entry) and Offset
+			-- (none of the vehicles drive it; the phx seats in
+			-- hl2sb_gmod_seats.lua do).
+			Health		= v.health,
+			Offset		= v.offset,
 
 			KeyValues	= {
 				vehiclescript	= v.script,

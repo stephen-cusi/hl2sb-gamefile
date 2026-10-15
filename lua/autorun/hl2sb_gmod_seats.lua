@@ -95,6 +95,11 @@ end
 -- pose    - the HandleAnimation above this seat uses (GMod's per-entry choice:
 --           chairs = rollercoaster; phx_seat = plain sit; phx_seat2 = the jeep
 --           drive pose; phx_seat3 = the airboat drive pose).
+-- offset - GMod's registration Offset (base_vehicles.lua: the three PhoeniX
+--          seats carry Offset = 16, the rest have none): Spawn_Vehicle pushes
+--          the spawn point along the hit normal by it (commands.lua, GMod
+--          verbatim), so the value has to live in the registry now that the
+--          menu no longer forwards it.
 local SEATS =
 {
 	{ id = "Chair_Office1",	label = "#spawnmenu.chair.office",		model = "models/nova/chair_office01.mdl",	icon = "entities/chair_office1",	pose = HandleRollercoasterAnimation },
@@ -102,9 +107,9 @@ local SEATS =
 	{ id = "Chair_Plastic",	label = "#spawnmenu.chair.plastic",			model = "models/nova/chair_plastic01.mdl",	icon = "entities/chair_plastic",	pose = HandleRollercoasterAnimation },
 	{ id = "Chair_Office2",	label = "#spawnmenu.chair.office_big",		model = "models/nova/chair_office02.mdl",	icon = "entities/chair_office2",	pose = HandleRollercoasterAnimation },
 	{ id = "Chair_Wood",	label = "#spawnmenu.chair.wooden",			model = "models/nova/chair_wood01.mdl",		icon = "entities/chair_wood",		pose = HandleRollercoasterAnimation },
-	{ id = "phx_seat",		label = "#spawnmenu.seat.simple_sit",		model = "models/props_phx/carseat2.mdl",	icon = "entities/phx_seat",		pose = HandlePHXSeatAnimation },
-	{ id = "phx_seat2",		label = "#spawnmenu.seat.simple_jeep",	model = "models/props_phx/carseat3.mdl",	icon = "entities/phx_seat2",		pose = HandlePHXVehicleAnimation },
-	{ id = "phx_seat3",		label = "#spawnmenu.seat.simple_airboat",	model = "models/props_phx/carseat2.mdl",	icon = "entities/phx_seat3",		pose = HandlePHXAirboatAnimation },
+	{ id = "phx_seat",		label = "#spawnmenu.seat.simple_sit",		model = "models/props_phx/carseat2.mdl",	icon = "entities/phx_seat",		pose = HandlePHXSeatAnimation,		offset = 16 },
+	{ id = "phx_seat2",		label = "#spawnmenu.seat.simple_jeep",	model = "models/props_phx/carseat3.mdl",	icon = "entities/phx_seat2",		pose = HandlePHXVehicleAnimation,	offset = 16 },
+	{ id = "phx_seat3",		label = "#spawnmenu.seat.simple_airboat",	model = "models/props_phx/carseat2.mdl",	icon = "entities/phx_seat3",		pose = HandlePHXAirboatAnimation,	offset = 16 },
 	{ id = "Seat_Airboat",	label = "#spawnmenu.seat.airboat",			model = "models/nova/airboat_seat.mdl",		icon = "entities/seat_airboat",	pose = HandleRollercoasterAnimation },
 	{ id = "Seat_Jalopy",	label = "#spawnmenu.seat.jalopy",		model = "models/nova/jalopy_seat.mdl",		icon = "entities/seat_jalopy",	pose = HandleRollercoasterAnimation },
 }
@@ -120,6 +125,9 @@ for _, seat in ipairs( SEATS ) do
 		Class		= SEAT_CLASS,
 		Model		= seat.model,
 		Category	= SEAT_CATEGORY,
+
+		-- GMod's per-entry Offset (the three phx seats; see the SEATS table)
+		Offset		= seat.offset,
 
 		-- GMod's vehicle content type: `material = ent.IconOverride or
 		-- "entities/" .. ent.SpawnName .. ".png"`.  Given here as the material

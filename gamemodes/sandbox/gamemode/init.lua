@@ -7,8 +7,15 @@
 include( "shared.lua" )
 include( "player_class/player_sandbox.lua" )
 -- HL2SB: 生成上限的 gamemode 层（GMod 同位文件、同位 include）。必须有：
--- 引擎侧生成命令与复制/粘贴都靠 gamemode.Call( "PlayerSpawn.." ) 问这里。
+-- 生成命令与复制/粘贴都靠 gamemode.Call( "PlayerSpawn.." ) 问这里。
 include( "player.lua" )
+-- HL2SB (2026-10-15): GMod 同位文件 gamemodes/sandbox/gamemode/commands.lua——
+-- 生成命令（gm_spawn / gmod_spawnnpc / gm_spawnsent / gm_giveswep /
+-- gm_spawnswep / gm_spawnvehicle）现在在 Lua 里，不再有引擎 C++ 版本。
+-- GMod 的 init.lua 顺序是 shared -> commands -> player -> spawnmenu；这里保持
+-- 本分叉既有的最小改动：player.lua 之后 include（commands.lua 在函数体内才
+-- 用 gamemode.Call，加载顺序不影响语义；它在文件顶 include prop_tools.lua）。
+include( "commands.lua" )
 
 -------------------------------------------------------------------------------
 -- HL2SB: Sandbox convars aligning with GMod's sandbox settings.

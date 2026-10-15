@@ -42,12 +42,19 @@ LAYOUT (GMod's spawnmenu, wiki.facepunch.com/gmod/spawnmenu):
 	category rows size up for fingers; +smenu toggles instead of holding,
 	because a touch UI has no reliable key-release.
 
-	SPAWN DISPATCH (the command set the older menus proved):
+	SPAWN DISPATCH (GMod's own command shapes -- these commands are Lua
+	concommands now, gamemodes/sandbox/gamemode/commands.lua; the engine C++
+	versions are gone):
 	  weapon   gm_giveswep <class>
-	  npc      gm_spawnnpc <class>  (weapon/name/model/KeyValues ride along)
-	  vehicle  gm_spawnvehicle <class> <model> <script>   (model-less
-	           prop_vehicle = server crash, so the model always rides along)
-	  else     gm_spawn <class> [model]
+	  npc      gmod_spawnnpc <list key> <weapon>
+	  vehicle  gm_spawnvehicle <list key>
+	  props    gm_spawn <model> [<skin> <body>]
+	  else     gm_spawnsent <name>
+	Everything else (model / Class / KeyValues / SpawnFlags / Skin / Health /
+	Offset / Members) is read SERVER-SIDE from the registries the spawn lines
+	are keyed by: list.Get( "NPC" ), list.Get( "Vehicles" ),
+	list.Get( "SpawnableEntities" ).  The same rule as GMod's contenticon.lua:
+	the command carries the registry key and nothing else.
 
 	THE CRASH RULES (inherited from the menus that came before, keep them):
 	  * the frame is built ONCE and only ever SetVisible()d -- never removed
@@ -140,19 +147,25 @@ end
 -- ---------------------------------------------------------------------------
 -- global NPC weapon (v5, GMod's gmod_npcweapon)
 --
--- GMod keeps one convar that "overrides the weapon all spawnmenu NPCs will spawn
--- with" (gamemodes/sandbox/gamemode/spawnmenu/creationmenu/content/contenticon.lua):
+-- GMod keeps one client convar that "overrides the weapon all spawnmenu NPCs
+-- will spawn with" (gamemodes/sandbox/gamemode/spawnmenu/creationmenu/content/
+-- contenticon.lua:355):
+--
+--     CreateConVar( "gmod_npcweapon", "", { FCVAR_ARCHIVE, FCVAR_USERINFO }, .. )
+--
 -- "" = the NPC's own default, "none" = unarmed, otherwise a class from
--- list.Get( "NPCUsableWeapons" ).  The menu here sends the choice as the weapon
--- slot of gm_spawnnpc (the engine applies it as `additionalequipment` before
--- Spawn), and mirrors the choice to the engine's "gmod_npcweapon" convar so a
--- non-menu spawn reads the same value.  Persistence is this archived CLIENT
--- convar -- the engine cvar is a SERVER ConVar the client cannot write directly.
+-- list.Get( "NPCUsableWeapons" ).  It is created here now: the engine C++
+-- ConVar of the same name lived in the (being deleted) hl2sb_gm_commands.cpp.
+-- userdata/userinfo form is what makes ply:GetInfo( "gmod_npcweapon" ) answer
+-- on the server (the stock toolgun creator tool reads exactly that); the
+-- archive flag is the persistence.  The menu sends the choice as the weapon
+-- argument of gmod_spawnnpc, the same slot contenticon.lua fills.
 -- ---------------------------------------------------------------------------
 
+-- CreateClientConVar( name, default, shouldsave, userdata, helptext )
 local cvarNpcWep = ( CreateClientConVar ~= nil )
-	and CreateClientConVar( "hl2sb_spawnmenu_npcweapon", "", true, false,
-		"Weapon given to NPCs spawned from the spawn menu (empty = the NPC's own default, none = unarmed)" )
+	and CreateClientConVar( "gmod_npcweapon", "", true, true,
+		"Overrides the weapon all spawnmenu NPCs will spawn with. Set to \"\" to not override." )
 	or nil
 
 local g_NpcWeaponCombo = nil
@@ -172,9 +185,9 @@ local function SetNpcWeapon( v )
 		pcall( cvarNpcWep.SetString, cvarNpcWep, v )
 	end
 
-	-- mirror to the engine convar (best effort: a server-only ConVar is not
-	-- writable from the client, but where it IS present this keeps the two in
-	-- step for spawns that do not go through this menu)
+	-- keep the console mirror: for an FCVAR_USERINFO convar the write above
+	-- already is the push to the server, but a user typing the command, or a
+	-- ConVar object that predates this file (an addon's copy), stays in step
 	if ( RunConsoleCommand ~= nil ) then
 		RunConsoleCommand( "gmod_npcweapon", v )
 	end
@@ -503,14 +516,13 @@ local function CollectNPCs()
 					spawnname  = tostring( spawnname ),
 					iconOverride = ( isstring( data.IconOverride ) ) and data.IconOverride or nil,
 					category   = ( isstring( data.Category ) and data.Category ~= "" ) and data.Category or "#spawnmenu.category.other",
-					-- GMod forwards data.KeyValues through gmod_spawnnpc (the
-					-- hutao pack's citizentype = 4 makes npc_citizen keep the
-					-- reskin model); ride them on the concommand the same way
+					-- informational copies only: the spawn line is now GMod's
+					-- gmod_spawnnpc <spawnname> <weapon>, and the server reads
+					-- KeyValues / SpawnFlags / Skin / Health straight from the
+					-- registry entry (InternalSpawnNPC).  The hutao pack's
+					-- citizentype = 4 (CT_UNIQUE) is one of the values the
+					-- server applies as an entity keyvalue before Spawn.
 					keyvalues  = ( istable( data.KeyValues ) and data.KeyValues ) or nil,
-					-- the rest of GMod's registration fields that ride as
-					-- entity keyvalues on the spawn line (spawn flags / skin /
-					-- health are real keyfields; Offset/OnCeiling/NoDrop stay
-					-- stored-only, this fork's spawner has no floor-drop pass)
 					spawnflags = ( data.SpawnFlags ~= nil or data.TotalSpawnFlags ~= nil )
 						and ( tonumber( data.SpawnFlags or data.TotalSpawnFlags ) or nil ) or nil,
 					skin       = ( data.Skin ~= nil ) and ( tonumber( data.Skin ) or nil ) or nil,
@@ -554,10 +566,11 @@ local function CollectVehicles()
 					key        = "v:" .. tostring( spawnname ),
 					model      = data.Model,
 					script     = ( isstring( kv.vehiclescript ) ) and kv.vehiclescript or "",
-					-- the registry's other KeyValues ride along (gm_spawnvehicle
-					-- forwards them as trailing name/value pairs); the seats list
-					-- already carries `limitview = "0"` here, and addons can add
-					-- their own
+					-- informational copy: the spawn line is GMod's
+					-- gm_spawnvehicle <spawnname>, and MakeVehicle applies the
+					-- registry KeyValues server-side (vehiclescript / limitview
+					-- before Spawn; `vehicleclass` through SetVehicleClass after
+					-- it).  The seats list already carries limitview = "0" here.
 					keyvalues  = kv,
 					cat        = "vehicle",
 					spawnname  = tostring( spawnname ),
@@ -653,60 +666,41 @@ local function SpawnEntry( e )
 	local line
 
 	if ( e.cat == "weapon" ) then
+		-- GMod contenticon.lua:502-514 -- left click gives, middle click drops
+		-- the swep on the ground; this menu's click is the give (spawn_five /
+		-- the right-click menu items reuse this same line).
 		line = "gm_giveswep " .. e.class
 	elseif ( e.cat == "npc" ) then
-		-- slot 2 is the weapon override.  GMod's rule (contenticon.lua): the
-		-- global picker wins when set ("" = Default, "none" = unarmed, else a
-		-- class); with Default, one of the entry's OWN Weapons is chosen at
-		-- random.  slot 3 the display name for undo + kill feed, slot 4 the
-		-- reskin model (reskin packs register Class = a stock NPC + their own
-		-- Model), slots 5.. the registry KeyValues as name/value pairs
+		-- GMod contenticon.lua:392: gmod_spawnnpc <spawnname> <weapon>.  The
+		-- spawnname is the LIST KEY (list.Get( "NPC" )'s key -- data.Class is
+		-- the engine class and rides nowhere: the server resolves it from the
+		-- registry, reskins included).  weapon slot: the global picker wins
+		-- when set ("" = Default, "none" = unarmed, else a class); with
+		-- Default, one of the entry's OWN Weapons is chosen at random.
+		-- Model / KeyValues / SpawnFlags / Skin / Health are read server-side
+		-- from the same registry entry, exactly like GMod.
 		local weapon = GetNpcWeapon()
 		if ( weapon == "" and istable( e.weapons ) and #e.weapons > 0 ) then
 			weapon = e.weapons[ math.random( #e.weapons ) ]
 		end
-		line = "gm_spawnnpc " .. e.class .. " " .. Q( weapon ) .. " " .. Q( e.name )
-			.. ( ( e.model and e.model ~= "" ) and ( " " .. Q( e.model ) ) or ' ""' )
-			-- the MODEL slot above is ALWAYS emitted, even when empty.  It has to
-			-- be there: the engine reads the model from slot 4 and the KeyValues
-			-- from slot 5 on, so an entry that has KeyValues but no model (every
-			-- stock citizen variant -- citizentype/SquadName) used to shift them
-			-- one slot left, and "citizentype" was consumed as the model path.
-			-- The result was that Citizen / Rebel / Medic / Refugee all lost
-			-- their citizentype and fell back to the SAME random Downtrodden
-			-- citizen -- "the menu only has one random citizen".
-		-- GMod ships list.Set( "NPC", ... ) data.KeyValues through gmod_spawnnpc's
-		-- net table; here they ride the concommand.  Without the hutao pack's
-		-- citizentype = 4 (CT_UNIQUE), npc_citizen rewrites the reskin model into
-		-- models/Humans/Group01/<file> -- a file that does not exist -- and the
-		-- NPC spawns as the ERROR model (2026-09-19, gi_hutao_friendly).
-		if ( istable( e.keyvalues ) ) then
-			for k, v in pairs( e.keyvalues ) do
-				line = line .. " " .. Q( tostring( k ) ) .. " " .. Q( tostring( v ) )
-			end
-		end
-		-- GMod's other registration fields that ARE entity keyfields ride the
-		-- same way (spawnflags/skin/health applied by the spawner before Spawn)
-		if ( e.spawnflags ~= nil ) then line = line .. ' "spawnflags" ' .. Q( tostring( e.spawnflags ) ) end
-		if ( e.skin ~= nil and e.skin > 0 ) then line = line .. ' "skin" ' .. Q( tostring( e.skin ) ) end
-		if ( e.health ~= nil ) then line = line .. ' "health" ' .. Q( tostring( e.health ) ) end
+		line = "gmod_spawnnpc " .. e.spawnname .. " " .. Q( weapon )
 	elseif ( e.cat == "vehicle" ) then
-		-- the MODEL rides along: a model-less prop_vehicle is a server crash
-		line = "gm_spawnvehicle " .. e.class
-			.. ( ( e.model and e.model ~= "" ) and ( " " .. e.model ) or ' ""' )
-			.. ( ( e.script and e.script ~= "" ) and ( " " .. e.script ) or ' ""' )
-			.. " " .. Q( e.name )
-		-- slots 5.. are the registry KeyValues as name/value pairs, same
-		-- convention as gm_spawnnpc above
-		if ( istable( e.keyvalues ) ) then
-			for k, v in pairs( e.keyvalues ) do
-				line = line .. " " .. Q( tostring( k ) ) .. " " .. Q( tostring( v ) )
-			end
-		end
-	elseif ( e.model ~= nil and e.model ~= "" ) then
-		line = "gm_spawn " .. e.class .. " " .. e.model .. " " .. Q( e.name )
+		-- GMod contenticon.lua:335: gm_spawnvehicle <spawnname> -- model,
+		-- class and KeyValues (vehiclescript / limitview / vehicleclass) are
+		-- read server-side from list.Get( "Vehicles" ) (MakeVehicle).
+		line = "gm_spawnvehicle " .. e.spawnname
+	elseif ( e.cat == "prop" ) then
+		-- GMod's prop icon (lua/vgui/spawnicon.lua:261) sends
+		-- RunConsoleCommand( "gm_spawn", model, skin, body ); the prop page's
+		-- entries carry the model only, so the optional <skin> <body> pair is
+		-- omitted and CCSpawn's defaults (skin 0, no body) apply.
+		line = "gm_spawn " .. e.model
 	else
-		line = "gm_spawn " .. e.class .. ' "" ' .. Q( e.name )
+		-- Everything else on the Entities tab is a SENT / list entity:
+		-- GMod contenticon.lua:287 -- gm_spawnsent <spawnname> (the registry
+		-- key; the server resolves scripted_ents / the SpawnableEntities
+		-- entry from it).
+		line = "gm_spawnsent " .. e.spawnname
 	end
 
 	Dbg( TAG .. "spawn: " .. line )

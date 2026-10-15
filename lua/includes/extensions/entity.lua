@@ -89,3 +89,24 @@ end
 function meta:SetUnFreezable( bFreeze )
 	self.m_bUnFreezable = tobool( bFreeze ) or false
 end
+
+--===========================================================================--
+-- HL2SB (2026-10-15): GMod's Entity:DropToFloor() engine method.
+--
+-- This fork binds the same engine call only as util.DropToFloor( ent, mask
+-- [, filter] ) (game/server/lua/lutil.cpp, UTIL_DropToFloor), so every GMod
+-- file that calls the METHOD died with
+--   attempt to call a nil value (method 'DropToFloor')
+-- -- lua/entities/base_entity/init.lua's default SENT SpawnFunction (its last
+-- line), and sandbox/gamemode/commands.lua's NPC / SENT floor drop.
+--
+-- Installed only where the util binding exists (server realm; the method is
+-- server-only in GMod too), with the mask the engine's own "drop the NPC to
+-- the floor" uses (MASK_NPCSOLID: game/server/ai_concommands.cpp npc_create
+-- drops with exactly this mask).
+--===========================================================================--
+if ( meta.DropToFloor == nil and _G.util ~= nil and util.DropToFloor ~= nil ) then
+	function meta:DropToFloor()
+		return util.DropToFloor( self, MASK_NPCSOLID )
+	end
+end

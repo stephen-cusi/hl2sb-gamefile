@@ -226,6 +226,20 @@ end
 --- GMod sandbox/gamemode/cl_notice.lua:2
 function GM:AddNotify( str, type, length )
 
+	-- HL2SB: GMod 的通知面板是引擎 vgui Label，SetText 对 "#" 前缀串走引擎
+	-- 本地化（spawnmenu.error.* 这类 token 因此显示为人话，缺翻译回退英文）。
+	-- 本分叉的弹窗由 gamemode 自绘、不做 # 解析，所以在这一层先翻译一次；
+	-- 查不到（GetPhrase 原样返回带 # 的 key）就保持原串，与 GMod 缺 token
+	-- 时的兜底一致。OnUndo/OnCleanup/LimitHit 传进来的已是人话，不受影响。
+	-- 注意：本函数的参数名 type（GMod 原版签名）遮蔽了全局 type()，
+	-- 字符串判断必须用 isstring。
+	if ( isstring( str ) and string.sub( str, 1, 1 ) == "#" ) then
+		local translated = language.GetPhrase( str )
+		if ( translated ~= str ) then
+			str = translated
+		end
+	end
+
 	if ( notification ~= nil and notification.AddLegacy ~= nil ) then
 		notification.AddLegacy( str, type, length )
 	end

@@ -7,10 +7,10 @@
         GM:PlayerSpawn<Type>( ... )    -> LimitReachedProcess -> ply:CheckLimit
         GM:PlayerSpawned<Type>( ... )  -> ply:AddCount
 
-    生成命令（引擎侧 gm_spawn / gm_spawnprop / gm_spawnvehicle / gm_spawnnpc，
-    见 game/server/hl2sb_gm_commands.cpp）在这两处问一次 gamemode：
-    前置返回 false 就不生成，生成成功后再回来计数。复制/粘贴（duplicator 与
-    save_load.lua）走的是同一对方法，所以一处接上两条路都受上限约束。
+    生成命令现在在 commands.lua（GMod 同位文件，同目录 / 同 include 面），
+    它在这两处问一次 gamemode：前置返回 false 就不生成，生成成功后再回来计数。
+    复制/粘贴（duplicator 与 save_load.lua）走的是同一对方法，所以一处接上
+    两条路都受上限约束。
 
     注意：本分叉的 gamemode.Call 对「方法不存在」回答 false（不是 nil），
     所以这些方法**必须存在**，否则调用方（save_load.lua 等）会把生成整段
