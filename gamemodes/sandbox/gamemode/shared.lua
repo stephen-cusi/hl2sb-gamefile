@@ -165,6 +165,16 @@ function GM:PhysgunPickup( ply, ent )
 		end
 	end
 
+	-- HL2SB: the first successful grab queues the two physgun tutorial hints
+	-- (freeze / rotate).  SendHint is once-per-player (self.Hints guard), so
+	-- this fires the first time this session that anyone lifts something with
+	-- the physgun, matching the reference.  Server-only: SendHint is a SERVER
+	-- Player method and drives the client through SendLua.
+	if ( SERVER ) then
+		ply:SendHint( "PhysgunFreeze", 2 )
+		ply:SendHint( "PhysgunUse", 8 )
+	end
+
 	return true
 
 end

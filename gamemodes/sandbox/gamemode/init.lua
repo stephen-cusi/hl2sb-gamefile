@@ -174,3 +174,42 @@ end
 
 function GM:PlayerPickupObject( pHL2MPPlayer, pObject, bLimitMassAndSize )
 end
+
+-- 物理枪提示（GMod sandbox 同位逻辑）。首次抓取的两条提示在 shared.lua 的
+-- GM:PhysgunPickup 里入队；这里补冻结/解冻两处：冻结成功后弹"如何解冻"提示并
+-- 撤下"右键冻结"提示；解冻提示在按 R 解冻后撤下。
+--
+-- 基类（base/gamemode/player.lua）已实现冻结本体与解冻通知，必须链式调用。
+-- 注意不能在本文件加载期捕获 GM.OnPhysgunFreeze —— 本文件的函数体会在
+-- gamemode.register 之前跑完，那一刻 table.inherit 还没把 base 的方法并进
+-- GM 表（此刻是 nil）。所以基类一律在调用期经 self.BaseClass 取（inherit
+-- 会写上这个字段）。
+local function CallBase( gm, name, ... )
+  local base = gm.BaseClass
+  if ( base == nil and gamemode ~= nil and gamemode.Get ~= nil ) then
+    base = gamemode.Get( "base" )
+  end
+  if ( base ~= nil and base[ name ] ~= nil ) then
+    return base[ name ]( gm, ... )
+  end
+end
+
+function GM:OnPhysgunFreeze( weapon, phys, ent, ply )
+  -- 持久化道具不该被冻结（应已冻结）：拦下
+  if ( ent ~= nil and ent.GetPersistent ~= nil and ent:GetPersistent() ) then
+    local persist = ( GetConVarString ~= nil and GetConVarString( "sbox_persist" ) ) or ""
+    if ( string.Trim( persist ) != "" ) then return false end
+  end
+
+  CallBase( self, "OnPhysgunFreeze", weapon, phys, ent, ply )
+
+  ply:SendHint( "PhysgunUnfreeze", 0.3 )
+  ply:SuppressHint( "PhysgunFreeze" )
+end
+
+function GM:OnPhysgunReload( weapon, ply )
+  CallBase( self, "OnPhysgunReload", weapon, ply )
+
+  ply:SuppressHint( "PhysgunUnfreeze" )
+end
+
