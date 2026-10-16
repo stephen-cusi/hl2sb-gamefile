@@ -9,7 +9,7 @@
 	"physgun_limited"		"0"
 	"sbox_bonemanip_misc"		"0"
 	"sbox_bonemanip_npc"		"1"
-	"sbox_bonemanip_player"		"0"
+	"sbox_bonemanip_player"		"1"
 	"sbox_godmode"		"0"
 	"sbox_maxballoons"		"100"
 	"sbox_maxbuttons"		"50"
