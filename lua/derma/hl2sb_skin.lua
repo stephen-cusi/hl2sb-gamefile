@@ -58,10 +58,40 @@ function derma.GetFontHandle( name )
 	return h or nil
 end
 
+--[[-------------------------------------------------------------------------
+	Localization
+
+	GMod's engine Label resolves a "#token" through ILocalize at SetText time
+	(vgui2/vgui_controls/Label.cpp only computes a hotkey from it, but GMod's
+	label text goes through the localized text image), so every GMod control
+	that shows "#menubar.drawing" / "#makepersistent" / "#Undone_gun" paints
+	the localized phrase.  This fork's controls paint their own captions via
+	derma.DrawText / derma.GetTextSize, so the same "#token" rule is applied
+	here - one chokepoint under all 59 call sites.  A token that does not
+	resolve is left alone (readable "#token", exactly like the reference with
+	a missing phrase).  GMod's rule is prefix-only: a string that merely
+	CONTAINS '#' is not a token.
+---------------------------------------------------------------------------]]
+
+function derma.ResolveText( strText )
+	if ( type( strText ) ~= "string" ) then return strText end
+	if ( string.sub( strText, 1, 1 ) ~= "#" ) then return strText end
+	if ( _G.language == nil or language.GetPhrase == nil ) then return strText end
+
+	local ok, phrase = pcall( language.GetPhrase, strText )
+	if ( ok and type( phrase ) == "string" and phrase ~= "" and string.sub( phrase, 1, 1 ) ~= "#" ) then
+		return phrase
+	end
+
+	return strText
+end
+
 --- Draw text with a font NAME, falling back gracefully.
 function derma.DrawText( strFontName, x, y, strText, col )
 	local font = derma.GetFontHandle( strFontName )
 	if ( not font ) then return end
+
+	strText = derma.ResolveText( strText )
 
 	surface.DrawSetTextFont( font )
 	surface.DrawSetTextColor( col[ 1 ] or col.r or 255, col[ 2 ] or col.g or 255,
@@ -73,6 +103,8 @@ end
 function derma.GetTextSize( strFontName, strText )
 	local font = derma.GetFontHandle( strFontName )
 	if ( not font ) then return 0, 0 end
+
+	strText = derma.ResolveText( strText )
 
 	local w, h = surface.GetTextSize( font, strText )
 	return w or 0, h or 0

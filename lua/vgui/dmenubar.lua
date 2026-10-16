@@ -87,9 +87,30 @@ function PANEL:PerformLayout( w, h )
 	w = w or self:GetWide()
 	h = h or self:GetTall()
 
+	-- HL2SB (2026-10-16): measure the RESOLVED caption, not the raw token.
+	-- The labels arrive as "#menubar.drawing"-style tokens and the button
+	-- paints them through derma.DrawText (which resolves them); sizing from
+	-- the token's own byte length left every button far wider than its text,
+	-- and a localized (CJK) caption was sized from a 16-byte token while
+	-- painted as 2 glyphs.  derma.GetTextSize resolves through the same
+	-- chokepoint, so the measurement matches what is drawn.
 	local x = 4
 	for _, entry in ipairs( self.m_tButtons ) do
-		local tw = 8 + ( entry.btn:GetText() or "" ):len() * 8
+		local text = entry.btn:GetText() or ""
+		local tw = 8
+
+		if ( derma ~= nil and derma.GetTextSize ~= nil ) then
+			local measured = derma.GetTextSize( "DermaDefault", text )
+
+			if ( measured ~= nil and measured > 0 ) then
+				tw = 8 + measured
+			else
+				tw = 8 + ( text ):len() * 8
+			end
+		else
+			tw = 8 + ( text ):len() * 8
+		end
+
 		entry.btn:SetPos( x, 0 )
 		entry.btn:SetSize( tw, h )
 		x = x + tw + 4

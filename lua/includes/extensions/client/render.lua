@@ -77,6 +77,51 @@ function render.SetColorMaterialIgnoreZ()
 	render.SetMaterial( matColorIgnoreZ )
 end
 
+-- HL2SB (2026-10-16): render.DrawBox( pos, angles, mins, maxs, color ) -- the
+-- wireframe-widget cube of the GMod bone tool (lua/entities/widget_base.lua
+-- OverlayRender) needs it, and this engine binds no box primitive.  GMod's
+-- render.DrawBox is a FILLED box (its separate render.DrawWireframeBox is the
+-- outline one; the binding at client.dll 0x1800bddf0 submits a 36-vertex --
+-- 12 triangles, 6 quads -- mesh through the currently bound material).
+--
+-- Implemented here as the six faces through render.DrawQuadEasy, each face
+-- drawn twice (front + back normal) because DrawQuadEasy is single-sided and
+-- the caller's material decides culling: the widget's cube must be visible
+-- from inside as well as outside, and both callers bind an unlit color
+-- material whose two-sidedness is not guaranteed.
+local function DrawBoxFace( center, normal, wide, tall, color )
+	render.DrawQuadEasy( center, normal, wide, tall, color, 0 )
+	render.DrawQuadEasy( center, -normal, wide, tall, color, 0 )
+end
+
+function render.DrawBox( position, angles, mins, maxs, color )
+
+	position = position or vector_origin
+	angles = angles or angle_zero
+	mins = mins or Vector( -1, -1, -1 )
+	maxs = maxs or Vector( 1, 1, 1 )
+	color = color or color_white
+
+	local fwd = angles:Forward()
+	local right = angles:Right()
+	local up = angles:Up()
+
+	local size = maxs - mins
+
+	-- +x / -x faces: normal along right; the plane spans fwd (size.y) by up (size.z)
+	DrawBoxFace( position + right * maxs.x, right, size.y, size.z, color )
+	DrawBoxFace( position + right * mins.x, right, size.y, size.z, color )
+
+	-- +y / -y faces: normal along fwd; the plane spans right (size.x) by up (size.z)
+	DrawBoxFace( position + fwd * maxs.y, fwd, size.x, size.z, color )
+	DrawBoxFace( position + fwd * mins.y, fwd, size.x, size.z, color )
+
+	-- +z / -z faces: normal along up; the plane spans right (size.x) by fwd (size.y)
+	DrawBoxFace( position + up * maxs.z, up, size.x, size.y, color )
+	DrawBoxFace( position + up * mins.z, up, size.x, size.y, color )
+
+end
+
 -- HL2SB: render.BlurRenderTarget is a C binding (lrender.cpp) -- a
 -- downsample-upsample chain on real render targets.  The upstream Lua version
 -- drives pp/blurx + pp/blury, screenspace blur pixel-shader materials this

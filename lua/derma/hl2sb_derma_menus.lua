@@ -178,7 +178,7 @@ function Derma_Message( strText, strTitle, strButtonText )
 	label:SetSize( 380, 60 )
 	label:SetWrap( true )
 
-	local btn = ModalButton( frame, strButtonText or "#Close", function()
+	local btn = ModalButton( frame, strButtonText or "#dialog.ok", function()
 		frame:Close()
 	end )
 	btn:SetPos( 150, 100 )
@@ -248,10 +248,15 @@ function Derma_StringRequest( strTitle, strText, strDefault, fnEnter, fnCancel, 
 
 	entry.OnEnter = function() Finish( true ) end
 
-	local ok = ModalButton( frame, strOK or "#OKAY", function() Finish( true ) end )
+	-- HL2SB (2026-10-16): button captions use the tokens the loaded properties
+	-- actually carry.  "#OKAY"/"#CANCEL" exist in NO properties file (engine or
+	-- GMod) and painted raw; GMod's own Derma_Message default is "#dialog.ok"
+	-- (garrysmod/lua/derma/derma_utils.lua:70) and dialog.ok / dialog.cancel
+	-- ship in community.properties for all three languages.
+	local ok = ModalButton( frame, strOK or "#dialog.ok", function() Finish( true ) end )
 	ok:SetPos( 210, 90 ); ok:SetSize( 100, 26 )
 
-	local cancel = ModalButton( frame, strCancel or "#CANCEL", function() Finish( false ) end )
+	local cancel = ModalButton( frame, strCancel or "#dialog.cancel", function() Finish( false ) end )
 	cancel:SetPos( 310, 90 ); cancel:SetSize( 100, 26 )
 
 	frame:MakePopup()

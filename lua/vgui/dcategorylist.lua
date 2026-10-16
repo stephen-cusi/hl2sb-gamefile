@@ -97,4 +97,25 @@ function PANEL:PerformLayout( w, h )
 	self:Sort()
 end
 
+--- GMod resolves both of these through the DScrollPanel base
+--- (lua/vgui/dscrollpanel.lua:69 Rebuild / :139 Clear), which every GMod
+--- DCategoryList inherits.  This fork's DCategoryList is built on a DScroller
+--- child instead, so the two methods are provided here: the C context menu's
+--- Open() calls `self.Canvas:Clear()` and `self.Canvas:Rebuild()`
+--- (gamemodes/sandbox/gamemode/spawnmenu/contextmenu.lua:52-54) whenever an
+--- active tool control panel is docked, and without them that call chain died
+--- with "attempt to call a nil value (method 'Clear')".
+function PANEL:Clear()
+	for _, e in ipairs( self.m_tCategories ) do
+		if ( IsValid( e.pnl ) ) then e.pnl:Remove() end
+	end
+
+	self.m_tCategories = {}
+end
+
+function PANEL:Rebuild()
+	self:Sort()
+	self:InvalidateLayout( true )
+end
+
 derma.DefineControl( "DCategoryList", "HL2SB category list", PANEL, "DPanel" )

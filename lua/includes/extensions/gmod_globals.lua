@@ -332,6 +332,18 @@ if ( not _CLIENT ) then
 		return ConVar( name ) ~= nil
 	end
 
+	-- GMod's ServerLog( text ): a server-only global that writes the text to
+	-- the server log file, echoing "ServerLog: <text>" to the console when
+	-- sv_logecho is nonzero (reference behavior confirmed 2026-10-16).
+	-- This engine exposes no log-file writer to Lua, so the shim
+	-- echoes through Msg -- which lands in the console AND hl2sb_lua.log, the
+	-- same visible channel.  Callers are the rate-limit branches of the GMod
+	-- property files (lua/autorun/properties/statue.lua:86,
+	-- kinect_controller.lua:54), so volume is negligible.
+	ServerLog = ServerLog or function( text )
+		Msg( tostring( text ) )
+	end
+
 	return
 end
 
@@ -525,6 +537,37 @@ if ( input ~= nil ) then
 	end
 
 end
+
+-- ===========================================================================
+-- HL2SB (2026-10-16): input.IsButtonDown( code ) - GMod's union of the keyboard
+-- and mouse state queries.  The engine binding input.IsKeyDown (LIInput.cpp)
+-- deliberately only answers keyboard codes (an out-of-range code pushes false,
+-- the vgui key array must not take garbage), so mouse codes (MOUSE_FIRST and
+-- up) route to input.IsMouseDown instead.  lua/includes/modules/properties.lua
+-- tests it while servicing the C-menu world click (PropertiesClick /
+-- PreventScreenClicks); the only prior definition was the inert
+-- gmod_compatibility/sh_init.lua alias IsButtonDown = IsKeyDown, which would
+-- make every mouse button read as never pressed.  MOUSE_FIRST/MOUSE_LAST are
+-- pushed by public/lenumerations_shared.cpp.
+-- ===========================================================================
+if ( input.IsButtonDown == nil and input.IsKeyDown ~= nil ) then
+
+	function input.IsButtonDown( code )
+
+		code = tonumber( code )
+
+		if ( code == nil ) then return false end
+
+		if ( MOUSE_FIRST ~= nil and MOUSE_LAST ~= nil and code >= MOUSE_FIRST and code <= MOUSE_LAST ) then
+			if ( input.IsMouseDown == nil ) then return false end
+			return input.IsMouseDown( code ) and true or false
+		end
+
+		return input.IsKeyDown( code ) and true or false
+
+	end
+
+end
 -- ===========================================================================
 -- HL2SB: the `achievements` table (GMod global, client)
 --
@@ -607,6 +650,32 @@ if ( CLIENT and _G.gui ~= nil and _G.input ~= nil and input.GetCursorPos ~= nil 
 			local _, y = input.GetCursorPos()
 			return y or 0
 		end
+	end
+
+	-- HL2SB (2026-10-16): gui.ScreenToVector( x, y ) - the screen point's world
+	-- direction.  GMod implements it in C++; this engine's gui library has no
+	-- binding (the C-menu port's OnMousePressed had to guard it, which is why
+	-- the properties right-click chain was dead).  util.AimVector (lutil_shared)
+	-- is documented as this function's inverse maths, so rebuild the direction
+	-- from the local player's view: EyeAngles for the basis, GetFOV for the
+	-- projection (the reference uses the live render FOV; GetFOV is the same
+	-- value outside zoom lerps).  With no local player (main menu) the
+	-- EyeAngles shim answers angle_zero and the vector is simply forward.
+	if ( gui.ScreenToVector == nil and util ~= nil and util.AimVector ~= nil ) then
+
+		function gui.ScreenToVector( x, y )
+
+			local lp = LocalPlayer()
+
+			local fov = 90
+			if ( IsValid( lp ) and lp.GetFOV ~= nil ) then
+				fov = lp:GetFOV()
+			end
+
+			return util.AimVector( EyeAngles(), fov, x, y, ScrW(), ScrH() )
+
+		end
+
 	end
 
 end
@@ -759,6 +828,43 @@ if ( EyeAngles == nil ) then
 		if ( IsValid( lp ) ) then return lp:EyeAngles() end
 		return Angle( 0, 0, 0 )
 	end
+end
+
+-- HL2SB (2026-10-16): MainEyePos() - GMod global consumed by
+-- lua/includes/modules/properties.lua (PropertiesHover / PropertiesClick /
+-- PreventScreenClicks all trace from it).  Same eye as EyePos.
+MainEyePos = MainEyePos or EyePos
+
+-- HL2SB (2026-10-16): Panel:SetWorldClicker( bool ) / Panel:IsWorldClicker().
+-- The reference's Panel:SetWorldClicker both marks the panel and wires the
+-- engine so clicks on it fall through into the world while it is open; this
+-- engine's vgui has no such wiring, and until now Panel:IsWorldClicker was a
+-- C++ stub that always answered false (lPanel.cpp) - which kept
+-- lua/includes/modules/properties.lua's right-click gate from ever passing,
+-- even with the C menu open.  Carry the mark as a plain panel field: the
+-- properties module only needs the truthful "is this surface a world clicker"
+-- answer for its gates, and the C-menu port already fires GUIMousePressed from
+-- the menu surface itself, which stands in for the reference's
+-- click-through-then-fire path (the fork's popup consumes the click instead;
+-- no tools are ported, so there is no weapon consumer to starve).
+if ( FindMetaTable ~= nil ) then
+
+	local pnlmeta = FindMetaTable( "Panel" )
+
+	if ( pnlmeta ~= nil ) then
+
+		if ( pnlmeta.SetWorldClicker == nil ) then
+			function pnlmeta:SetWorldClicker( bWorldClicker )
+				self.m_bWorldClicker = tobool( bWorldClicker ) or false
+			end
+		end
+
+		function pnlmeta:IsWorldClicker()
+			return self.m_bWorldClicker == true
+		end
+
+	end
+
 end
 
 -- HL2SB GMod compat (2026-09-24): meta-table chain for FindMetaTable reads.

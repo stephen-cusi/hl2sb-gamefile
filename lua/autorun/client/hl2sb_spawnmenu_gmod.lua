@@ -1377,6 +1377,14 @@ local function Open()
 	g_Frame:SetVisible( true )
 	g_Frame:MakePopup()
 	g_Frame:MoveToFront()
+
+	-- GMod: spawnmenu.lua:252 parents the menu bar to the spawn menu while it
+	-- opens (the C menu's port does the same in its own Open).  The bar is a
+	-- child of the frame, so Close()'s SetVisible( false ) hides it too.
+	if ( _G.menubar ~= nil and menubar.ParentTo ~= nil ) then
+		menubar.ParentTo( g_Frame )
+	end
+
 	if ( g_Frame.RequestFocus ) then g_Frame:RequestFocus() end
 	AssertMouseInput()
 end

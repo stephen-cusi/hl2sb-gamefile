@@ -18,13 +18,6 @@ widgets.HoveredPos = vector_origin
 --
 widgets.Pressed = nil
 
-local tr = {}
-local trace = {
-	output = tr,
-	filter = widgetEntities,
-	whitelist = true,
-}
-
 local function UpdateHovered( pl )
 
 	if ( !IsValid( pl ) ) then return end
@@ -39,33 +32,85 @@ local function UpdateHovered( pl )
 	aimVector:Mul( 256 )
 	aimVector:Add( eyePos )
 
-	trace.start = eyePos
-	trace.endpos = aimVector
+--	debugoverlay.Line( eyePos, aimVector, 0.5 )
 
---	debugoverlay.Line( trace.start, trace.endpos, 0.5 )
-
+	-- HL2SB: util.TraceLine's "whitelist" flag is not implemented by this
+	-- fork's trace parser (the AGENTS.md trace section records it as a known
+	-- gap), and WITHOUT it the filter table would be read as an ignore list --
+	-- every widget excluded from the trace and hover could never register.
+	-- Reference behaviour is "only the entities in the table participate", so
+	-- the same test is run directly: each widget's own TestCollision (the
+	-- method the whitelisted trace consults) is asked for its ray hit, and
+	-- the nearest one wins, exactly like a sorted trace result.
 	widgets.Tracing = true
-	util.TraceLine( trace )
+
+	local hitEntity = nil
+	local hitPos = nil
+	local hitFraction = nil
+
+	for _, v in ipairs( widgetEntities ) do
+
+		-- HL2SB: guard stale entries.  The client realm never dispatches the
+		-- EntityRemoved hook this module prunes with, so a removed widget can
+		-- still sit in the list here.
+		if ( IsValid( v ) ) then
+
+			local result = v:TestCollision( eyePos, aimVector - eyePos, false, nil )
+
+			if ( result != nil and result.Fraction != nil ) then
+
+				-- TestCollision already folds the widget's priority into the
+				-- fraction (each implementation multiplies it in), so the
+				-- raw value is comparable as-is.
+				local fraction = result.Fraction
+
+				if ( hitFraction == nil or fraction < hitFraction ) then
+					hitEntity = v
+					hitPos = result.HitPos
+					hitFraction = fraction
+				end
+
+			end
+
+		end
+
+	end
+
 	widgets.Tracing = false
 
-	if ( !IsValid( tr.Entity ) || tr.Entity:IsWorld() ) then
+	if ( !IsValid( hitEntity ) ) then
 		pl:SetHoveredWidget( NULL )
 		return
 	end
 
---	debugoverlay.Cross( tr.HitPos, 1, 60 )
+--	debugoverlay.Cross( hitPos, 1, 60 )
 
-	pl:SetHoveredWidget( tr.Entity )
-	pl.WidgetHitPos = tr.HitPos
+	pl:SetHoveredWidget( hitEntity )
+	pl.WidgetHitPos = hitPos
 
-	return tr.Entity
+	return hitEntity
 
 end
 
 local function UpdateButton( pl, mv, btn, mousebutton, hvr, prs )
 
+	-- HL2SB: this engine's CMoveData binds KeyDown/KeyReleased but not GMod's
+	-- KeyWasDown; GetOldButtons carries the same "down last frame" bits the
+	-- reference callback reads.
 	local now = mv:KeyDown( btn )
-	local was = mv:KeyWasDown( btn )
+	local was
+
+	if ( mv.KeyWasDown != nil ) then
+		was = mv:KeyWasDown( btn )
+	else
+		local old = mv:GetOldButtons()
+
+		if ( bit != nil and bit.band != nil ) then
+			was = old != nil and bit.band( old, btn ) != 0
+		else
+			was = old != nil and math.floor( old / btn ) % 2 >= 1
+		end
+	end
 
 	if ( now && !was && IsValid( hvr ) ) then
 		hvr:OnPress( pl, mousebutton, mv )

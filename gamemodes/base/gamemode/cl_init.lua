@@ -220,7 +220,8 @@ end
 -- 的客户端半边 fire hook.Run( "OnUndo", name, customtext ) —— GMod 里弹窗
 -- 本体是 sandbox/gamemode/cl_init.lua:46 GM:OnUndo -> GM:AddNotify ->
 -- notification.AddLegacy。GMod 的 sandbox 翻译逻辑逐字；
--- language.FormatPhrase 带守卫（本分叉的 language 只有 GetPhrase）。
+-- language.FormatPhrase 带守卫（util.lua 给 language 补的 GetPhrase(key):format
+-- 垫片，未知 key 会 format 进 key 自己，所以调用点先比对 GetPhrase 结果）。
 -- ===========================================================================
 
 --- GMod sandbox/gamemode/cl_notice.lua:2

@@ -110,3 +110,37 @@ if ( meta.DropToFloor == nil and _G.util ~= nil and util.DropToFloor ~= nil ) th
 		return util.DropToFloor( self, MASK_NPCSOLID )
 	end
 end
+
+--===========================================================================--
+-- HL2SB (2026-10-16): Entity:GetPersistent() / Entity:SetPersistent( bool ).
+--
+-- The reference binds both as engine methods reading the entity's persistent
+-- flag; this engine has no such flag.  The only consumer in the reference
+-- gamemode tree is sandbox persistence.lua, which uses the tag to mark
+-- entities between save and paste within one running session, so a plain
+-- instance-table field answers the same contract.  The nil-guards here are
+-- sound because the lookup is on the Entity meta itself (contrast the old
+-- SendLua stub bug: that one checked the PLAYER meta for a binding that
+-- lives on the ENTITY meta, so the guard always passed).
+--
+-- HL2SB (2026-10-16, second pass): the mark is MIRRORED into the NW store
+-- (SetNWBool "hl2sb_persistent") because the C menu's persist/stop-persisting
+-- Filter runs on the CLIENT, where the server's instance table does not
+-- exist: with the plain field the client always answered false and showed
+-- "Make Persistent" even for an already-persisted entity.  The field stays
+-- the primary store (server-side iteration reads it without a network
+-- round-trip); the NW flag only supplies the cross-realm truth.
+--===========================================================================--
+if ( meta.GetPersistent == nil ) then
+	function meta:GetPersistent()
+		if ( self.m_bPersistent == true ) then return true end
+		return self:GetNWBool( "hl2sb_persistent" ) == true
+	end
+end
+
+if ( meta.SetPersistent == nil ) then
+	function meta:SetPersistent( bPersistent )
+		self.m_bPersistent = tobool( bPersistent ) or false
+		self:SetNWBool( "hl2sb_persistent", self.m_bPersistent )
+	end
+end

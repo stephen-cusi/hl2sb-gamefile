@@ -325,6 +325,14 @@ local PROPERTY_FILES = {
 	"postprocessing.properties",
 	"community.properties",
 	"context.properties",
+	-- HL2SB (2026-10-16): GMod's main_menu.properties.  The menu bar's own
+	-- captions live here -- "#menubar.drawing" and friends, "#allow_noclip",
+	-- "#allow_god_mode", "#enable_weapons", "#players_damage_players", the
+	-- "#bone_manipulate_*" trio, "#gmod_suit" -- and the file was never in
+	-- this list nor on disk, so every one of them painted raw (the
+	-- "some tokens are missing" report).  Values are GMod's own files
+	-- (resource/localization/<lang>/main_menu.properties, copied verbatim).
+	"main_menu.properties",
 }
 
 local function PropertiesLanguageCode()

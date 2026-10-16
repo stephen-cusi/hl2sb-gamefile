@@ -10,6 +10,19 @@ include( "ammo.lua" )
 -- sandbox/gamemode/shared.lua，双 realm 都加载；客户端靠网络化的 Count.* 读数）。
 include( "player_extension.lua" )
 
+-- HL2SB: GMod 同位 include（sandbox shared.lua:10）。save_load.lua 需要
+-- 引擎的 WriteSave 绑定与存档恢复时的 LoadGModSave 派发（两条引擎通路都还
+-- 没有，见 AGENTS.md），先不接；persistence 的依赖已全部就绪。
+include( "persistence.lua" )
+
+-- HL2SB (2026-10-16): GMod 同位 include（sandbox shared.lua:13
+-- include( "drive/drive_sandbox.lua" )）。file 在 lua/drive/drive_sandbox.lua，
+-- include 的根搜索（lua/%s）把它解析到那里。必须加载：C 菜单 drive 属性的
+-- 服务端 Receive 调 drive.PlayerStartDriving( ply, ent, "drive_sandbox" )，
+-- 而 drive.Register 的类型表里没有 "drive_sandbox" 时那一步直接
+-- ErrorNoHalt( "Unknown drive type drive_sandbox!" ) 并什么都不做。
+include( "drive/drive_sandbox.lua" )
+
 GM.Name			= "Sandbox"
 GM.Homepage		= "http://www.andrewmcwatters.com/hl2sb/"
 GM.Developer	= "Team Sandbox"

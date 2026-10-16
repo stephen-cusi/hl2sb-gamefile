@@ -343,6 +343,8 @@ if ( rawget( _G, "HUD_PRINTCENTER" ) == nil ) then HUD_PRINTCENTER = 4 end
 -- on "bit.bor: number expected, got nil" mid-projectile setup.
 local _SF = rawget( _G, "SOLID_FLAG" ) or _E.SOLID_FLAG
 if ( _SF ~= nil ) then
+	if ( rawget( _G, "FSOLID_CUSTOMRAYTEST" ) == nil ) then FSOLID_CUSTOMRAYTEST = _SF.CUSTOMRAYTEST end
+	if ( rawget( _G, "FSOLID_CUSTOMBOXTEST" ) == nil ) then FSOLID_CUSTOMBOXTEST = _SF.CUSTOMBOXTEST end
 	if ( rawget( _G, "FSOLID_NOT_SOLID" ) == nil ) then FSOLID_NOT_SOLID = _SF.NOT_SOLID end
 	if ( rawget( _G, "FSOLID_TRIGGER" ) == nil ) then FSOLID_TRIGGER = _SF.TRIGGER end
 	if ( rawget( _G, "FSOLID_NOT_STANDABLE" ) == nil ) then FSOLID_NOT_STANDABLE = _SF.NOT_STANDABLE end
@@ -500,3 +502,25 @@ if ( rawget( _G, "TEXT_FILTER_GAMECONTENT" ) == nil ) then TEXT_FILTER_GAMECONTE
 if ( rawget( _G, "TEXT_FILTER_CHAT" ) == nil ) then TEXT_FILTER_CHAT = 1 end
 if ( rawget( _G, "TEXT_FILTER_NAME" ) == nil ) then TEXT_FILTER_NAME = 2 end
 if ( rawget( _G, "TEXT_FILTER_ALL" ) == nil ) then TEXT_FILTER_ALL = 3 end
+
+-- ---------------------------------------------------------------------------
+-- BONE_USED_BY_* (public/studio.h studio bone flags).  GMod publishes these as
+-- engine globals; the bone-manipulation widget layer filters bones with
+-- BONE_USED_BY_VERTEX_LOD0 (lua/entities/widget_bones.lua:154, verbatim GMod).
+-- Values are this engine's own studio.h spellings (BONE_USED_MASK 0x7FF00,
+-- HITBOX 0x100, ATTACHMENT 0x200, VERTEX_LOD0 0x400 stepped by 0x400,
+-- BONE_MERGE 0x40000) so they cannot drift from what the C++ switches on.
+-- ---------------------------------------------------------------------------
+if ( rawget( _G, "BONE_USED_BY_ANYTHING" ) == nil ) then BONE_USED_BY_ANYTHING = 0x0007FF00 end
+if ( rawget( _G, "BONE_USED_BY_HITBOX" ) == nil ) then BONE_USED_BY_HITBOX = 0x00000100 end
+if ( rawget( _G, "BONE_USED_BY_ATTACHMENT" ) == nil ) then BONE_USED_BY_ATTACHMENT = 0x00000200 end
+if ( rawget( _G, "BONE_USED_BY_VERTEX_MASK" ) == nil ) then BONE_USED_BY_VERTEX_MASK = 0x0003FC00 end
+if ( rawget( _G, "BONE_USED_BY_VERTEX_LOD0" ) == nil ) then BONE_USED_BY_VERTEX_LOD0 = 0x00000400 end
+if ( rawget( _G, "BONE_USED_BY_VERTEX_LOD1" ) == nil ) then BONE_USED_BY_VERTEX_LOD1 = 0x00000800 end
+if ( rawget( _G, "BONE_USED_BY_VERTEX_LOD2" ) == nil ) then BONE_USED_BY_VERTEX_LOD2 = 0x00001000 end
+if ( rawget( _G, "BONE_USED_BY_VERTEX_LOD3" ) == nil ) then BONE_USED_BY_VERTEX_LOD3 = 0x00002000 end
+if ( rawget( _G, "BONE_USED_BY_VERTEX_LOD4" ) == nil ) then BONE_USED_BY_VERTEX_LOD4 = 0x00004000 end
+if ( rawget( _G, "BONE_USED_BY_VERTEX_LOD5" ) == nil ) then BONE_USED_BY_VERTEX_LOD5 = 0x00008000 end
+if ( rawget( _G, "BONE_USED_BY_VERTEX_LOD6" ) == nil ) then BONE_USED_BY_VERTEX_LOD6 = 0x00010000 end
+if ( rawget( _G, "BONE_USED_BY_VERTEX_LOD7" ) == nil ) then BONE_USED_BY_VERTEX_LOD7 = 0x00020000 end
+if ( rawget( _G, "BONE_USED_BY_BONE_MERGE" ) == nil ) then BONE_USED_BY_BONE_MERGE = 0x00040000 end

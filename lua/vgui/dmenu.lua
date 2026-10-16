@@ -8,10 +8,20 @@ local PANEL = {}
 
 local OPTION_H = 20
 
+--- GMod: DMenu's m_bDeleteSelf AccessorFunc (dmenu.lua:4) -- a menu with the
+--- flag clear is hidden, not removed, by CloseDermaMenus (derma_menus.lua:25).
+--- The menubar's per-tab menus and their submenus keep their state this way
+--- (lua/autorun/menubar.lua:85 calls SetDeleteSelf( false ) on the weapon
+--- submenu at PopulateMenuBar time; without the method that hook died with
+--- "attempt to call a nil value (method 'SetDeleteSelf')" and the NPC menu
+--- never finished building).
+AccessorFunc( PANEL, "m_bDeleteSelf", "DeleteSelf" )
+
 function PANEL:Init()
 	self:SetVisible( false )
 	self:SetDrawBackground( false )
 	self:SetMouseInputEnabled( true )
+	self:SetDeleteSelf( true )
 
 	-- GMod's marker that a panel is part of a menu; the click-away watcher walks
 	-- the parent chain for it before closing the open menus (GMod's engine raises
@@ -193,6 +203,15 @@ function PANEL:Hide()
 	self:SetVisible( false )
 end
 
+--- GMod: DMenu:Close() -- the derma_menus.lua CloseMenu path (it prefers Close,
+--- then Delete, then SetVisible( false )).  GMod's engine Panel has Close; this
+--- fork's scripted panel carries none, and lua/includes/util.lua's
+--- RememberCursorPosition comment plus this fork's own CloseMenu helper both
+--- document the Close spelling.
+function PANEL:Close()
+	self:Hide()
+end
+
 function PANEL:Delete()
 	self:Remove()
 end
@@ -362,6 +381,17 @@ end
 
 function OPT:GetIcon()
 	return self.m_strIcon
+end
+
+--- GMod's row has no SetImage of its own -- `option:SetImage( data.MenuIcon )`
+--- from lua/includes/modules/properties.lua:75 resolves through the DButton
+--- base and puts a DImage child into the button, which GMod's DButton
+--- PerformLayout/Paint then lay out.  This fork's row PAINTS ITS OWN caption
+--- (OPT:Paint below), so the DButton image slot would draw the icon on top of
+--- the text.  Route the call into this row's own icon slot instead: same
+--- visual contract (image on the left of the row), one icon path.
+function OPT:SetImage( strIcon )
+	self:SetIcon( strIcon )
 end
 
 function OPT:Paint( w, h )
