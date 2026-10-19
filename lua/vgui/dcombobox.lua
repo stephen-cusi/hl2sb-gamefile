@@ -6,6 +6,7 @@
 local PANEL = {}
 
 function PANEL:Init()
+	self.m_bDoSort = true
 	self:SetMouseInputEnabled( true )
 	self:SetKeyBoardInputEnabled( false )
 	self:SetDrawBackground( false )
@@ -201,6 +202,17 @@ function PANEL:IsEditing()
 	return self:IsMenuOpen()
 end
 
+--- GMod: DComboBox:SetSortItems( bool ) / GetSortItems().
+--- Keeps insertion order when disabled; sorts menu labels when enabled.
+function PANEL:SetSortItems( bSort )
+	self.m_bDoSort = tobool( bSort )
+	self:BuildOptions()
+end
+
+function PANEL:GetSortItems()
+	return self.m_bDoSort ~= false
+end
+
 --- GMod: DComboBox:SetValue( str ) -- sets the text shown in the box.  The
 --- framework's convar link (lua/derma/init.lua) also calls GetValue.
 function PANEL:SetValue( str )
@@ -215,14 +227,25 @@ function PANEL:BuildOptions()
 	end
 	self.m_tOptionPanels = {}
 
+	local order = {}
+	for i in ipairs( self.m_tOptions ) do
+		order[ #order + 1 ] = i
+	end
+	if ( self:GetSortItems() ) then
+		table.sort( order, function( a, b )
+			return tostring( self.m_tOptions[ a ].label ) < tostring( self.m_tOptions[ b ].label )
+		end )
+	end
+
 	local y = 2
-	for i, o in ipairs( self.m_tOptions ) do
-		local opt = vgui.Create( "DButton", self.m_pOptions, "Opt" .. i )
+	for slot, optionIndex in ipairs( order ) do
+		local o = self.m_tOptions[ optionIndex ]
+		local opt = vgui.Create( "DButton", self.m_pOptions, "Opt" .. slot )
 		opt:SetText( o.label )
-		opt.DoClick = function() self:ChooseOption( o.label, i ) end
+		opt.DoClick = function() self:ChooseOption( o.label, optionIndex ) end
 		opt:SetPos( 0, y )
 		opt:SetSize( 140, 18 )
-		self.m_tOptionPanels[ i ] = opt
+		self.m_tOptionPanels[ slot ] = opt
 		y = y + 18
 	end
 

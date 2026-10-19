@@ -26,6 +26,7 @@ include( "vgui/DCheckBoxLabel.lua" )
 -- leaves behind): vgui.Create( "DComboBox" ) silently fell through to the engine
 -- factory and answered nil, so every addon that builds one died on the next line.
 include( "vgui/DComboBox.lua" )
+include( "vgui/ControlPresets.lua" )
 include( "vgui/DScrollBar.lua" )
 include( "vgui/DScrollPanel.lua" )
 include( "vgui/DScroller.lua" )
