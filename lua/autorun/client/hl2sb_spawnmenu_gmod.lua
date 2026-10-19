@@ -441,14 +441,29 @@ end
 local function CollectWeapons()
 	local byKey = {}
 
-	-- TWO sources, merged on class key (in-game evidence: the SWEP loader's
-	-- "[HL2SB wp] REGISTER" line only fires for part of the roster, so
-	-- weapons.GetList() alone loses the rest -- seal6-c4, minecraft_swep and
-	-- friends were gone from the grid).  weapons.GetList() carries the stock
-	-- HL2 set (game_hl2.lua -> weapons.Register) and every SWEP the
-	-- ScriptedWeaponRegistered sync caught; weapon.getweapons() is the
-	-- loader's own table and has the rest.  Same key -> last write wins, no
-	-- duplicates.
+	-- TWO sources, merged on class key.  weapons.GetList() (the weapons
+	-- module's registry, filled by game_hl2.lua and by the weapon.register
+	-- bridge in lua/includes/init.lua) carries the GMod-shaped entries;
+	-- weapon.getweapons() is the engine loader's own table, holding the full
+	-- SWEP script (WorldModel / ViewModel for the icon).  Same key -> last
+	-- write wins, no duplicates -- so the registry is merged FIRST and the
+	-- loader's fuller table overwrites it, keeping the icon's model.
+	if ( weapons and weapons.GetList ) then
+		for _, w in pairs( weapons.GetList() ) do
+			if ( istable( w ) and isstring( w.ClassName ) and w.Spawnable ~= false ) then
+				local e, key = NewEntry( w.ClassName )
+				if ( e ) then
+					e.name      = ResolveStockName( tostring( w.PrintName or w.ClassName ), tostring( w.ClassName ) )
+					e.category  = ( isstring( w.Category ) and w.Category ~= "" ) and w.Category or "Half-Life 2"
+					e.model     = firstModel( w.WorldModel, w.ViewModel )
+					e.spawnname = tostring( w.ClassName )
+					e.cat       = "weapon"
+					byKey[ key ] = e
+				end
+			end
+		end
+	end
+
 	if ( weapon ~= nil and weapon.getweapons ~= nil ) then
 		local ok, all = pcall( weapon.getweapons )
 		if ( ok and istable( all ) ) then
@@ -463,22 +478,6 @@ local function CollectWeapons()
 						e.cat       = "weapon"
 						byKey[ key ] = e
 					end
-				end
-			end
-		end
-	end
-
-	if ( weapons and weapons.GetList ) then
-		for _, w in pairs( weapons.GetList() ) do
-			if ( istable( w ) and isstring( w.ClassName ) and w.Spawnable ~= false ) then
-				local e, key = NewEntry( w.ClassName )
-				if ( e ) then
-					e.name      = ResolveStockName( tostring( w.PrintName or w.ClassName ), tostring( w.ClassName ) )
-					e.category  = ( isstring( w.Category ) and w.Category ~= "" ) and w.Category or "Half-Life 2"
-					e.model     = firstModel( w.WorldModel, w.ViewModel )
-					e.spawnname = tostring( w.ClassName )
-					e.cat       = "weapon"
-					byKey[ key ] = e
 				end
 			end
 		end

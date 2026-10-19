@@ -114,8 +114,8 @@ local function ADD_WEAPON( class )
 	}
 	list.Set( "Weapon", class, t )
 
-	-- the fork's CollectWeapons reads weapons.GetList(), which is the
-	-- WeaponList this fills (GMod's weapons.GetList reads the raw list)
+	-- weapons.Register fills WeaponList (what weapons.GetList arrays up) AND
+	-- the list.Get( "Weapon" ) registry the sandbox give path reads.
 	if ( weapons ~= nil and weapons.Register ~= nil ) then
 		weapons.Register( t, class )
 	end

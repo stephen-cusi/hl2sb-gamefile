@@ -230,6 +230,20 @@ end
 --- multiline gate reads its own flag).
 AccessorFunc( PANEL, "m_bEnterAllowed", "EnterAllowed", FORCE_BOOL )
 
+--- HL2SB (2026-10-19): drive the engine's own gate from the same flag.  GMod
+--- keeps m_bAllowEnter on the Lua side and its key handling reads it; here the
+--- real Enter gate lives in the engine (SetCatchEnterKey), so without this the
+--- flag was recorded and never consulted -- SetEnterAllowed( false ) did
+--- nothing.  Wrapping keeps the AccessorFunc's storage/GetEnterAllowed intact.
+local _DTextEntry_SetEnterAllowed = PANEL.SetEnterAllowed
+function PANEL:SetEnterAllowed( b )
+	_DTextEntry_SetEnterAllowed( self, b )
+
+	if ( self.SetCatchEnterKey ~= nil ) then
+		self:SetCatchEnterKey( self:GetEnterAllowed() )
+	end
+end
+
 --- GMod: DTextEntry:SetCaretPos( i ) / GetCaretPos() -- the wiki spellings of
 --- the engine's cursor-position pair.
 function PANEL:SetCaretPos( i )

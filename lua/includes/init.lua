@@ -85,6 +85,30 @@ include( "drive/drive_noclip.lua" )
 -- (save_load.lua), which every gamemode here inherits.
 include( "gmsave.lua" )
 
+-- HL2SB (2026-10-19): bridge the engine's SWEP loader into GMod's weapon
+-- registry.  GMod's engine hands every lua/weapons/*.lua script to
+-- weapons.Register, which is what fills weapons.GetList(), the
+-- list.Get( "Weapon" ) registry (the sandbox give path reads it:
+-- list.GetEntry( "Weapon", class )) and duplicator.Allow.  This fork's loader
+-- answers weapon.register instead and nothing connected the two, so the
+-- sandbox gamemode's gm_giveswep reported "invalid weapon" for every addon
+-- SWEP that did not run list.Set itself.  Wrap, don't replace: the loader
+-- resolves weapon.register at call time, so the wrapper is what it will see.
+-- pcall keeps a sync failure from ever breaking the weapon's own
+-- registration; the guard keeps a reordered bootstrap a silent no-op rather
+-- than a hard error.
+if ( weapon ~= nil and weapon.register ~= nil and weapons ~= nil and weapons.Register ~= nil ) then
+	local weaponRegister = weapon.register
+	weapon.register = function( t, classname, bReload )
+		weaponRegister( t, classname, bReload )
+
+		local ok, err = pcall( weapons.Register, t, classname )
+		if ( not ok ) then
+			Msg( "[HL2SB] weapons.Register sync failed for " .. tostring( classname ) .. ": " .. tostring( err ) .. "\n" )
+		end
+	end
+end
+
 -- Everything below is CLIENT ONLY, and GMod's own bootstrap guards it the same
 -- way.  On the server these files do not merely no-op: derma/init.lua opens by
 -- indexing `surface` (nil server-side), so it throws before it ever reaches

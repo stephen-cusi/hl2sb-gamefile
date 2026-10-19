@@ -27,10 +27,30 @@ module( "umsg" )
 local net = globals.net
 local util = globals.util
 local IsValid = globals.IsValid
+-- HL2SB (2026-10-19): module() replaces this chunk's environment, and the module
+-- table has no __index fallback, so every global read here is nil unless it is
+-- captured first.  `type` was the one that showed up: umsg.Start -> ResolveRecipients
+-- raised "attempt to call a nil value (global 'type')", which aborted the write
+-- mid-stream and left the usermessage half-written.  SERVER/CLIENT were nil for
+-- the same reason, so the "pool the wire name" guard below never ran either.
+local type = globals.type
+local tostring = globals.tostring
+local tonumber = globals.tonumber
+local pairs = globals.pairs
+local ipairs = globals.ipairs
+local isstring = globals.isstring
+local istable = globals.istable
+local error = globals.error
+local SERVER = globals.SERVER
+local CLIENT = globals.CLIENT
 
 local UMSG_NET_NAME = "hl2sb_umsg"
 
-if ( SERVER ) then
+-- Pool the wire name on the sending side.  Without this net.Start raises
+-- "Calling net.Start with unpooled message name!" and every old-style
+-- usermessage addon dies on its first umsg.Start (the receiving half is fine,
+-- the send never happens).  util.AddNetworkString is idempotent in this fork.
+if ( SERVER and util ~= nil and util.AddNetworkString ~= nil ) then
 	util.AddNetworkString( UMSG_NET_NAME )
 end
 
