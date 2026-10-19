@@ -4,6 +4,7 @@
 ba_sdmodel
 enhanced_playermodel_selector
 example_addon
+firstpersonbody
 hl1sweps
 menu
 tarkov_hud
