@@ -1018,6 +1018,64 @@ do
 	elseif ( ENTITY_META == nil ) then
 		Msg( "[HL2SB] gmod_compat: FindMetaTable( \"Entity\" ) was nil -- NearestPoint NOT installed\n" )
 	end
+
+	if ( ENTITY_META ~= nil ) then
+		if ( ENTITY_META.GetModelRenderBounds == nil ) then
+			function ENTITY_META:GetModelRenderBounds()
+				return self:OBBMins(), self:OBBMaxs()
+			end
+		end
+
+		-- HL2SB (2026-10-19): GetBoneCount / GetBoneName must NOT be stubbed here.
+		-- The engine already binds both (bone count from the studio header, the
+		-- "__INVALIDBONE__" name for an out-of-range index), and this file runs
+		-- BEFORE those bindings are registered on the table that entity userdata
+		-- actually resolve through -- so the "== nil" guard below was always
+		-- true and the stubs ended up SHADOWING the real functions for the rest
+		-- of the session.  Symptom: every model reported a bone count of 0 and
+		-- every bone name was "__INVALIDBONE__", which silently broke every
+		-- script that walks a skeleton or resolves a bone by name.
+		--
+		-- The correct fallbacks are therefore installed LATE, only if the
+		-- engine binding really is missing once the map is up (see the
+		-- InitPostEntity handler at the end of this block).
+	end
+
+	local PLAYER_META = FindMetaTable( "Player" )
+	if ( PLAYER_META ~= nil ) then
+		if ( PLAYER_META.SetEyeAngles == nil and PLAYER_META.SnapEyeAngles ~= nil ) then
+			PLAYER_META.SetEyeAngles = PLAYER_META.SnapEyeAngles
+		end
+	end
+
+	local CMD_META = FindMetaTable( "CUserCmd" )
+	if ( CMD_META ~= nil ) then
+		if ( CMD_META.GetViewAngles == nil ) then
+			function CMD_META:GetViewAngles()
+				return self.viewangles or Angle( 0, 0, 0 )
+			end
+		end
+		if ( CMD_META.SetViewAngles == nil ) then
+			function CMD_META:SetViewAngles( ang )
+				self.viewangles = ang
+			end
+		end
+		if ( CMD_META.AddKey == nil ) then
+			function CMD_META:AddKey( key )
+				self.buttons = bit.bor( self.buttons or 0, key or 0 )
+			end
+		end
+		if ( CMD_META.KeyDown == nil ) then
+			function CMD_META:KeyDown( key )
+				return bit.band( self.buttons or 0, key or 0 ) ~= 0
+			end
+		end
+		if ( CMD_META.CommandNumber == nil ) then
+			function CMD_META:CommandNumber()
+				return self.command_number or 0
+			end
+		end
+	end
 end
 
 -- ---------------------------------------------------------------------------
@@ -1074,5 +1132,34 @@ if ( util ~= nil and util.QuickTrace == nil ) then
 		return util.TraceLine( { start = startPos, endpos = startPos + delta, filter = filter } )
 	end
 	Msg( "[HL2SB]   util.QuickTrace added (util.TraceLine wrapper)\n" )
+end
+
+-- ---------------------------------------------------------------------------
+-- 6. Bone-accessor fallbacks, installed LATE on purpose.
+--
+--    GetBoneCount / GetBoneName used to be stubbed unconditionally at the top
+--    of this file, which ran before the engine bindings were reachable through
+--    FindMetaTable( "Entity" ) -- so the stubs won and every model reported
+--    "0 bones" / "__INVALIDBONE__" for the whole session.  Installing them
+--    once the map is up (InitPostEntity) means the engine binding wins
+--    whenever it exists, and plugins still get GMod's harmless defaults when a
+--    build really lacks it.
+-- ---------------------------------------------------------------------------
+local function HL2SB_InstallBoneFallbacks()
+	if ( FindMetaTable == nil ) then return end
+	local meta = FindMetaTable( "Entity" )
+	if ( meta == nil ) then return end
+
+	if ( meta.GetBoneCount == nil ) then
+		function meta:GetBoneCount() return 0 end
+	end
+
+	if ( meta.GetBoneName == nil ) then
+		function meta:GetBoneName( id ) return "__INVALIDBONE__" end
+	end
+end
+
+if ( hook ~= nil and hook.Add ~= nil ) then
+	hook.Add( "InitPostEntity", "hl2sb_gmod_compat_bone_fallbacks", HL2SB_InstallBoneFallbacks )
 end
 
