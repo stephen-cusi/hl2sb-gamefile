@@ -6,9 +6,8 @@
     开局装备从旧的 GM:GiveDefaultItems 搬到了这里的 PLAYER:Loadout()，
     和 GMod 一致：GM:PlayerSpawn -> PlayerLoadout -> RunClass("Loadout")。
 
-    GMod 原版的 gmod_tool / gmod_camera 在 HL2SB 没有可用实现：
-      gmod_tool   -> weapon_toolgun（HL2SB 自带的 C++ 工具枪）
-      gmod_camera -> 略过（只有半个 shared.lua，没有 init.lua，也缺 camera.mdl）
+    gmod_tool   -> 已移植（2026-10-16，lua/weapons/gmod_tool/，GMod 原文）
+    gmod_camera -> 略过（只有半个 shared.lua，没有 init.lua，也缺 camera.mdl）
 --------------------------------------------------------------------------]]--
 
 local PLAYER = {}
@@ -69,7 +68,13 @@ function PLAYER:Loadout()
 
 	-- 工具（GMod 里这两个不受 sbox_weapons 影响）
 	self.Player:Give( "weapon_physgun" )
-	self.Player:Give( "weapon_toolgun" )
+
+	-- HL2SB (2026-10-16): the ported GMod tool gun.  GMod's sandbox
+	-- player_sandbox.lua:76 gives "gmod_tool" here; this fork's old
+	-- "weapon_toolgun" was a reskinned-pistol placeholder
+	-- (scripts/weapon_toolgun.txt) with no tool behaviour behind it.
+	self.Player:Give( "gmod_tool" )
+	-- self.Player:Give( "weapon_toolgun" )  -- pre-port placeholder
 
 	self.Player:SwitchToDefaultWeapon()
 end

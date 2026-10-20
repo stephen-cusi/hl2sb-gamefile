@@ -188,16 +188,12 @@ function Get( name, retval )
 		local base = Get( SEntList[ name ].Base )
 
 		if ( !base ) then
+			-- GMod reports this through Msg() only; it is NOT a Lua error and
+			-- must not reach the error collector.  It shows up here while the
+			-- scripts are still loading (a class registered from lua/autorun can
+			-- name a base that lua/entities has not reached yet); the registry is
+			-- rebuilt from OnLoaded() once every script has run.
 			Msg("ERROR: Trying to derive entity " .. tostring( name ) .. " from non existant entity " .. tostring( SEntList[ name ].Base ) .. "!\n" )
-			-- HL2SB (2026-09-21): a missing base class means the SENT cannot
-			-- inherit anything - that is addon breakage the error viewer should
-			-- show.  The console line above is plain Msg() (no error object), so
-			-- report it to the collector explicitly.
-			if ( hl2sb_reportluaerror != nil ) then
-				pcall( hl2sb_reportluaerror,
-					"SENT '" .. tostring( name ) .. "': base class '" .. tostring( SEntList[ name ].Base ) .. "' does not exist - the entity will not work",
-					"registered via scripted_ents.lua Get()" )
-			end
 		else
 			retval = TableInherit( retval, base )
 		end

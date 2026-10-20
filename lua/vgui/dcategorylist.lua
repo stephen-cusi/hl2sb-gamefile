@@ -79,6 +79,17 @@ function PANEL:Sort()
 	for _, e in ipairs( self.m_tCategories ) do
 		e.pnl:SetPos( 0, y )
 		e.pnl:SetSize( self:GetWide(), 0 )
+
+		-- HL2SB (2026-10-16): a DCollapsibleCategory laid out inside this
+		-- wrapper needs its WIDTH set before it can size its rows, and the
+		-- wrapper height is measured from the category panel (GMod does the
+		-- same through DScrollPanel auto-size).  GetBodyHeight() is the
+		-- category's published header + body height, so the measurement does
+		-- not depend on PerformLayout having run yet.
+		if ( IsValid( e.cat ) and e.cat.GetBodyHeight ) then
+			e.cat:SetSize( self:GetWide(), e.cat:GetHeaderHeight() + e.cat:GetBodyHeight() )
+		end
+
 		local _, h = e.pnl:GetChildrenSize()
 		h = math.max( 24, h or 24 )
 		e.pnl:SetTall( h )

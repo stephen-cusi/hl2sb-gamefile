@@ -13,6 +13,13 @@ include( "in_main.lua" )
 include( "scripted_controls/buildmenu.lua" )
 include( "cl_worldtips.lua" )
 include( "cl_hints.lua" )
+-- HL2SB (2026-10-16): the spawn-menu tool-menu contract (GMod
+-- gamemodes/sandbox/gamemode/cl_spawnmenu.lua, reference line 2 is that
+-- file's own `include( "spawnmenu/spawnmenu.lua" )`; see the ported file's
+-- header for what was left out).  The engine gamemode loader only runs
+-- gamemode/cl_init.lua / init.lua, so the file has to be included here,
+-- exactly like cl_hints.lua / cl_worldtips.lua above.
+include( "cl_spawnmenu.lua" )
 
 local BaseClass = gamemode.Get( "base" )
 

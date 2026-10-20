@@ -4,6 +4,10 @@ local PANEL = {}
 
 local HEAD_H = 22
 
+-- HL2SB (2026-10-16): row height for the GMod CategoryList rows created by
+-- PANEL:Add below (GMod dcategorycollapse.lua:102 `button:SetHeight( 17 )`).
+local ROW_H = 17
+
 function PANEL:Init()
 	self:SetDrawBackground( false )
 	self.m_bCollapsed = false
@@ -42,6 +46,7 @@ function PANEL:SetContents( pnl, bDelete )
 	pnl:SetParent( self.m_pBody )
 	self.m_pContents = pnl
 	self:InvalidateLayout( true )
+	if ( IsValid( self:GetParent() ) ) then self:GetParent():InvalidateLayout( true ) end
 end
 
 function PANEL:Toggle()
@@ -103,16 +108,131 @@ function PANEL:GetContents()
 	return self.m_pContents
 end
 
+--- HL2SB (2026-10-16): the body height now also answers for rows added through
+--- PANEL:Add (GMod DCollapsibleCategory:Add, reference
+--- dcategorycollapse.lua:75) and for a SetContents panel that sizes itself from
+--- its own children -- a category inside a DCategoryList is measured with
+--- Panel:GetChildrenSize(), so a category that never publishes a height keeps
+--- the whole group at the list's 24px minimum and its rows are never laid out.
+function PANEL:GetBodyHeight()
+
+	if ( self.m_bCollapsed ) then return 0 end
+
+	local bodyH = ( self.m_iRowCount or 0 ) * ROW_H
+
+	if ( IsValid( self.m_pContents ) ) then
+		local _, ch = self.m_pContents:GetChildrenSize()
+		bodyH = math.max( bodyH, self.m_pContents:GetTall(), ch or 0 )
+	end
+
+	return bodyH
+
+end
+
 function PANEL:PerformLayout( w, h )
 	w = w or self:GetWide()
 
 	local headH = self:GetHeaderHeight()
+	local bodyH = self:GetBodyHeight()
 
 	self.m_pHeader:SetPos( 0, 0 )
 	self.m_pHeader:SetSize( w, headH )
 
+	if ( IsValid( self.m_pContents ) ) then
+		self.m_pContents:SetPos( 0, 0 )
+		self.m_pContents:SetSize( w, bodyH )
+	end
+
 	self.m_pBody:SetPos( 0, headH )
-	self.m_pBody:SetSize( w, self.m_bCollapsed and 0 or ( self.m_pContents and self.m_pContents:GetTall() or 0 ) )
+	self.m_pBody:SetSize( w, bodyH )
+
+	if ( self:GetTall() != headH + bodyH ) then self:SetTall( headH + bodyH ) end
+end
+
+--- GMod: DCollapsibleCategory:Add( strName ) -- the row entry point that
+--- gamemodes/sandbox/gamemode/spawnmenu/toolpanel.lua:250 uses for every tool
+--- name (reference dcategorycollapse.lua:75-122).  Rows live in the contents
+--- panel when one was SetContents() (that is what DCategoryList:AddCategory
+--- installs) and in the body otherwise; the fork's body/contents panels are
+--- plain DPanels, so a docked DButton is the row.  The returned button is the
+--- exact surface toolpanel.lua drives: DoClick / DoRightClick / SetEnabled /
+--- IsEnabled / SetSelected / SetTooltip / .Name / .Text / .ConVar.
+function PANEL:Add( strName )
+
+	local body = self.m_pContents
+	if ( !IsValid( body ) ) then body = self.m_pBody end
+	if ( !IsValid( body ) ) then return nil end
+
+	local button = vgui.Create( "DButton", body )
+	button:Dock( TOP )
+	button:SetTall( ROW_H )
+	button:SetContentAlignment( 4 )
+	button:SetText( strName or "" )
+	button.DoClickInternal = function()
+
+		if ( self:GetList() ) then
+			self:GetList():UnselectAll()
+		else
+			self:UnselectAll()
+		end
+
+		if ( button.SetSelected ) then button:SetSelected( true ) end
+
+	end
+
+	self.m_iRowCount = ( self.m_iRowCount or 0 ) + 1
+	self:UpdateAltLines()
+	self:InvalidateLayout( true )
+
+	return button
+
+end
+
+--- GMod: DCollapsibleCategory:UnselectAll() (reference dcategorycollapse.lua:124).
+function PANEL:UnselectAll()
+
+	for _, v in ipairs( self:GetChildren() ) do
+		if ( v.SetSelected ) then v:SetSelected( false ) end
+	end
+
+	for _, v in ipairs( self.m_pBody:GetChildren() ) do
+		if ( v.SetSelected ) then v:SetSelected( false ) end
+	end
+
+	if ( IsValid( self.m_pContents ) ) then
+		for _, v in ipairs( self.m_pContents:GetChildren() ) do
+			if ( v.SetSelected ) then v:SetSelected( false ) end
+		end
+	end
+
+end
+
+--- GMod: DCollapsibleCategory:UpdateAltLines() (reference dcategorycollapse.lua:136).
+function PANEL:UpdateAltLines()
+
+	local n = 0
+	for _, v in ipairs( self.m_pBody:GetChildren() ) do
+		n = n + 1
+		v.AltLine = ( n % 2 ) != 1
+	end
+	if ( IsValid( self.m_pContents ) ) then
+		for _, v in ipairs( self.m_pContents:GetChildren() ) do
+			n = n + 1
+			v.AltLine = ( n % 2 ) != 1
+		end
+	end
+
+end
+
+--- GMod: AccessorFunc( PANEL, "m_pList", "List" ) (reference
+--- dcategorycollapse.lua:54) -- DCategoryList:Add attaches the owning list so a
+--- row click can clear the list's selection.
+function PANEL:SetList( list )
+	self.m_pList = list
+end
+
+function PANEL:GetList()
+	return self.m_pList
 end
 
 derma.DefineControl( "DCollapsibleCategory", "HL2SB collapsible group", PANEL, "DPanel" )

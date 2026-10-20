@@ -315,4 +315,14 @@ function PANEL:PerformLayout( w, h )
 	end
 end
 
+--- HL2SB (2026-10-16): GMod's DPropertySheet publishes Paint through the skin
+--- (Derma_Hook( PANEL, "Paint", "Paint", "PropertySheet" ), reference
+--- lua/vgui/dpropertysheet.lua:149).  This fork's sheet had no Paint at all,
+--- and GMod's sandbox tool menu calls DPropertySheet.Paint( self, w, h )
+--- directly (gamemodes/sandbox/gamemode/spawnmenu/toolmenu.lua:57), so the
+--- class has to answer with that contract.  The fork's DPanel paints nothing
+--- (the spawn menu paints its own background), so this stays a no-op.
+function PANEL:Paint( w, h )
+end
+
 derma.DefineControl( "DPropertySheet", "HL2SB tab container", PANEL, "DPanel" )

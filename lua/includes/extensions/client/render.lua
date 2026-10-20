@@ -1,6 +1,23 @@
 
 -- We don't want this to run in menu state, and render.GetAmbientLightColor doesn't exist in menu state
 if ( !render || !render.GetAmbientLightColor ) then return end
+--[[---------------------------------------------------------
+	Name: GetRenderTarget( name, width, height )
+	Desc: GMod's global helper -- returns the named render target
+	      texture, creating it the first time.  GMod's own doc comment
+	      in gmod_tool/cl_viewscreen.lua:7 spells the contract:
+	      "GetRenderTarget returns the texture if it exists, or creates
+	      it if it doesn't".  This fork's engine binding with the same
+	      create-or-find semantics is render.CreateNamedRenderTarget
+	      (game/client/lua/lrender.cpp), so the global is answered on
+	      top of it -- the reference file calls it unqualified.
+-----------------------------------------------------------]]
+function GetRenderTarget( name, wide, tall )
+
+	return render.CreateNamedRenderTarget( name, wide, tall )
+
+end
+
 
 --[[---------------------------------------------------------
   Short aliases for stencil constants
@@ -171,18 +188,12 @@ end
 -- cam.End3D(); with End3D missing every halo frame PUSHED a 3D view onto the
 -- renderer's view stack and never popped it -- the stack leaked one level per
 -- frame, the view matrices drifted, and rendering (animations, muzzle flashes,
--- tracers) went visibly wrong game-wide.  Both closers just fold into cam.End.
-function cam.End3D()
-
-	return cam.End()
-
-end
-
-function cam.End2D()
-
-	return cam.End()
-
-end
+-- tracers) went visibly wrong game-wide.
+-- HL2SB (2026-10-20): the closers are engine functions now, and they are
+-- TYPED (cam.End2D / cam.End3D, matching GMod's library): an unbalanced
+-- closer only affects its own kind instead of swallowing the other kind's
+-- view.  The old Lua wrappers folded both into cam.End, which is exactly the
+-- cross-poisoning shape - do not bring them back.
 
 local matFSB = Material( "pp/motionblur" )
 

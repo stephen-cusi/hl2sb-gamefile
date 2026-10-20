@@ -732,6 +732,11 @@ end
 -- ---------------------------------------------------------------------------
 
 local g_Frame, g_Grid, g_Side, g_Search, g_Hint
+-- HL2SB (2026-10-16): the Tools tab hosts GMod's tool menu (reference
+-- gamemodes/sandbox/gamemode/spawnmenu/toolmenu.lua, ported verbatim into
+-- gamemodes/sandbox/gamemode/spawnmenu/).  g_ToolHost is the panel it is
+-- docked into, g_ToolMenuPanel the "ToolMenu" DPropertySheet itself.
+local g_ToolHost, g_ToolMenuPanel
 local g_TabButtons = {}
 local g_CatButtons = {}
 local g_ActiveTab  = "entities"
@@ -768,6 +773,8 @@ local function AssertMouseInput()
 	open( g_Grid )
 	open( g_Side )
 	open( g_Search )
+	open( g_ToolHost )
+	open( g_ToolMenuPanel )
 
 	for _, btn in pairs( g_TabButtons ) do
 		if ( IsValid( btn ) and btn.SetMouseInputEnabled ) then btn:SetMouseInputEnabled( true ) end
@@ -1087,6 +1094,10 @@ end
 
 local function Repopulate( bRebuildSidebar )
 	if ( g_Frame == nil or not IsValid( g_Frame ) ) then return end
+
+	-- HL2SB (2026-10-16): the tools tab is not a content grid -- the tool menu
+	-- owns that area and the grid is left detached.
+	if ( g_ActiveTab == "tools" ) then return end
 	KillFill()
 
 	-- Detach, do NOT destroy: cells land in g_CellCache at creation, and a
@@ -1176,6 +1187,59 @@ local function Repopulate( bRebuildSidebar )
 		.. " -> " .. #g_Pending .. " cells queued" )
 end
 
+-- ---------------------------------------------------------------------------
+-- Tools tab: GMod's sandbox tool menu.
+--
+-- The registration pump is GMod's CreateSpawnMenu sequence minus the
+-- SpawnMenu panel itself (reference spawnmenu/spawnmenu.lua:198-232); the GM
+-- methods it reaches are in gamemodes/sandbox/gamemode/cl_spawnmenu.lua and
+-- arrive through hook.Run's GAMEMODE fallback.  The panels themselves are the
+-- reference files ported verbatim into gamemodes/sandbox/gamemode/spawnmenu/:
+--   toolmenu.lua   -- "ToolMenu" DPropertySheet, one ToolPanel sheet per tab
+--   toolpanel.lua  -- category list + control panel host for one tab
+--   controlpanel.lua + controls/*.lua -- the tool configuration controls
+-- ---------------------------------------------------------------------------
+local function EnsureToolMenu()
+
+	if ( g_ToolMenuPanel ~= nil and IsValid( g_ToolMenuPanel ) ) then return g_ToolMenuPanel end
+	if ( g_ToolHost == nil or not IsValid( g_ToolHost ) ) then return nil end
+	if ( spawnmenu == nil or spawnmenu.ClearToolMenus == nil ) then return nil end
+
+	hook.Run( "PreReloadToolsMenu" )
+	spawnmenu.ClearToolMenus()
+	hook.Run( "AddGamemodeToolMenuTabs" )
+	hook.Run( "AddToolMenuTabs" )
+	hook.Run( "AddGamemodeToolMenuCategories" )
+	hook.Run( "AddToolMenuCategories" )
+	hook.Run( "PopulateToolMenu" )
+
+	local ok, pnl = pcall( vgui.Create, "ToolMenu", g_ToolHost )
+	if ( not ok or not IsValid( pnl ) ) then
+		Dbg( TAG .. "tool menu create FAILED: " .. tostring( pnl ) )
+		g_ToolMenuPanel = nil
+		return nil
+	end
+	pnl:Dock( FILL )
+	g_ToolMenuPanel = pnl
+
+	-- spawnmenu.ActivateToolPanel / SwitchToolTab reach the tool menu through
+	-- the g_SpawnMenu global (lua/includes/modules/spawnmenu.lua:74-83) and
+	-- toolpanel.lua stores its startup selection on it (toolpanel.lua:273).
+	-- The fork's menu frame is not a GMod SpawnMenu panel, so this answers only
+	-- the two accessors those call sites use.
+	g_SpawnMenu = {
+		GetToolMenu = function() return g_ToolMenuPanel end,
+		GetCreationMenu = function() return nil end,
+		IsVisible = function() return g_ToolHost != nil and IsValid( g_ToolHost ) and g_ToolHost:IsVisible() end,
+	}
+
+	hook.Run( "SpawnMenuCreated", g_SpawnMenu )
+	hook.Run( "PostReloadToolsMenu" )
+	Dbg( TAG .. "tool menu built" )
+	return pnl
+
+end
+
 local function SetActiveTab( id )
 	g_ActiveTab = id
 	g_ActiveCat = nil
@@ -1189,6 +1253,23 @@ local function SetActiveTab( id )
 	end
 
 	if ( g_Search ~= nil and IsValid( g_Search ) ) then g_Search:SetValue( "" ) end
+
+	-- HL2SB (2026-10-16): Tools replaces the content grid + category sidebar
+	-- with the GMod tool menu, which brings its own category list and search.
+	local bTools = ( id == "tools" )
+	if ( g_Side ~= nil and IsValid( g_Side ) ) then g_Side:SetVisible( not bTools ) end
+	if ( g_Grid ~= nil and IsValid( g_Grid ) ) then g_Grid:SetVisible( not bTools ) end
+	if ( g_Hint ~= nil and IsValid( g_Hint ) ) then g_Hint:SetVisible( not bTools ) end
+	if ( g_ToolHost ~= nil and IsValid( g_ToolHost ) ) then g_ToolHost:SetVisible( bTools ) end
+
+	if ( bTools ) then
+		KillFill()
+		if ( g_Grid ~= nil and IsValid( g_Grid ) ) then g_Grid:DetachAll() end
+		EnsureToolMenu()
+		AssertMouseInput()
+		return
+	end
+
 	Repopulate( true )
 end
 
@@ -1242,13 +1323,16 @@ local function BuildMenu()
 	-- localize with the rest)
 	local tabs = {}
 	local tx = pad + searchW + 12
-	local order  = { "entities", "weapons", "npcs", "vehicles", "props" }
+	local order  = { "entities", "weapons", "npcs", "vehicles", "props", "tools" }
 	local labels = {
 		entities = "#spawnmenu.category.entities",
 		weapons  = "#spawnmenu.category.weapons",
 		npcs     = "#spawnmenu.category.npcs",
 		vehicles = "#spawnmenu.category.vehicles",
 		props    = "#spawnmenu.category.props",
+		-- GMod's tool-menu tab token (resource/localization/*/spawnmenu.properties,
+		-- declared by GM:AddGamemodeToolMenuTabs)
+		tools    = "#spawnmenu.tools_tab",
 	}
 	local tabW = bTouch and 96 or 88
 	for _, id in ipairs( order ) do
@@ -1306,6 +1390,14 @@ local function BuildMenu()
 	grid:EnableVerticalScrollbar( true )
 	grid:SetSpacing( spacing )
 	grid:SetPadding( 6 )
+
+	-- HL2SB (2026-10-16): host for the ported tool menu, same rectangle as the
+	-- grid (the sidebar is hidden while it is shown).
+	local toolHost = vgui.Create( "DPanel", frame )
+	toolHost:SetPos( gridX, topY )
+	toolHost:SetSize( grid:GetWide(), grid:GetTall() )
+	toolHost:SetVisible( false )
+	g_ToolHost = toolHost
 
 	-- hint: sits between the tabs and the NPC-weapon picker, left-aligned
 	local hintX = tx + 12

@@ -115,6 +115,23 @@ if ( surface.DrawText == nil ) then
 	end
 end
 
+-- GMod resolves a leading "#" localization token in every surface text call;
+-- this fork's DrawPrintText draws the raw string (only its GetTextSize
+-- counterpart resolves).  GMod content passes "#tool.rope.name" everywhere, so
+-- the tool help box and the toolgun screen showed the literal token.  Wrap the
+-- resolved implementation once, whatever the block above installed.
+if ( !surface.__hl2sb_tokenText ) then
+	surface.__hl2sb_tokenText = true
+	local oldDrawText = surface.DrawText
+	function surface.DrawText( text )
+		if ( isstring( text ) and string.sub( text, 1, 1 ) == "#" and language and language.GetPhrase ) then
+			local sPhrase = language.GetPhrase( string.sub( text, 2 ) )
+			if ( sPhrase != nil and sPhrase != "" and sPhrase != text ) then text = sPhrase end
+		end
+		return oldDrawText( text )
+	end
+end
+
 -- NOTE: surface.GetTextSize is deliberately NOT wrapped here.  GMod's
 -- one-argument form, surface.GetTextSize( text ), cannot be provided from this
 -- file: lua/game/client/font.lua loads AFTER lua/includes/extensions (see the

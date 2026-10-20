@@ -315,3 +315,41 @@ function GM:PlayerDriveAnimate( ply )
 	ply:SetEyeTarget( driving:GetPos() )
 
 end
+
+
+--[[---------------------------------------------------------
+   HL2SB port (2026-10-16): GMod sandbox/gamemode/shared.lua:48-80
+   gm:CanTool( ply, trace, mode, tool, button ) -- the gate the tool gun asks
+   before every tool action (gmod_tool/shared.lua:248/271/299 does
+   gamemode.Call( "CanTool", ... )) and the tool menu asks before enabling a
+   tool (spawnmenu/toolpanel.lua:159 hook.Run( "CanTool", ... )).  Pure Lua on
+   both sides: no engine binding named "CanTool" exists in either tree.
+-----------------------------------------------------------]]
+function GM:CanTool( ply, trace, mode, tool, button )
+
+	-- The jeep spazzes out when applying something
+	-- todo: Find out what it's reacting badly to and change it in _physprops
+	if ( mode == "physprop" && trace.Entity:IsValid() && ( trace.Entity:GetClass() == "prop_vehicle_jeep" || trace.Entity:GetClass() == "prop_vehicle_apc" ) ) then
+		return false
+	end
+
+	-- If we have a toolsallowed table, check to make sure the toolmode is in it
+	if ( trace.Entity.m_tblToolsAllowed ) then
+
+		local vFound = false
+		for k, v in pairs( trace.Entity.m_tblToolsAllowed ) do
+			if ( mode == v ) then vFound = true end
+		end
+
+		if ( !vFound ) then return false end
+
+	end
+
+	-- Give the entity a chance to decide
+	if ( trace.Entity.CanTool ) then
+		return trace.Entity:CanTool( ply, trace, mode, tool, button )
+	end
+
+	return true
+
+end
