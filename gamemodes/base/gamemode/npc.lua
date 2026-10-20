@@ -11,11 +11,9 @@
       - GMod's Entity( 1 ) host-player probe for the disposition flags is
         replaced with player.GetAll()[ 1 ] (same intent: "some player" for
         the friendly-fire decoration; nil-safe when there is none).
-      - GM:OnNPCKilled stays inert until the engine dispatches the NPC death
-        path; GM:SendDeathNotice goes out on GMod's DeathNoticeEvent net
-        name, which this fork's client death-notice file does not consume
-        yet (the C++ killfeed owns player-death entries) - so nothing
-        double-fires while both paths coexist.
+      - The native HUD transport draws notices. NextBots enter that transport
+        through GM:OnNPCKilled, so custom OnKilled handlers control notices.
+        DeathNoticeEvent remains available to Lua consumers.
 --------------------------------------------------------------------------]]--
 
 
@@ -150,6 +148,11 @@ function GM:OnNPCKilled( ent, attacker, inflictor )
 
 	local InflictorClass = "worldspawn"
 	local AttackerClass = game.GetWorld()
+
+	-- NextBot notices follow the Lua death hook, including custom OnKilled handlers.
+	if ( HL2SB_NotifyNextBotKilled ) then
+		HL2SB_NotifyNextBotKilled( ent, attacker, inflictor )
+	end
 
 	if ( IsValid( inflictor ) ) then InflictorClass = inflictor:GetClass() end
 	if ( IsValid( attacker ) ) then
