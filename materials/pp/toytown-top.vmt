@@ -1,9 +1,17 @@
+// Screen-space "toy town" material.  The toytown post-process
+// (lua/postprocess/toytown.lua, a verbatim port of the reference one) and the
+// night-vision addon's edge blur draw with it.
+//
+// The reference gets this material from the Half-Life 2 material set.  This
+// tree carries its own copy, and that copy pointed at a normal map
+// ("pp/toytown_gradient") which does not exist here -- the material failed to
+// load and the effect painted a broken block instead of the screen texture.
+// The effect only needs the screen texture, so the missing map is dropped.
 "Refract"
 {
 	"$basetexture" "_rt_FullFrameFB"
- 	"$normalmap" "pp/toytown_gradient"
 	"$fbtexture" "_rt_FullFrameFB"
- 	"$refractamount" "0"
+	"$refractamount" "0"
 	"$vertexalpha" "0"
 	"$vertexcolor" "0"
 	"$translucent" "0"

@@ -85,6 +85,18 @@ hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移�
 - [x] FireBullets 参数钳制（Num 1-128、Force 0-100，GMod 同界；防超规格 SWEP 打爆粒子顶点池）
 - [x] Sandbox 属性放行与世界交互：GM:CanProperty / GM:CanDrive / GM:PlayerDriveAnimate / GM:LimitHit + 3D 世界提示（cl_worldtips.lua，AddWorldTip + GM:PaintWorldTips）+ 提示系统（cl_hints.lua，GM:AddHint/ThrowHint）
 - [x] variable_edit（base 侧 GM:VariableEdited / GM:CanEditVariable 移植）
+- [x] 未派发的 gamemode 钩子补齐（2026-10-21，按参考实现的派发点逐个逆向核对落地）：
+  - [x] `GM:VGUIMousePressAllowed`（client，vgui2 的 Panel 鼠标按下路径先问脚本，答 true 吞掉这次点击；游戏侧装回调）
+  - [x] `GM:NetworkEntityCreated`（server 脚本实体生成 + client 首个数据更新）
+  - [x] `GM:EntityNetworkedVarChanged`（client，NW 值真变化时才报，带实体/名字/旧值/新值）
+  - [ ] `GM:PrePlayerDraw` / `GM:PostPlayerDraw`（client）——**语义已逆向坐实**（答 (实体, drawType 整数)，带重入守卫；参考实现是在玩家层包住绘制，位置在模型渲染之外），但**从模型绘制内部应答会炸**：钩子里脚本再画一次模型（夜视插件就是在钩子里画自己的面片）就撞上正在渲染的场景，整帧坏掉（半屏深红方块）。要落地必须换到"嵌套绘制安全"的位置（参考实现那样在玩家层包绘制，或把应答挪到帧末）
+  - [ ] `GM:GetMotionBlurValues`（client）——**语义已逆向坐实**（参考实现是四次各带一个数调用、四个数回写；分叉这边是一次带四个数），同样**不能在后处理里应答**：那也是渲染过程中调脚本。落地要挪到渲染之外
+- [ ] 其余未派发的 gamemode 钩子（2026-10-21 全量比对参考实现的派发表后剩下的）：
+  - 渲染：`PreDrawSkyBox` / `PostDrawSkyBox` / `PostDraw2DSkyBox` / `SetupSkyboxFog` / `SetupWorldFog` / `NeedsDepthPass` / `CaptureVideo` / `DrawMonitors` / `PreventScreenClicks` / `SpawniconGenerated`
+  - 实体网络：`OnEntityWaterLevelChanged` / `OnCrazyPhysics` / `OnNPCDropItem` / `OnAchievementAchieved` / `ClientSignOnStateChanged` / `CreateClientsideRagdoll` / `InputMouseApply`
+  - 玩家：`PlayerSpray`（连带 `game.AddDecal` 贴花管线，与 gmod_tool 的 paint 工具同一条链）/ `PlayerBindPress` / `PlayerButtonDown` / `PlayerButtonUp` / `PlayerCanHearPlayersVoice` / `PlayerClassChanged` / `PlayerHandleAnimEvent` / `PlayerFireAnimationEvent` / `OnChangeActivity` / `OnCloseCaptionEmit` / `OnPauseMenuShow` / `VehicleMove`
+  - `GM:TranslateActivity`（gamemode 级活动翻译钩子；分叉目前只有 `WEAPON:TranslateActivity`）
+  - `GM:OnClientLuaError`（分叉已有 `OnLuaError`，缺 client 变体）
 
 ### 部分
 
@@ -142,6 +154,6 @@ hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移�
 - [-] 游戏内 DHTML/CEF 面板族（无浏览器层；主菜单 HTML 内核选型是独立搁置项，见 P3）
 - [-] Steam 头像/steamworks（nosteam 文件方案：`data/avatars/<steamid64|name>.png`）
 - [-] `IsMounted`/`engine.GetGames` 真实现（守卫恒 false 是 GMod 式注册文件依赖的语义）
-- [-] `util.GetModelMeshes`、Decal 系、`PixelVisible`、undo 二进制导出（GMod 本来就没有）
+- [-] `util.GetModelMeshes`、`PixelVisible`、undo 二进制导出（GMod 本来就没有）。**注意**：`Decal 系`整体不算"GMod 没有"——参考实现的 `game` 库里有 `game.AddDecal`（gmod_tool 的 paint 工具靠它），本仓缺它属于待做项（见上面 P1/P2 的 `PlayerSpray` 一条），别按"刻意不做"处理
 - [-] gamemode 计分放引擎侧（GMod 放 Lua 的就放 Lua，移植期双计债）
 - [-] `SWEP:ShouldDropOnDie`/`CustomAmmoDisplay`/`EquipAmmo`（无引擎路径）

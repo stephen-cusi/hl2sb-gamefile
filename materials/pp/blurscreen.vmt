@@ -1,0 +1,12 @@
+// GMod's screen-blur post-process material.  The night-vision addon draws
+// its depth-of-field pass with it; without the file the material is the
+// error material and the pass paints a block over the view.
+//
+// The shader (GMODScreenspace) is in this tree (materialsystem/stdshaders/
+// gmodscreenspace.cpp), so the reference definition works as-is.
+"GMODScreenspace"
+{
+	"$basetexture" "_rt_FullFrameFB"
+	"$texturealpha" "0"
+	"$vertexalpha" "0"
+}

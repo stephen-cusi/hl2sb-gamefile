@@ -290,6 +290,91 @@ function vgui.RegisterTable( tbl, strBase )
 end
 
 --[[-------------------------------------------------------------------------
+	DPanel:AddControl( class, options ) / DPanel:ClearControls()
+
+	The reference client implements both on the panel base class, so every
+	panel can carry a row of controls.  The night-vision addon's settings
+	panel uses them (panel:ClearControls() then panel:AddControl( "Header",
+	{ Description = ... } ) ), and so does this fork's own control panel.
+
+	There is no table-taking create path here: vgui.Create( class, parent )
+	builds the control and runs its Init before the options exist.  The
+	control class table is therefore copied with the options merged in and
+	registered under a throwaway name, so the control's Init sees them the
+	same way the reference does.
+---------------------------------------------------------------------------]]
+local function HL2SB_AddControl( self, strClass, tbl )
+	tbl = tbl or {}
+
+	-- The reference control panel asks for the short names ("Checkbox",
+	-- "Header", ...); this tree registers the D-prefixed ones.  Map the
+	-- short names over, then fall back to the D-prefixed spelling.
+	local SHORT_NAMES = {
+		Header		= "DCategoryHeader",
+		Checkbox	= "DCheckBox",
+		Button		= "DButton",
+		Label		= "DLabel",
+		TextEntry	= "DTextEntry",
+		Slider		= "DSlider",
+		ComboBox	= "DComboBox",
+		ListView	= "DListView",
+		ColorBox	= "DColorCube",
+		ColorCube	= "DColorCube",
+		PropertySheet	= "DPropertySheet",
+		Panel		= "DPanel",
+	}
+
+	local strReal = SHORT_NAMES[ strClass ] or strClass
+	local cls = vgui.GetControlTable( strReal )
+	if ( cls == nil ) then
+		cls = vgui.GetControlTable( "D" .. tostring( strClass ) )
+	end
+	if ( cls == nil ) then
+		ErrorNoHalt( "DPanel:AddControl: unknown control class '" .. tostring( strClass ) .. "'\n" )
+		return nil
+	end
+
+	local tmp = {}
+	for k, v in pairs( cls ) do tmp[ k ] = v end
+	for k, v in pairs( tbl ) do
+		if ( k ~= "Class" and k ~= "class" ) then tmp[ k ] = v end
+	end
+
+	local strRealName = cls.ClassName
+	local strName = "__derma_control_" .. tostring( ( #Classes ) + 1 )
+	vgui.Register( strName, tmp, cls.Base or "Panel" )
+	tmp.ClassName = strRealName
+
+	local ctl = vgui.Create( strName, self )
+	Classes[ strName ] = nil
+
+	self.m_Controls = self.m_Controls or {}
+	table.insert( self.m_Controls, ctl )
+
+	return ctl
+end
+
+local function HL2SB_ClearControls( self )
+	local list = self.m_Controls
+	if ( list == nil ) then return end
+
+	for i = #list, 1, -1 do
+		local ctl = list[ i ]
+		if ( IsValid( ctl ) ) then ctl:Remove() end
+	end
+
+	self.m_Controls = {}
+end
+
+do
+	local PanelMeta = FindMetaTable( "Panel" )
+	if ( PanelMeta ~= nil ) then
+		PanelMeta.AddControl = HL2SB_AddControl
+		PanelMeta.ClearControls = HL2SB_ClearControls
+	end
+end
+
+--[[-------------------------------------------------------------------------
 	derma namespace
 ---------------------------------------------------------------------------]]
 
