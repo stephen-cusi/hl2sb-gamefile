@@ -652,6 +652,27 @@ if ( CLIENT and _G.gui ~= nil and _G.input ~= nil and input.GetCursorPos ~= nil 
 		end
 	end
 
+	-- HL2SB (2026-10-20 mc_swep audit B5): gui.SetMousePos( x, y ) -- the
+	-- reference binds it right beside MouseX/MouseY (client realm) and the
+	-- minecraft swep's model menu parks/restores the cursor with it.  Same
+	-- cursor, same engine input binding the two getters above read.
+	if ( gui.SetMousePos == nil and input.SetCursorPos ~= nil ) then
+		function gui.SetMousePos( x, y )
+			input.SetCursorPos( x, y )
+		end
+	end
+
+	-- HL2SB (2026-10-20 mc_swep audit B5): GMod's clipboard writer is the bare
+	-- global SetClipboardText( str ) (client realm); this fork's implementation
+	-- lives under system.SetClipboardText (vgui ISystem), so publish the
+	-- global spelling.  The minecraft swep's right-click "Copy to Clipboard"
+	-- dies on a nil global without it.
+	if ( _G.SetClipboardText == nil and _G.system ~= nil and _G.system.SetClipboardText ~= nil ) then
+		function _G.SetClipboardText( strText )
+			return _G.system.SetClipboardText( strText )
+		end
+	end
+
 	-- HL2SB (2026-10-16): gui.ScreenToVector( x, y ) - the screen point's world
 	-- direction.  GMod implements it in C++; this engine's gui library has no
 	-- binding (the C-menu port's OnMousePressed had to guard it, which is why
