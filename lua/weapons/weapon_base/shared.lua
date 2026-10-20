@@ -34,7 +34,6 @@ SWEP.Category		= ""
 
 SWEP.ViewModelFOV	= 62
 SWEP.ViewModelFlip	= false
-SWEP.UseHands		= true
 
 -- HL2SB scripted-weapon flat keys (engine reads these in InitScriptedWeapon).
 -- GMod SWEPs set capitalised ViewModel/WorldModel; engine falls back to them.
