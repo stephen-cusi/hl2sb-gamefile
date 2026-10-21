@@ -1,25 +1,3 @@
---[[ DProperties -- a two-column property sheet (GMod port).
-
-	Wiki: https://wiki.facepunch.com/gmod/DProperties
-	  Parent: Panel.  CreateRow( category, name ), GetCategory( name, bCreate ),
-	  GetCanvas(), Clear(); the row it returns is then filled in with row:Setup(
-	  "String" / "Bool" / "Number" / "Vector" / ... , vars ), and the editors that
-	  appear are the DProperty_* controls.
-
-	Ported from GMod's lua/vgui/dproperties.lua (266 lines), including its two
-	inline control tables - the row and the category - which GMod registers with
-	vgui.RegisterTable and then creates with `container:Add( tblRow )`.  This fork's
-	vgui.RegisterTable is new (lua/derma/hl2sb_derma.lua, next to
-	vgui.CreateFromTable) and hands back the plain table with its Base set, which is
-	exactly what this fork's Panel:Add already knows how to instantiate.
-
-	The row/category colours come from SKIN.Colours.Properties, which this fork's
-	skin now defines (lua/skins/hl2sb_default.lua) - GMod fills those slots from its
-	GWEN atlas, this skin with flat colours from the same palette.
-
-	Note for this fork: vgui.GetControlTable( name ) is used where GMod relies on a
-	control table being a global (its `DComboBox.Paint( ... )` in prop_combo.lua).
---]]
 
 --
 -- The row - contained in a category.
@@ -285,4 +263,4 @@ function PANEL:CreateRow( category, name )
 
 end
 
-derma.DefineControl( "DProperties", "A two-column property sheet", PANEL, "Panel" )
+derma.DefineControl( "DProperties", "", PANEL, "Panel" )

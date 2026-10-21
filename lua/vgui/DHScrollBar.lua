@@ -1,60 +1,7 @@
---[[ DHScrollBar -- a horizontal scrollbar (GMod port).
-
-	Wiki: https://wiki.facepunch.com/gmod/DHScrollBar
-	  Parent: Panel.  GetScroll / SetScroll, GetOffset, AddScroll, SetUp,
-	  GetHideButtons / SetHideButtons, BarScale, Grip, AnimateTo - the horizontal
-	  twin of DVScrollBar, and what DHorizontalScroller and DFileBrowser scroll with.
-
-	Ported from GMod's lua/vgui/dhscrollbar.lua (257 lines); this fork already had
-	the vertical one (lua/vgui/DVScrollBar.lua) written against the same layout.
-
-	Notes for this fork:
-	  * GMod's two arrow buttons paint with a bare `derma.SkinHook( "Paint",
-	    "ButtonLeft"/"ButtonRight" )`, and the arrow direction comes from the skin's
-	    GWEN texture.  This fork's skin has no such hooks, so the buttons would be
-	    invisible; PaintArrow below is the same fallback lua/vgui/DVScrollBar.lua:33
-	    uses for its up/down pair.
-	  * PANEL:Paint likewise asks the skin first and fills the track itself when
-	    nothing handled it.
---]]
 
 local PANEL = {}
 
 AccessorFunc( PANEL, "m_HideButtons", "HideButtons" )
-
---- The arrows GMod's skin would paint; see the header.  bRight mirrors DVScrollBar's
---- bDown (both point at the end the scroll moves toward).
-local function PaintArrow( pnl, w, h, bRight )
-	w = w or pnl:GetWide()
-	h = h or pnl:GetTall()
-
-	if ( derma.SkinHook( "Paint", bRight and "ButtonRight" or "ButtonLeft", pnl, w, h ) ) then return end
-
-	local bright = 200
-	if ( pnl.m_bDepressed ) then bright = 255
-	elseif ( pnl.m_bHover ) then bright = 235 end
-
-	surface.DrawSetColor( 70, 70, 70, 255 )
-	surface.DrawFilledRect( 0, 0, w, h )
-
-	surface.DrawSetColor( bright, bright, bright, 255 )
-
-	local half = ( w - 1 ) * 0.5
-	if ( half <= 0 ) then half = 1 end
-
-	for x = 0, w - 1 do
-		local f = 1 - math.abs( x - half ) / half			-- 1 in the middle column
-		local len = math.max( 1, math.floor( ( h - 6 ) * f ) )
-
-		if ( bRight ) then
-			surface.DrawFilledRect( w - 1 - x, math.floor( h * 0.5 ) - math.floor( len * 0.5 ),
-				w - x, math.floor( h * 0.5 ) + math.ceil( len * 0.5 ) )
-		else
-			surface.DrawFilledRect( x, math.floor( h * 0.5 ) - math.floor( len * 0.5 ),
-				x + 1, math.floor( h * 0.5 ) + math.ceil( len * 0.5 ) )
-		end
-	end
-end
 
 function PANEL:Init()
 
@@ -66,12 +13,12 @@ function PANEL:Init()
 	self.btnLeft = vgui.Create( "DButton", self )
 	self.btnLeft:SetText( "" )
 	self.btnLeft.DoClick = function( s ) s:GetParent():AddScroll( -1 ) end
-	self.btnLeft.Paint = function( panel, w, h ) PaintArrow( panel, w, h, false ) end
+	self.btnLeft.Paint = function( panel, w, h ) derma.SkinHook( "Paint", "ButtonLeft", panel, w, h ) end
 
 	self.btnRight = vgui.Create( "DButton", self )
 	self.btnRight:SetText( "" )
 	self.btnRight.DoClick = function( s ) s:GetParent():AddScroll( 1 ) end
-	self.btnRight.Paint = function( panel, w, h ) PaintArrow( panel, w, h, true ) end
+	self.btnRight.Paint = function( panel, w, h ) derma.SkinHook( "Paint", "ButtonRight", panel, w, h ) end
 
 	self.btnGrip = vgui.Create( "DScrollBarGrip", self )
 
@@ -202,18 +149,15 @@ function PANEL:GetOffset()
 
 end
 
+function PANEL:Think()
+end
+
 function PANEL:Paint( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
 
-	-- GMod's version is only this hook (its skin draws the track); this fork's skin
-	-- has no HScrollBar hook, so fill the track when nothing handled it.
-	if ( derma.SkinHook( "Paint", "HScrollBar", self, w, h ) ) then return true end
-
-	surface.DrawSetColor( 52, 56, 63, 255 )
-	surface.DrawFilledRect( 0, 0, w, h )
+	derma.SkinHook( "Paint", "HScrollBar", self, w, h )
 
 	return true
+
 end
 
 function PANEL:OnMousePressed()

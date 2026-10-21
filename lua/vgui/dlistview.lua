@@ -1,409 +1,595 @@
---[[ DListView -- column list / table (original implementation).
-
-	Rows are DListView_Line controls (own file), which draw their own cells --
-	no per-cell child panels, so a 500-row list costs 500 panels, not 500 * N. --]]
 
 local PANEL = {}
 
-local ROW_H = 18
-local HEADER_H = 20
+AccessorFunc( PANEL, "m_bDirty", "Dirty", FORCE_BOOL )
+AccessorFunc( PANEL, "m_bSortable", "Sortable", FORCE_BOOL )
+
+AccessorFunc( PANEL, "m_iHeaderHeight", "HeaderHeight" )
+AccessorFunc( PANEL, "m_iDataHeight", "DataHeight" )
+
+AccessorFunc( PANEL, "m_bMultiSelect", "MultiSelect" )
+AccessorFunc( PANEL, "m_bHideHeaders", "HideHeaders" )
+
+Derma_Hook( PANEL, "Paint", "Paint", "ListView" )
 
 function PANEL:Init()
-	self:SetDrawBackground( false )
 
-	self.m_tColumns = {}
-	self.m_tRows = {}
-	self.m_pSelected = nil
+	self:SetSortable( true )
+	self:SetMouseInputEnabled( true )
+	self:SetMultiSelect( true )
+	self:SetHideHeaders( false )
 
-	self.m_pHeader = vgui.Create( "DPanel", self, "Header" )
-	self.m_pHeader:SetDrawBackground( false )
+	self:SetPaintBackground( true )
+	self:SetHeaderHeight( 16 )
+	self:SetDataHeight( 17 )
 
-	self.m_pScroll = vgui.Create( "DScrollPanel", self, "Scroll" )
-	self.m_pScroll:SetDrawBackground( false )
+	self.Columns = {}
+
+	self.Lines = {}
+	self.Sorted = {}
+
+	self:SetDirty( true )
+
+	self.pnlCanvas = vgui.Create( "Panel", self )
+
+	self.VBar = vgui.Create( "DVScrollBar", self )
+	self.VBar:SetZPos( 20 )
+
 end
 
---- GMod: DListView:AddColumn( strName ) returns the column, whose `.Header` is the
---- header panel ("self.FileHeader = self.Files:AddColumn( "Files" ).Header" in
---- lua/vgui/DFileBrowser.lua:180).  Here the header cell is created once per column
---- and reused, so that reference stays valid across layouts.
----
---- The returned table also carries GMod's DListView_Column setter/getter surface
---- (SetFixedWidth / SetDescending / SetTextAlign / SetSortable / ...) as plain
---- fields: addons drive those on the object AddColumn returned, and without them
---- every such call died with "attempt to call a nil value".  The per-column width
---- (col.iWidth) feeds ColumnWidth below, which is what makes OnRequestResize and
---- SetFixedWidth stick across PerformLayouts.
-function PANEL:AddColumn( strName )
-	local col = { name = tostring( strName or "" ), i = #self.m_tColumns + 1 }
-	self.m_tColumns[ col.i ] = col
-	self:RebuildHeader()
-	col.Header = self.m_tHeaderCells and self.m_tHeaderCells[ col.i ]
+function PANEL:DisableScrollbar()
 
-	--- GMod: DListView_Column:SetFixedWidth( iSize ) -- fix the width and drop the
-	--- resize behaviour; here that is one stored width.
-	function col:SetFixedWidth( iSize )
-		iSize = math.max( 4, tonumber( iSize ) or 16 )
-		self.iWidth = iSize
-		local list = self.list
-		if ( list ~= nil ) then
-			list.m_bManual = true
-			list:RebuildHeader()
-			list:RelayoutRows()
-		end
+	if ( IsValid( self.VBar ) ) then
+		self.VBar:Remove()
 	end
 
-	function col:SetWidth( iSize )
-		self:SetFixedWidth( iSize )
-	end
+	self.VBar = nil
 
-	function col:GetWidth()
-		return self.iWidth
-	end
-
-	function col:SetText( strName )
-		self.name = tostring( strName or "" )
-		local list = self.list
-		if ( IsValid( list ) and list.RebuildHeader ) then
-			if ( IsValid( self.Header ) ) then self.Header:SetText( self.name ) end
-		end
-	end
-
-	--- GMod: sortable flag -- recorded; SortByColumn always works here (the fork's
-	--- header click route carries no "non sortable" notion for plain tables).
-	function col:SetSortable( b )
-		self.bSortable = ( b ~= false )
-	end
-
-	function col:GetSortable()
-		return self.bSortable ~= false
-	end
-
-	function col:SetDescending( b )
-		self.bDesc = ( b == true )
-	end
-
-	function col:GetDescending()
-		return self.bDesc == true
-	end
-
-	function col:SetTextAlign( align )
-		self.iTextAlign = align
-	end
-
-	function col:GetTextAlign()
-		return self.iTextAlign
-	end
-
-	function col:SetMinWidth( iSize )
-		self.iMinWidth = tonumber( iSize )
-	end
-
-	function col:GetMinWidth()
-		return self.iMinWidth
-	end
-
-	function col:SetMaxWidth( iSize )
-		self.iMaxWidth = tonumber( iSize )
-	end
-
-	function col:GetMaxWidth()
-		return self.iMaxWidth
-	end
-
-	col.list = self
-
-	return col
-end
-
-function PANEL:GetColumnCount()
-	return #self.m_tColumns
-end
-
---- Fixed widths (col.iWidth, set through the column surface above) win over the
---- even split; the remaining columns share what is left.
-function PANEL:ColumnWidth( i )
-	local n = #self.m_tColumns
-	if ( n == 0 ) then return self:GetWide() end
-
-	local col = self.m_tColumns[ i ]
-	if ( col ~= nil and col.iWidth ~= nil ) then return col.iWidth end
-
-	local nFree = 0
-	local wFree = self:GetWide()
-	for _, c in ipairs( self.m_tColumns ) do
-		if ( c.iWidth ~= nil ) then
-			wFree = wFree - c.iWidth
-		else
-			nFree = nFree + 1
-		end
-	end
-
-	if ( nFree == 0 ) then return 0 end
-	return math.floor( math.max( 0, wFree ) / nFree )
-end
-
---- GMod: DListView:GetColumnWidth( i ) -- the GMod spelling of ColumnWidth.
-function PANEL:GetColumnWidth( i )
-	return self:ColumnWidth( i )
-end
-
---- GMod: DListView:GetHeaderHeight() -- what DListView_Column:PerformLayout asks for.
-function PANEL:GetHeaderHeight()
-	return HEADER_H
-end
-
---- GMod: DListView:SetDataHeight( h ) -- row height.  This fork used a fixed
---- ROW_H; honour the override (the minecraft menu sets 16).
-function PANEL:SetDataHeight( h )
-	self.m_iDataHeight = math.max( 8, tonumber( h ) or ROW_H )
-	self:RelayoutRows()
-end
-
-function PANEL:GetDataHeight()
-	return self.m_iDataHeight or ROW_H
-end
-
---- GMod: DListView:SetMultiSelect( b ) / GetMultiSelect().  This fork's list keeps a
---- single selection (the row itself decides), so the flag is recorded and documented
---- rather than implemented; DFileBrowser sets it to false, which is the behaviour here.
-function PANEL:SetMultiSelect( b )
-	self.m_bMultiSelect = ( b ~= false )
-end
-
-function PANEL:GetMultiSelect()
-	return self.m_bMultiSelect == true
-end
-
---- GMod: DListView:SetManual( b ) -- "don't lay the columns out automatically".
---- This fork rebuilds its header whenever the columns change, so the flag is recorded.
-function PANEL:SetManual( b )
-	self.m_bManual = ( b ~= false )
-end
-
-function PANEL:GetManual()
-	return self.m_bManual == true
-end
-
---- GMod: DListView:SetDirty( b ) -- re-layout the rows on the next paint.  Here rows
---- are laid out immediately, so this is the same call.
-function PANEL:SetDirty( b )
-	self:RelayoutRows()
-end
-
---- GMod: DListView:SortByColumn( iColumn, bDescending ).  GMod sorts by the line's
---- sort value when one was set (DListViewLine:SetSortValue), else by the caption.
-function PANEL:SortByColumn( iColumn, bDescending )
-	table.sort( self.m_tRows, function( a, b )
-		local av = a.GetSortValue and a:GetSortValue( iColumn )
-		local bv = b.GetSortValue and b:GetSortValue( iColumn )
-
-		if ( av == nil ) then av = a:GetColumnText( iColumn ) end
-		if ( bv == nil ) then bv = b:GetColumnText( iColumn ) end
-
-		if ( av == bv ) then return false end
-		if ( bDescending ) then return tostring( av ) > tostring( bv ) end
-
-		return tostring( av ) < tostring( bv )
-	end )
-
-	for j, row in ipairs( self.m_tRows ) do
-		row.m_iIndex = j
-	end
-
-	self:RelayoutRows()
-end
-
---- GMod: DListView:AddLine( ... ) -- the same row builder as AddRow here
---- (DFileBrowser calls it with a single file name for its one column).  Aliased after
---- AddRow is defined, below.
-
-function PANEL:AddRow( ... )
-	local vargs = { ... }
-
-	local row = vgui.Create( "DListView_Line", self.m_pScroll:GetCanvas(), "Row" )
-	row.m_pList = self
-	row.m_iIndex = #self.m_tRows + 1
-	row:SetColumnCount( #self.m_tColumns )
-
-	for i = 1, #self.m_tColumns do
-		row:SetColumnText( i, vargs[ i ] )
-	end
-
-	table.insert( self.m_tRows, row )
-	self:RelayoutRows()
-	return row
-end
-
---- GMod: DListView:AddLine( ... ) -- the same builder under GMod's name.
-PANEL.AddLine = PANEL.AddRow
-
-function PANEL:GetLine( i )
-	return self.m_tRows[ i ]
 end
 
 function PANEL:GetLines()
-	return self.m_tRows
+	return self.Lines
 end
 
-function PANEL:RemoveLine( i )
-	local row = table.remove( self.m_tRows, i )
-	if ( IsValid( row ) ) then row:Remove() end
-
-	for j, r in ipairs( self.m_tRows ) do
-		r.m_iIndex = j
-	end
-
-	if ( self.m_pSelected == row ) then self.m_pSelected = nil end
-	self:RelayoutRows()
+function PANEL:GetInnerTall()
+	return self:GetCanvas():GetTall()
 end
 
-function PANEL:Clear()
-	for _, row in ipairs( self.m_tRows ) do
-		if ( IsValid( row ) ) then row:Remove() end
-	end
-	self.m_tRows = {}
-	self.m_pSelected = nil
-	self:RelayoutRows()
+function PANEL:GetCanvas()
+	return self.pnlCanvas
 end
 
---- Called by DListView_Line:DoClick.
-function PANEL:OnClickLine( line, bRight )
-	if ( self.m_pSelected and IsValid( self.m_pSelected ) ) then
-		self.m_pSelected:SetSelected( false )
-	end
+function PANEL:AddColumn( strName, iPosition )
 
-	self.m_pSelected = line
-	line:SetSelected( true )
-
-	if ( self.OnRowSelected ) then
-		local ok, err = pcall( self.OnRowSelected, self, line.m_iIndex, line )
-		if ( not ok ) then Warning( "DListView:OnRowSelected failed: " .. tostring( err ) .. "\n" ) end
-	end
-end
-
-function PANEL:GetSelectedLine()
-	return self.m_pSelected
-end
-
-function PANEL:GetSelected()
-	if ( self.m_pSelected ) then return { self.m_pSelected } end
-	return {}
-end
-
-function PANEL:RelayoutRows()
-	local rowH = self.m_iDataHeight or ROW_H
-
-	local colW = {}
-	for i = 1, #self.m_tColumns do
-		colW[ i ] = self:ColumnWidth( i )
-	end
-
-	local totalH = 0
-	for j, row in ipairs( self.m_tRows ) do
-		row:SetSize( self:GetWide(), rowH )
-		row:SetPos( 0, ( j - 1 ) * rowH )
-		row:SetColumnWidths( colW )
-		totalH = j * rowH
-	end
-
-	self.m_pScroll:SetContentHeight( totalH )
-end
-
---- The header cells are created once per column and re-used (repositioned/resized)
---- so that a column's `.Header` reference - what GMod addons hold, see AddColumn -
---- stays valid across layouts.
-function PANEL:RebuildHeader()
-	self.m_tHeaderCells = self.m_tHeaderCells or {}
-
-	for i, col in ipairs( self.m_tColumns ) do
-		if ( !IsValid( self.m_tHeaderCells[ i ] ) ) then
-			local cell = vgui.Create( "DButton", self.m_pHeader, "ColHead" .. i )
-			cell:SetText( col.name )
-			self.m_tHeaderCells[ i ] = cell
+	if ( iPosition ) then
+		if ( iPosition <= 0 ) then
+			ErrorNoHaltWithStack( "Attempted to insert column at invalid position ", iPosition )
+			return
 		end
 
-		self.m_tHeaderCells[ i ]:SetText( col.name )
-		col.Header = self.m_tHeaderCells[ i ]
+		if ( IsValid( self.Columns[ iPosition ] ) ) then
+			ErrorNoHaltWithStack( "Attempted to insert duplicate column." )
+			return
+		end
 	end
 
-	-- columns that went away (Clear + AddColumn) leave their cells behind
-	for i = #self.m_tColumns + 1, #self.m_tHeaderCells do
-		if ( IsValid( self.m_tHeaderCells[ i ] ) ) then self.m_tHeaderCells[ i ]:Remove() end
-		self.m_tHeaderCells[ i ] = nil
-	end
+	local pColumn = nil
 
-	local x = 0
-	for i = 1, #self.m_tColumns do
-		self.m_tHeaderCells[ i ]:SetPos( x, 0 )
-		self.m_tHeaderCells[ i ]:SetSize( self:ColumnWidth( i ), HEADER_H )
-		x = x + self:ColumnWidth( i )
-	end
-end
-
---- GMod: DListView:OnRequestResize( SizingColumn, iSize ) -- a column drag (or an
---- addon) asks for the sizing column to become iSize wide; the column to its right
---- absorbs the difference (gmod/vgui/dlistview.lua:246).  SizingColumn arrives as a
---- header cell, a column table from AddColumn, or a plain 1-based index.
-function PANEL:OnRequestResize( SizingColumn, iSize )
-	iSize = math.max( 4, math.floor( tonumber( iSize ) or 0 ) )
-
-	local idx
-	if ( isnumber( SizingColumn ) ) then
-		idx = SizingColumn
+	if ( self.m_bSortable ) then
+		pColumn = vgui.Create( "DListView_Column", self )
 	else
-		for i, c in ipairs( self.m_tColumns ) do
-			if ( c == SizingColumn or c.Header == SizingColumn ) then idx = i break end
-		end
+		pColumn = vgui.Create( "DListView_ColumnPlain", self )
 	end
-	if ( idx == nil ) then return end
 
-	local sizing = self.m_tColumns[ idx ]
+	pColumn:SetName( strName )
+	pColumn:SetZPos( 10 )
+
+	if ( iPosition ) then
+
+		table.insert( self.Columns, iPosition, pColumn )
+
+		local i = 1
+		for id, pnl in pairs( self.Columns ) do
+			pnl:SetColumnID( i )
+			i = i + 1
+		end
+
+	else
+
+		local ID = table.insert( self.Columns, pColumn )
+		pColumn:SetColumnID( ID )
+
+	end
+
+	self:InvalidateLayout()
+
+	return pColumn
+
+end
+
+function PANEL:RemoveLine( LineID )
+
+	local Line = self:GetLine( LineID )
+	local SelectedID = self:GetSortedID( LineID )
+
+	self.Lines[ LineID ] = nil
+	table.remove( self.Sorted, SelectedID )
+
+	self:SetDirty( true )
+	self:InvalidateLayout()
+
+	Line:Remove()
+
+end
+
+function PANEL:ColumnWidth( i )
+
+	local ctrl = self.Columns[ i ]
+	if ( !ctrl ) then return 0 end
+
+	return ctrl:GetWide()
+
+end
+
+function PANEL:FixColumnsLayout()
+
+	local NumColumns = table.Count( self.Columns )
+	if ( NumColumns == 0 ) then return end
+
+	local AllWidth = 0
+	for k, Column in pairs( self.Columns ) do
+		AllWidth = AllWidth + math.ceil( Column:GetWide() )
+	end
+
+	local ChangeRequired = self.pnlCanvas:GetWide() - AllWidth
+	local ChangePerColumn = math.floor( ChangeRequired / NumColumns )
+	local Remainder = ChangeRequired - ( ChangePerColumn * NumColumns )
+
+	for k, Column in pairs( self.Columns ) do
+
+		local TargetWidth = math.ceil( Column:GetWide() ) + ChangePerColumn
+		Remainder = Remainder + ( TargetWidth - Column:SetWidth( TargetWidth ) )
+
+	end
+
+	local TotalMaxWidth = 0
+
+	-- If there's a remainder, try to palm it off on the other panels, equally
+	while ( Remainder != 0 ) do
+
+		local PerPanel = math.floor( Remainder / NumColumns )
+
+		for k, Column in pairs( self.Columns ) do
+
+			Remainder = math.Approach( Remainder, 0, PerPanel )
+
+			local TargetWidth = math.ceil( Column:GetWide() ) + PerPanel
+			Remainder = Remainder + ( TargetWidth - Column:SetWidth( TargetWidth ) )
+
+			if ( Remainder == 0 ) then break end
+
+			TotalMaxWidth = TotalMaxWidth + math.ceil( Column:GetMaxWidth() )
+
+		end
+
+		-- Total max width of all the columns is less than the width of the DListView, abort!
+		if ( TotalMaxWidth < self.pnlCanvas:GetWide() ) then break end
+
+		Remainder = math.Approach( Remainder, 0, 1 )
+
+	end
+
+	-- Set the positions of the resized columns
+	local x = 0
+	for k, Column in pairs( self.Columns ) do
+
+		Column.x = x
+		x = x + math.ceil( Column:GetWide() )
+
+		Column:SetTall( math.ceil( self:GetHeaderHeight() ) )
+		Column:SetVisible( !self:GetHideHeaders() )
+
+	end
+
+end
+
+function PANEL:PerformLayout()
+
+	-- Do Scrollbar
+	local Wide = self:GetWide()
+	local YPos = 0
+
+	if ( IsValid( self.VBar ) ) then
+
+		self.VBar:SetPos( self:GetWide() - 16, 0 )
+		self.VBar:SetSize( 16, self:GetTall() )
+		self.VBar:SetUp( self.VBar:GetTall() - self:GetHeaderHeight(), self.pnlCanvas:GetTall() )
+		YPos = self.VBar:GetOffset()
+
+		if ( self.VBar.Enabled ) then Wide = Wide - 16 end
+
+	end
+
+	if ( self.m_bHideHeaders ) then
+		self.pnlCanvas:SetPos( 0, YPos )
+	else
+		self.pnlCanvas:SetPos( 0, YPos + self:GetHeaderHeight() )
+	end
+
+	self.pnlCanvas:SetSize( Wide, self.pnlCanvas:GetTall() )
+
+	self:FixColumnsLayout()
+
+	--
+	-- If the data is dirty, re-layout
+	--
+	if ( self:GetDirty() ) then
+
+		self:SetDirty( false )
+		local y = self:DataLayout()
+		self.pnlCanvas:SetTall( y )
+
+		-- Layout again, since stuff has changed..
+		self:InvalidateLayout( true )
+
+	end
+
+end
+
+function PANEL:OnScrollbarAppear()
+
+	self:SetDirty( true )
+	self:InvalidateLayout()
+
+end
+
+function PANEL:OnRequestResize( SizingColumn, iSize )
 
 	-- Find the column to the right of this one
-	local right = nil
-	for i = idx + 1, #self.m_tColumns do
-		if ( self.m_tColumns[ i ].iWidth == nil ) then
-			right = self.m_tColumns[ i ]
+	local Passed = false
+	local RightColumn = nil
+	for k, Column in pairs( self.Columns ) do
+
+		if ( Passed ) then
+			RightColumn = Column
 			break
 		end
-	end
 
-	local total = self:GetWide()
-	local fixed = 0
-	for _, c in ipairs( self.m_tColumns ) do
-		if ( c ~= sizing and c.iWidth ~= nil ) then fixed = fixed + c.iWidth end
+		if ( SizingColumn == Column ) then Passed = true end
+
 	end
 
 	-- Alter the size of the column on the right too, slightly
-	if ( right ~= nil ) then
-		local sizeChange = self:ColumnWidth( idx ) - iSize
-		right.iWidth = math.max( 4, self:ColumnWidth( right.i ) + sizeChange )
-		fixed = fixed + right.iWidth
+	if ( RightColumn ) then
+
+		local SizeChange = SizingColumn:GetWide() - iSize
+		RightColumn:SetWide( RightColumn:GetWide() + SizeChange )
+
 	end
 
-	sizing.iWidth = math.max( 4, math.min( iSize, total - fixed ) )
-	self.m_bManual = true
+	SizingColumn:SetWide( iSize )
+	self:SetDirty( true )
 
 	-- Invalidating will munge all the columns about and make it right
 	self:InvalidateLayout()
+
 end
 
-function PANEL:PerformLayout( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
+function PANEL:DataLayout()
 
-	self.m_pHeader:SetPos( 0, 0 )
-	self.m_pHeader:SetSize( w, HEADER_H )
+	local y = 0
+	local h = self.m_iDataHeight
 
-	self.m_pScroll:SetPos( 0, HEADER_H )
-	self.m_pScroll:SetSize( w, math.max( 0, h - HEADER_H ) )
+	local alt = false
+	for k, Line in ipairs( self.Sorted ) do
 
-	self:RebuildHeader()
-	self:RelayoutRows()
+		if ( !Line:IsVisible() ) then continue end
+
+		Line:SetPos( 1, y )
+		Line:SetSize( self:GetWide() - 2, h )
+		Line:DataLayout( self )
+
+		Line:SetAltLine( alt )
+		alt = !alt
+
+		y = y + Line:GetTall()
+
+	end
+
+	return y
+
 end
 
-function PANEL:Paint( w, h )
-	derma.SkinHook( "Paint", "ListView", self, w or self:GetWide(), h or self:GetTall() )
+function PANEL:AddLine( ... )
+
+	self:SetDirty( true )
+	self:InvalidateLayout()
+
+	local Line = vgui.Create( "DListView_Line", self.pnlCanvas )
+	local ID = table.insert( self.Lines, Line )
+
+	Line:SetListView( self )
+	Line:SetID( ID )
+
+	-- This assures that there will be an entry for every column
+	for k, v in pairs( self.Columns ) do
+		Line:SetColumnText( k, "" )
+	end
+
+	for k, v in pairs( {...} ) do
+		Line:SetColumnText( k, v )
+	end
+
+	-- Make appear at the bottom of the sorted list
+	local SortID = table.insert( self.Sorted, Line )
+
+	if ( SortID % 2 == 1 ) then
+		Line:SetAltLine( true )
+	end
+
+	return Line
+
 end
 
-derma.DefineControl( "DListView", "HL2SB column list", PANEL, "DPanel" )
+function PANEL:OnMouseWheeled( dlta )
+
+	if ( !IsValid( self.VBar ) ) then return end
+
+	return self.VBar:OnMouseWheeled( dlta )
+
+end
+
+function PANEL:ClearSelection( dlta )
+
+	for k, Line in pairs( self.Lines ) do
+		Line:SetSelected( false )
+	end
+
+end
+
+function PANEL:GetSelectedLine()
+
+	for k, Line in pairs( self.Lines ) do
+		if ( Line:IsSelected() ) then return k, Line end
+	end
+
+end
+
+function PANEL:GetLine( id )
+
+	return self.Lines[ id ]
+
+end
+
+function PANEL:GetSortedID( line )
+
+	for k, v in pairs( self.Sorted ) do
+
+		if ( v:GetID() == line ) then return k end
+
+	end
+
+end
+
+function PANEL:OnClickLine( Line, bClear )
+
+	local bMultiSelect = self:GetMultiSelect()
+	if ( !bMultiSelect && !bClear ) then return end
+
+	--
+	-- Control, multi select
+	--
+	if ( bMultiSelect && input.IsKeyDown( KEY_LCONTROL ) ) then
+		bClear = false
+	end
+
+	--
+	-- Shift block select
+	--
+	if ( bMultiSelect && input.IsKeyDown( KEY_LSHIFT ) ) then
+
+		local Selected = self:GetSortedID( self:GetSelectedLine() )
+		if ( Selected ) then
+
+			local LineID = self:GetSortedID( Line:GetID() )
+
+			local First = math.min( Selected, LineID )
+			local Last = math.max( Selected, LineID )
+
+			-- Fire off OnRowSelected for each non selected row
+			for id = First, Last do
+				local line = self.Sorted[ id ]
+				if ( !line:IsLineSelected() ) then self:OnRowSelected( line:GetID(), line ) end
+				line:SetSelected( true )
+			end
+
+			-- Clear the selection and select only the required rows
+			if ( bClear ) then self:ClearSelection() end
+
+			for id = First, Last do
+				local line = self.Sorted[ id ]
+				line:SetSelected( true )
+			end
+
+			return
+
+		end
+
+	end
+
+	--
+	-- Check for double click
+	--
+	if ( Line:IsSelected() && Line.m_fClickTime && ( !bMultiSelect || bClear ) ) then
+
+		local fTimeDistance = SysTime() - Line.m_fClickTime
+
+		if ( fTimeDistance < 0.3 ) then
+			self:DoDoubleClick( Line:GetID(), Line )
+			return
+		end
+
+	end
+
+	--
+	-- If it's a new mouse click, or this isn't
+	-- multiselect we clear the selection
+	--
+	if ( !bMultiSelect || bClear ) then
+		self:ClearSelection()
+	end
+
+	if ( Line:IsSelected() ) then return end
+
+	Line:SetSelected( true )
+	Line.m_fClickTime = SysTime()
+
+	self:OnRowSelected( Line:GetID(), Line )
+
+end
+
+function PANEL:SortByColumns( c1, d1, c2, d2, c3, d3, c4, d4 )
+
+	table.sort( self.Sorted, function( a, b )
+
+		if ( !IsValid( a ) ) then return true end
+		if ( !IsValid( b ) ) then return false end
+
+		if ( c1 && a:GetColumnText( c1 ) != b:GetColumnText( c1 ) ) then
+			if ( d1 ) then a, b = b, a end
+			return a:GetColumnText( c1 ) < b:GetColumnText( c1 )
+		end
+
+		if ( c2 && a:GetColumnText( c2 ) != b:GetColumnText( c2 ) ) then
+			if ( d2 ) then a, b = b, a end
+			return a:GetColumnText( c2 ) < b:GetColumnText( c2 )
+		end
+
+		if ( c3 && a:GetColumnText( c3 ) != b:GetColumnText( c3 ) ) then
+			if ( d3 ) then a, b = b, a end
+			return a:GetColumnText( c3 ) < b:GetColumnText( c3 )
+		end
+
+		if ( c4 && a:GetColumnText( c4 ) != b:GetColumnText( c4 ) ) then
+			if ( d4 ) then a, b = b, a end
+			return a:GetColumnText( c4 ) < b:GetColumnText( c4 )
+		end
+
+		return true
+	end )
+
+	self:SetDirty( true )
+	self:InvalidateLayout()
+
+end
+
+function PANEL:SortByColumn( ColumnID, Desc )
+
+	table.sort( self.Sorted, function( a, b )
+
+		if ( Desc ) then
+			a, b = b, a
+		end
+
+		local aval = a:GetSortValue( ColumnID ) || a:GetColumnText( ColumnID )
+		local bval = b:GetSortValue( ColumnID ) || b:GetColumnText( ColumnID )
+
+		-- Maintain nicer sorting for numbers
+		if ( isnumber( aval ) && isnumber( bval ) ) then return aval < bval end
+
+		return tostring( aval ) < tostring( bval )
+
+	end )
+
+	self:SetDirty( true )
+	self:InvalidateLayout()
+
+end
+
+function PANEL:SelectItem( Item )
+
+	if ( !Item ) then return end
+
+	Item:SetSelected( true )
+	self:OnRowSelected( Item:GetID(), Item )
+
+end
+
+function PANEL:SelectFirstItem()
+
+	self:ClearSelection()
+	self:SelectItem( self.Sorted[ 1 ] )
+
+end
+
+function PANEL:DoDoubleClick( LineID, Line )
+
+	-- For Override
+
+end
+
+function PANEL:OnRowSelected( LineID, Line )
+
+	-- For Override
+
+end
+
+function PANEL:OnRowRightClick( LineID, Line )
+
+	-- For Override
+
+end
+
+function PANEL:Clear()
+
+	for k, v in pairs( self.Lines ) do
+		v:Remove()
+	end
+
+	self.Lines = {}
+	self.Sorted = {}
+
+	self:SetDirty( true )
+
+end
+
+function PANEL:GetSelected()
+
+	local ret = {}
+
+	for k, v in pairs( self.Lines ) do
+		if ( v:IsLineSelected() ) then
+			table.insert( ret, v )
+		end
+	end
+
+	return ret
+
+end
+
+function PANEL:SizeToContents()
+
+	self:SetHeight( self.pnlCanvas:GetTall() + self:GetHeaderHeight() )
+
+end
+
+function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
+
+	local ctrl = vgui.Create( ClassName )
+
+	ctrl:AddColumn( "Address" )
+	local Col2 = ctrl:AddColumn( "Port" )
+
+	Col2:SetFixedWidth( 30 )
+
+	for i = 1, 128 do
+		ctrl:AddLine( "192.168.0." .. i, "80" )
+	end
+
+	ctrl:SetSize( 300, 200 )
+
+	PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )
+
+end
+
+derma.DefineControl( "DListView", "Data View", PANEL, "DPanel" )

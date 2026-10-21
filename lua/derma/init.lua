@@ -1,156 +1,111 @@
---[[----------------------------------------------------------------------------
-	lua/derma/init.lua  --  entry point for HL2SB's own Derma-style framework.
 
-	NOT Garry's Mod's file.  Same call-shape (this is included from
-	lua/includes/init.lua before the control list), completely different guts:
+--
+-- The default font used by everything Derma
+--
 
-		derma/hl2sb_derma.lua    class system: derma.DefineControl / vgui.Create /
-		                         vgui.Register on top of the engine's scripted
-		                         panels (ref-table method merge, flat chain copy)
-		derma/hl2sb_skin.lua     skin registry + vector drawing helpers
-		skins/hl2sb_default.lua  the built-in skin
+if ( system.IsLinux() ) then
 
-	The engine half of the contract lives in C++:
-	scripted_controls' BEGIN_LUA_CALL_PANEL_METHOD dispatch, the panel ref table
-	(panel:GetTable), and vgui2's native docking pass -- none of that is
-	Garry's Mod code, all of it is this fork's.
------------------------------------------------------------------------------]]
+	surface.CreateFont( "DermaDefault", {
+		font		= "DejaVu Sans",
+		size		= 14,
+		weight		= 500,
+		extended	= true
+	} )
 
-if ( not ( ( CLIENT or _GAMEUI ) and surface and vgui ) ) then return end
+	surface.CreateFont( "DermaDefaultBold", {
+		font		= "DejaVu Sans",
+		size		= 14,
+		weight		= 800,
+		extended	= true
+	} )
 
-include( "derma/hl2sb_derma.lua" )
-include( "derma/hl2sb_skin.lua" )
+else
 
---[[---------------------------------------------------------------------------
-	Fonts
+	surface.CreateFont( "DermaDefault", {
+		font		= "Tahoma",
+		size		= 13,
+		weight		= 500,
+		extended	= true
+	} )
 
-	DermaDefault / DermaDefaultBold / DermaLarge: the three names control code
-	and the HUD reference.  Created once at load, resolved to HFont handles
-	lazily through derma.GetFontHandle.  Sizes/weights are what this mod's UI
-	was verified with -- the font DATA (a name, a size, a weight) is not
-	code, but the numbers are ours: 13px Tahoma at these weights suits the
-	13px HUD text this fork already ships.
----------------------------------------------------------------------------]]
+	surface.CreateFont( "DermaDefaultBold", {
+		font		= "Tahoma",
+		size		= 13,
+		weight		= 800,
+		extended	= true
+	} )
 
--- HL2SB: CJK-capable faces.  Tahoma/Roboto carry no CJK glyphs, so every
--- localised Chinese string drawn through a derma control came out as empty
--- boxes.  Microsoft YaHei covers Latin AND CJK (standard on Vista+), so the
--- derma UI renders both scripts with the same metrics.
-derma.CreateFont( "DermaDefault", {
-	font		= "Microsoft YaHei",
-	size		= 13,
-	weight		= 500,
-	extended	= true
-} )
+end
 
-derma.CreateFont( "DermaDefaultBold", {
-	font		= "Microsoft YaHei",
-	size		= 13,
-	weight		= 800,
-	extended	= true
-} )
-
-derma.CreateFont( "DermaLarge", {
-	font		= "Microsoft YaHei",
+surface.CreateFont( "DermaLarge", {
+	font		= "Roboto",
 	size		= 32,
 	weight		= 500,
 	extended	= true
 } )
 
-derma.DefaultFont = "DermaDefault"
+include( "derma.lua" )
+include( "derma_example.lua" )
+include( "derma_menus.lua" )
+include( "derma_animation.lua" )
+include( "derma_utils.lua" )
+include( "derma_gwen.lua" )
 
-include( "skins/hl2sb_default.lua" )
+function Derma_Hook( panel, functionname, hookname, typename )
 
--- Derma helper globals (menus, modal dialogs, Derma_Hook, Derma_Anim) built on
--- our controls - the small API surface GMod's lua/derma exposes that our
--- framework was missing.
-include( "derma/hl2sb_derma_menus.lua" )
-
---[[---------------------------------------------------------------------------
-	Derma_Install_Convar_Functions ( global )
-
-	HL2SB's own implementation of the panel <-> ConVar binding the GMod wiki
-	documents (Panel:SetConVar / Panel:SetConVarFront / Panel:GetConVar, with a
-	per-control ConVarChanged override).  GMod ships this in lua/derma/derma.lua,
-	which this fork never had, so the whole SetConVar family was missing.
-
-	Relies on the cvars bridge added in cvar.lua: the engine's global change
-	callback now reaches cvars.OnConVarChanged, which drives these callbacks.
-
-	identifier is a minted unique string per binding - the wiki requires
-	cvars.AddChangeCallback's third argument to be a string, and it lets us
-	re-bind a panel cleanly (remove the old callback before adding the new one).
------------------------------------------------------------------------------]]
-local nConVarCallbackID = 0
-
-function Derma_Install_Convar_Functions( Panel )
-
-	function Panel:GetConVar()
-		return self.m_ConVar
+	panel[ functionname ] = function ( self, a, b, c, d )
+		return derma.SkinHook( hookname, typename, self, a, b, c, d )
 	end
 
-	function Panel:SetConVar( strName )
-		-- unbind the previous convar, if any
-		if ( self.m_ConVarName and self.m_ConVarCallbackID ) then
-			cvars.RemoveChangeCallback( self.m_ConVarName, self.m_ConVarCallbackID )
-		end
-		self.m_ConVarCallbackID = nil
+end
 
-		self.m_ConVarName = strName
-		-- GMod's own field name for the same thing: its derma/init.lua:83 stores
-		-- m_strConVar, and the GMod controls that poll it through
-		-- ConVarNumberThink (DNumPad / DNumberScratch / DBinder) read that field.
-		self.m_strConVar = strName
-		self.m_ConVar = ( strName != nil and strName != "" ) and GetConVar( strName ) or nil
+--[[
 
-		if ( !self.m_ConVar ) then return end
+	ConVar Functions
 
-		nConVarCallbackID = nConVarCallbackID + 1
-		local strID = "derma_convar_" .. nConVarCallbackID
-		self.m_ConVarCallbackID = strID
+	To associate controls with convars. The controls automatically
+	update from the value of the control, and automatically update
+	the value of the convar from the control.
 
-		local pPanel = self
-		cvars.AddChangeCallback( strName, function( name, old, new )
-			if ( IsValid( pPanel ) ) then
-				pPanel:ConVarChanged( name, old, new )
-			end
-		end, strID )
+	Controls must:
 
-		-- reflect the current value immediately (wiki: SetConVarFront updates on the spot)
-		self:ConVarChanged( strName, "", self.m_ConVar:GetString() )
+	Call ConVarStringThink or ConVarNumberThink from the
+	Think function to get any changes from the ConVars.
+
+	Have SetValue( value ) implemented, to receive the
+	value.
+
+--]]
+
+function Derma_Install_Convar_Functions( PANEL )
+
+	function PANEL:SetConVar( strConVar )
+		self.m_strConVar = strConVar
 	end
 
-	function Panel:SetConVarFront( strName )
-		self:SetConVar( strName )
+	function PANEL:ConVarChanged( strNewValue )
+
+		if ( !self.m_strConVar || #self.m_strConVar < 2 ) then return end
+		RunConsoleCommand( self.m_strConVar, tostring( strNewValue ) )
+
 	end
 
-	-- default no-op; controls override to map the string value onto their state
-	function Panel:ConVarChanged( strName, strOld, strNew )
-	end
+	-- Todo: Think only every 0.1 seconds?
+	function PANEL:ConVarStringThink()
 
-	--[[ GMod's polling half of the same API, taken from its lua/derma/init.lua
-		:94-119.  GMod's controls call one of these from their Think and expect the
-		convar's value to arrive through SetValue:
-
-			DNumPad:Think        -> self:ConVarNumberThink()      (dnumpad.lua:154)
-			DNumberScratch:Think -> self:ConVarNumberThink()      (:256)
-			DBinder:Think        -> self:ConVarNumberThink()      (:102)
-
-		This fork's version was push-only (cvars.AddChangeCallback above), so those
-		three calls were "attempt to call a nil value".  Both halves now exist:
-		the callback pushes into ConVarChanged, and these poll.  --]]
-	function Panel:ConVarStringThink()
-		if ( !self.m_strConVar or #self.m_strConVar < 2 ) then return end
+		if ( !self.m_strConVar || #self.m_strConVar < 2 ) then return end
 
 		local strValue = GetConVarString( self.m_strConVar )
 		if ( self.m_strConVarValue == strValue ) then return end
 
 		self.m_strConVarValue = strValue
 		self:SetValue( self.m_strConVarValue )
+
 	end
 
-	function Panel:ConVarNumberThink()
-		if ( !self.m_strConVar or #self.m_strConVar < 2 ) then return end
+	function PANEL:ConVarNumberThink()
+
+		if ( !self.m_strConVar || #self.m_strConVar < 2 ) then return end
 
 		local numValue = GetConVarNumber( self.m_strConVar )
 
@@ -160,72 +115,7 @@ function Derma_Install_Convar_Functions( Panel )
 
 		self.m_strConVarValue = numValue
 		self:SetValue( self.m_strConVarValue )
+
 	end
 
 end
-
---[[---------------------------------------------------------------------------
-	Wire the ConVar functions onto the controls that GMod links to convars.
-	Original control files stay untouched; the binding is applied to each class
-	table here.  m_bApplyingConVar guards the convar -> panel -> convar loop.
------------------------------------------------------------------------------]]
-local function InstallConVar( strClass, fnApply, fnWrap )
-	-- ⚠️ Deferred on purpose -- see the note above.  This file loads before the
-	-- control list, so the class must not be looked up here.
-	derma.InstallConVarLink( strClass, function( cls )
-		Derma_Install_Convar_Functions( cls )
-
-		cls.ConVarChanged = function( pnl, name, old, new )
-			pnl.m_bApplyingConVar = true
-			fnApply( pnl, new )
-			pnl.m_bApplyingConVar = false
-		end
-
-		if ( fnWrap and cls[ fnWrap.name ] ) then
-			local orig = cls[ fnWrap.name ]
-			cls[ fnWrap.name ] = function( pnl, ... )
-				local r = orig( pnl, ... )
-				if ( not pnl.m_bApplyingConVar and pnl.m_ConVar ) then
-					pnl.m_ConVar:SetString( tostring( fnWrap.write( pnl ) ) )
-				end
-				return r
-			end
-		end
-	end )
-end
-
-InstallConVar( "DCheckBox",
-	function( pnl, new ) pnl:SetChecked( tonumber( new ) ~= 0 or new == "true" ) end,
-	{ name = "OnCheckButtonChecked", write = function( pnl ) return pnl:GetChecked() and "1" or "0" end } )
-
--- DNumSlider / DSlider are NOT installed here anymore: both are verbatim GMod
--- ports now and carry their own convar plumbing (DNumSlider:SetConVar ->
--- Scratch + TextArea, DSlider's SetConVarX/SetConVarY with its own Think
--- polling).  The installer used to overwrite their ConVarChanged with the
--- (name, old, new) push shape, which broke the GMod (newValue, cvarName)
--- contract those files implement.
-
-InstallConVar( "DTextEntry",
-	function( pnl, new ) pnl:SetText( new ) end,
-	{ name = "OnTextChanged", write = function( pnl ) return pnl:GetValue() end } )
-
--- GMod binds a combo's convar through the option DATA, not the label
--- (dcombobox.lua:247-258 matches Data first; its ChooseOption deliberately does
--- NOT write the convar -- DForm's OnSelect writes `data or value`).  The old
--- version here matched labels only and wrote the LABEL into the convar on every
--- ChooseOption, so a data-driven combo ("Enabled" -> "1") stored "Enabled".
-InstallConVar( "DComboBox",
-	function( pnl, new )
-		for i = 1, #pnl.m_tOptions do
-			if ( tostring( pnl.Data[ i ] ) == new ) then pnl:SelectIndex( i ) return end
-		end
-		for i = 1, #pnl.m_tOptions do
-			if ( pnl.m_tOptions[ i ].label == new ) then pnl:SelectIndex( i ) return end
-		end
-	end,
-	{ name = "ChooseOption", write = function( pnl )
-		local id = pnl:GetSelectedID()
-		return pnl.Data[ id ] or pnl:GetValue()
-	end } )
-
-print( "[HL2SB] derma framework loaded (hl2sb core)" )

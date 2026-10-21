@@ -24,6 +24,7 @@ include( "persistence.lua" )
 include( "drive/drive_sandbox.lua" )
 
 GM.Name			= "Sandbox"
+GM.IsSandboxDerived = true
 GM.Homepage		= "http://www.andrewmcwatters.com/hl2sb/"
 GM.Developer	= "Team Sandbox"
 GM.Manual		= nil
@@ -34,9 +35,6 @@ if ( not _CLIENT ) then
   -- fall damage" checkbox can turn it back on per session).
   engine.ServerCommand( "mp_falldamage 0\n" )
   engine.ServerCommand( "mp_flashlight 1\n" )
-else
-  -- Andrew; not the right place to put this, but oh well.
-  self:CreateDefaultPanels()
 end
 end
 

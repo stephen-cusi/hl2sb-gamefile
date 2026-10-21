@@ -1,101 +1,122 @@
---[[ DNotify -- a stackable notification (original implementation).
-
-	notification.lua (the Add / SetTitle / SetText / SetType module) creates
-	these into the notify stack.  The type field selects the skin colour; the
-	fade-out is a timer, GMod-style. --]]
 
 local PANEL = {}
 
-local NOTIF_W = 300
-local NOTIF_H = 60
+AccessorFunc( PANEL, "Spacing", "Spacing" )
+AccessorFunc( PANEL, "Alignment", "Alignment" )
+AccessorFunc( PANEL, "m_fLifeLength", "Life" )
 
 function PANEL:Init()
-	self:SetDrawBackground( false )
-	self:SetMouseInputEnabled( true )
-	self:SetSize( NOTIF_W, NOTIF_H )
-	self.m_strType = "normal"
-	self.m_iLifeTime = 5
 
-	self.m_pTitle = vgui.Create( "DLabel", self, "Title" )
-	self.m_pTitle:SetFont( "DermaDefaultBold" )
-	self.m_pTitle:SetPos( 8, 6 )
+	self.Items = {}
 
-	self.m_pText = vgui.Create( "DLabel", self, "Text" )
-	self.m_pText:SetPos( 8, 24 )
-end
+	self:SetSpacing( 4 )
+	self:SetAlignment( 7 )
+	self:SetLife( 5 )
 
-function PANEL:SetType( strType )
-	self.m_strType = strType
-end
+	-- This turns off the engine drawing
+	self:SetPaintBackgroundEnabled( false )
+	self:SetPaintBorderEnabled( false )
 
-function PANEL:SetTitle( strTitle )
-	self.m_pTitle:SetText( strTitle )
-end
-
-function PANEL:SetText( strText )
-	self.m_pText:SetText( strText )
-end
-
---- GMod: notice:SetExpireTime / the module schedules this itself.
-function PANEL:Fade( flDelay )
-	self.m_flFadeDelay = flDelay or 0.5
-
-	timer.Create( "dnotify_fade_" .. tostring( self ), self.m_flFadeDelay, 1, function()
-		if ( IsValid( self ) ) then self:Remove() end
-	end )
-end
-
---[[ GMod's DNotify is a CONTAINER (dnotify.lua): AddItem( panel, life ) adds a
-	panel to a re-stacking stack, GetItems/SetSpacing/SetAlignment/SetLife drive
-	the stack.  This fork's DNotify grew as a single card, so those container
-	names were all nil-call errors.  Both surfaces live here now: AddItem parents
-	the given panel in and stacks the children on the next think. --]]
-
-AccessorFunc( PANEL, "m_iSpacing", "Spacing", FORCE_NUMBER )
-AccessorFunc( PANEL, "m_iAlignment", "Alignment", FORCE_NUMBER )
-AccessorFunc( PANEL, "m_flLife", "Life", FORCE_NUMBER )
-
-function PANEL:AddItem( pnl, flLife )
-	if ( not IsValid( pnl ) ) then return end
-
-	pnl:SetParent( self )
-	self.m_tItems = self.m_tItems or {}
-	table.insert( self.m_tItems, pnl )
-
-	local life = flLife or self.m_flLife or 4
-	timer.Create( "dnotify_item_" .. tostring( pnl ), life, 1, function()
-		if ( IsValid( pnl ) ) then pnl:Remove() end
-	end )
-
-	self:InvalidateLayout( true )
-	return pnl
 end
 
 function PANEL:GetItems()
-	return self.m_tItems or {}
+
+	return self.Items
+
 end
 
-function PANEL:PerformLayout_Notify( w, h )
-	-- vertical stack, GMod's default alignment (BOTTOM alignment 4 in GMod's
-	-- enum; only the stacking matters here)
-	local y = 0
-	for _, pnl in ipairs( self:GetItems() ) do
-		if ( IsValid( pnl ) ) then
-			pnl:SetPos( 0, y )
-			pnl:SetSize( w, pnl:GetTall() )
-			y = y + pnl:GetTall() + ( self.m_iSpacing or 4 )
+function PANEL:AddItem( item, LifeLength )
+
+	if ( !IsValid( item ) ) then return end
+	LifeLength = LifeLength || self.m_fLifeLength
+
+	item:SetVisible( true )
+	item:SetParent( self )
+	table.insert( self.Items, item )
+	item:SetAlpha( 1 )
+
+	item:SetTerm( LifeLength )
+	item:AlphaTo( 0, 0.3, LifeLength - 0.3 )
+
+	self:Shuffle()
+
+end
+
+function PANEL:Think()
+
+	local bChange = false
+	for k, panel in pairs( self.Items ) do
+
+		if ( !IsValid( panel ) ) then
+
+			self.Items[ k ] = false
+			bChange = true
+
 		end
+
 	end
+
+	if ( bChange ) then
+		self:Shuffle()
+	end
+
 end
 
-function PANEL:Paint( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
+function PANEL:Shuffle()
 
-	local saved = self.m_strType
-	self.m_strStyle = saved
-	derma.SkinHook( "Paint", "Notify", self, w, h )
-	self.m_strStyle = nil
+	local y = 0
+
+	if ( self.Alignment == 1 || self.Alignment == 3 ) then
+		y = self:GetTall()
+	end
+
+	local Count = 0
+	for k, panel in pairs( self.Items ) do
+
+		if ( IsValid( panel ) ) then
+
+			local x = 0
+
+			if ( self.Alignment == 8 || self.Alignment == 2 ) then
+				x = (self:GetWide() + panel:GetWide()) / 2
+			elseif ( self.Alignment == 9 || self.Alignment == 3 ) then
+				x = self:GetWide() - panel:GetWide()
+			end
+
+			if ( self.Alignment == 1 || self.Alignment == 3 ) then
+				y = y - panel:GetTall()
+			end
+
+			if ( panel.bHasEntered ) then
+				panel:SetPos( x, y )
+			else
+				panel:SetPos( x, y )
+				panel:LerpPositions( 1, true )
+				panel:AlphaTo( 255, 0.3 )
+				panel.bHasEntered = true
+			end
+
+			if ( self.Alignment == 1 || self.Alignment == 3 ) then
+				y = y - self.Spacing
+			else
+				y = y + panel:GetTall() + self.Spacing
+			end
+
+			Count = Count + 1
+
+		end
+
+	end
+
+	-- By only removing them when the list is empty
+	-- we keep the order.
+	if ( Count == 0 && #self.Items > 0 ) then
+		self.Items = {}
+	end
+
 end
 
-derma.DefineControl( "DNotify", "HL2SB notification", PANEL, "DPanel" )
+function PANEL:PerformLayout()
+end
+
+derma.DefineControl( "DNotify", "", PANEL, "Panel" )

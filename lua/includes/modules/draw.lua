@@ -111,6 +111,10 @@ local CachedFontHeights = {}
 -- size: pixel height (default 16); weight: 0-1000 (default 700).
 local function GetFont( name, size, weight )
   name = name or "Default"
+  if ( size == nil and weight == nil and surface.SetFont ) then
+    local registered = surface.SetFont( name )
+    if ( registered and registered != 0 ) then return registered end
+  end
   size = size or 16
   weight = weight or 700
 

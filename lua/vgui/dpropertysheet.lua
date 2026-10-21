@@ -1,246 +1,396 @@
---[[ DPropertySheet -- tabbed container (original implementation, GMod-aligned API).
-
-	Wiki: https://wiki.facepunch.com/gmod/DPropertySheet
-	  AddSheet( label, panel, material ), SetActiveTab( tab ) / GetActiveTab(),
-	  GetPanel( i ), Items, SetupCloseButton( func ), OnActiveTabChanged - and the
-	  tabs themselves are lua/vgui/DTab.lua.
-
-	This fork's sheet is its own implementation (a DPanel holding a tab strip and a
-	DScroller), but the parts GMod code and addons reach for are the same:
-
-	  * `Items` -- the list of { Name, Tab, Panel } entries AddSheet returns.
-	  * `GetActiveTab()` returns the active *tab control* (GMod), not the entry;
-	    `m_pActive` keeps this fork's entry for its own layout code.
-	  * `tabScroller` is an alias of the tab strip, and answers AddPanel /
-	    ScrollToChild the way GMod's DHorizontalScroller does.
-	  * The pages are sized by this control's own PerformLayout, exactly like GMod's
-	    (dpropertysheet.lua:337-352): the page fills the area under the tab strip minus
-	    the padding, or keeps its size when AddSheet was given NoStretchX/NoStretchY
-	    (the 4th/5th arguments - GMod passes `true, true` in every GenerateExample).
-
-	NOTE: Tabs are positioned but NOT scrolled: GMod's tab strip is a
-	DHorizontalScroller, so a long tab list pans.  Here the tabs simply run off the
-	right-hand edge (the same before this change); ScrollToChild invalidates the
-	layout and does nothing else.  Worth doing when a real DHorizontalScroller tab
-	strip is wanted.
---]]
 
 local PANEL = {}
 
-local TAB_H = 22			-- inactive tab height (GMod's DTab:GetTabHeight)
-local TABBAR_H = 28		-- the active tab is the tall one, so the strip is 28
-local TAB_GAP = 2
-local PADDING = 8		-- GMod: self:SetPadding( 8 ) in Init
+AccessorFunc( PANEL, "m_pPropertySheet", "PropertySheet" )
+AccessorFunc( PANEL, "m_pPanel", "Panel" )
+
+Derma_Hook( PANEL, "Paint", "Paint", "Tab" )
 
 function PANEL:Init()
-	self:SetDrawBackground( false )
 
-	-- GMod's name for the list; m_tTabs is this fork's older name for the same table
-	self.Items = {}
-	self.m_tTabs = self.Items
-	self.m_pActive = nil
-	self.m_pActiveTab = nil
-	self.m_iPadding = PADDING
+	self:SetMouseInputEnabled( true )
+	self:SetContentAlignment( 7 )
+	self:SetTextInset( 0, 4 )
 
-	self.m_pTabBar = vgui.Create( "DPanel", self, "TabStrip" )
-	self.m_pTabBar:SetDrawBackground( false )
-
-	-- GMod: self.tabScroller = vgui.Create( "DHorizontalScroller", self )
-	-- (see the header note about scrolling)
-	self.tabScroller = self.m_pTabBar
-
-	self.m_pTabBar.AddPanel = function( bar, pnl )
-		pnl:SetParent( bar )
-		return pnl
-	end
-
-	self.m_pTabBar.ScrollToChild = function( bar, pnl )
-		bar:InvalidateLayout( true )
-	end
-
-	self.m_pScroller = vgui.Create( "DScroller", self, "Scroller" )
-	self.m_pScroller:SetDrawBackground( false )
 end
 
---- GMod: DPropertySheet:AddSheet( label, panel, material, NoStretchX, NoStretchY ) ->
---- the sheet entry.  NOTE: The 4th/5th arguments mean "do NOT stretch this axis" in
---- GMod (every GenerateExample in GMod passes `true, true`), not "stretch".
-function PANEL:AddSheet( strLabel, pnl, strIcon, bNoStretchX, bNoStretchY, strTooltip )
-	-- GMod halts gracefully on a dead page panel (dpropertysheet.lua:177-181)
-	-- instead of throwing out of SetParent.
-	if ( not IsValid( pnl ) ) then
-		ErrorNoHalt( "DPropertySheet:AddSheet - invalid panel!\n" )
+function PANEL:Setup( label, pPropertySheet, pPanel, strMaterial )
+
+	self:SetText( label )
+	self:SetPropertySheet( pPropertySheet )
+	self:SetPanel( pPanel )
+
+	if ( strMaterial ) then
+
+		self.Image = vgui.Create( "DImage", self )
+		self.Image:SetImage( strMaterial )
+		self.Image:SizeToContents()
+		self:InvalidateLayout()
+
+	end
+
+end
+
+function PANEL:IsActive()
+	return self:GetPropertySheet():GetActiveTab() == self
+end
+
+function PANEL:DoClick()
+
+	self:GetPropertySheet():SetActiveTab( self )
+
+end
+
+function PANEL:PerformLayout()
+
+	self:ApplySchemeSettings()
+
+	if ( !self.Image ) then return end
+
+	self.Image:SetPos( 7, 3 )
+
+	if ( !self:IsActive() ) then
+		self.Image:SetImageColor( Color( 255, 255, 255, 155 ) )
+	else
+		self.Image:SetImageColor( color_white )
+	end
+
+end
+
+function PANEL:UpdateColours( skin )
+
+	if ( self:IsActive() ) then
+
+		if ( !self:IsEnabled() ) then return self:SetTextStyleColor( skin.Colours.Tab.Active.Disabled ) end
+		if ( self:IsDown() ) then return self:SetTextStyleColor( skin.Colours.Tab.Active.Down ) end
+		if ( self.Hovered ) then return self:SetTextStyleColor( skin.Colours.Tab.Active.Hover ) end
+
+		return self:SetTextStyleColor( skin.Colours.Tab.Active.Normal )
+
+	end
+
+	if ( !self:IsEnabled() ) then return self:SetTextStyleColor( skin.Colours.Tab.Inactive.Disabled ) end
+	if ( self:IsDown() ) then return self:SetTextStyleColor( skin.Colours.Tab.Inactive.Down ) end
+	if ( self.Hovered ) then return self:SetTextStyleColor( skin.Colours.Tab.Inactive.Hover ) end
+
+	return self:SetTextStyleColor( skin.Colours.Tab.Inactive.Normal )
+
+end
+
+function PANEL:GetTabHeight()
+
+	if ( self:IsActive() ) then
+		return 28
+	else
+		return 20
+	end
+
+end
+
+function PANEL:ApplySchemeSettings()
+
+	local ExtraInset = 10
+
+	if ( self.Image ) then
+		ExtraInset = ExtraInset + self.Image:GetWide()
+	end
+
+	self:SetTextInset( ExtraInset, 4 )
+	local w, h = self:GetContentSize()
+	h = self:GetTabHeight()
+
+	self:SetSize( w + 10, h )
+
+	DLabel.ApplySchemeSettings( self )
+
+end
+
+--
+-- DragHoverClick
+--
+function PANEL:DragHoverClick( HoverTime )
+
+	self:DoClick()
+
+end
+
+function PANEL:GenerateExample()
+
+	-- Do nothing!
+
+end
+
+function PANEL:DoRightClick()
+
+	if ( !IsValid( self:GetPropertySheet() ) ) then return end
+
+	local tabs = DermaMenu()
+	for k, v in pairs( self:GetPropertySheet().Items ) do
+		if ( !v || !IsValid( v.Tab ) || !v.Tab:IsVisible() ) then continue end
+		local option = tabs:AddOption( v.Tab:GetText(), function()
+			if ( !v || !IsValid( v.Tab ) || !IsValid( self:GetPropertySheet() ) || !IsValid( self:GetPropertySheet().tabScroller ) ) then return end
+			v.Tab:DoClick()
+			self:GetPropertySheet().tabScroller:ScrollToChild( v.Tab )
+		end )
+		if ( IsValid( v.Tab.Image ) ) then option:SetIcon( v.Tab.Image:GetImage() ) end
+	end
+	tabs:Open()
+
+end
+
+derma.DefineControl( "DTab", "A Tab for use on the PropertySheet", PANEL, "DButton" )
+
+--[[---------------------------------------------------------
+	DPropertySheet
+-----------------------------------------------------------]]
+
+local PANEL = {}
+
+Derma_Hook( PANEL, "Paint", "Paint", "PropertySheet" )
+
+AccessorFunc( PANEL, "m_pActiveTab", "ActiveTab" )
+AccessorFunc( PANEL, "m_iPadding", "Padding" )
+AccessorFunc( PANEL, "m_fFadeTime", "FadeTime" )
+
+AccessorFunc( PANEL, "m_bShowIcons", "ShowIcons" )
+
+function PANEL:Init()
+
+	self:SetShowIcons( true )
+
+	self.tabScroller = vgui.Create( "DHorizontalScroller", self )
+	self.tabScroller:SetOverlap( 5 )
+	self.tabScroller:Dock( TOP )
+	self.tabScroller:DockMargin( 3, 0, 3, 0 )
+
+	self:SetFadeTime( 0.1 )
+	self:SetPadding( 8 )
+
+	self.animFade = Derma_Anim( "Fade", self, self.CrossFade )
+
+	self.Items = {}
+
+end
+
+function PANEL:AddSheet( label, panel, material, NoStretchX, NoStretchY, Tooltip )
+
+	if ( !IsValid( panel ) ) then
+		ErrorNoHalt( "DPropertySheet:AddSheet tried to add invalid panel!" )
+		debug.Trace()
 		return
 	end
 
-	local tab = vgui.Create( "DTab", self.m_pTabBar, "Tab" )
-	tab:Setup( strLabel, self, pnl, strIcon )
+	local Sheet = {}
 
-	pnl:SetParent( self.m_pScroller )
-	pnl:SetVisible( false )
-	pnl.NoStretchX = bNoStretchX
-	pnl.NoStretchY = bNoStretchY
+	Sheet.Name = label
 
-	-- GMod's 6th argument: the sheet tab's tooltip (dpropertysheet.lua:175-188).
-	if ( strTooltip and tab.SetTooltip ) then
-		tab:SetTooltip( strTooltip )
+	Sheet.Tab = vgui.Create( "DTab", self )
+	Sheet.Tab:SetTooltip( Tooltip )
+	Sheet.Tab:Setup( label, self, panel, material )
+
+	Sheet.Panel = panel
+	Sheet.Panel.NoStretchX = NoStretchX
+	Sheet.Panel.NoStretchY = NoStretchY
+	Sheet.Panel:SetPos( self:GetPadding(), 20 + self:GetPadding() )
+	Sheet.Panel:SetVisible( false )
+
+	panel:SetParent( self )
+
+	table.insert( self.Items, Sheet )
+
+	if ( !self:GetActiveTab() ) then
+		self:SetActiveTab( Sheet.Tab )
+		Sheet.Panel:SetVisible( true )
 	end
 
-	-- both naming schemes, so GMod code (entry.Name/.Tab/.Panel) and this fork's
-	-- own layout code (entry.label/.tab/.pnl) read the same entry
-	local entry = {
-		Name = strLabel,	Tab = tab,		Panel = pnl,
-		label = strLabel,	tab = tab,		pnl = pnl,
-	}
-	table.insert( self.m_tTabs, entry )
+	self.tabScroller:AddPanel( Sheet.Tab )
 
-	if ( #self.m_tTabs == 1 ) then self:Activate( entry ) end
-	self:InvalidateLayout( true )
-	return entry
+	return Sheet
+
 end
 
---- GMod: DPropertySheet:GetItems() -- the sheet entries addons iterate
---- (dpropertysheet.lua:248-252).  The fork kept the list in Items but never
---- exposed the getter.
+function PANEL:SetActiveTab( active )
+
+	if ( !IsValid( active ) || self.m_pActiveTab == active ) then return end
+
+	if ( IsValid( self.m_pActiveTab ) ) then
+
+		-- Only run this callback when we actually switch a tab, not when a tab is initially set active
+		self:OnActiveTabChanged( self.m_pActiveTab, active )
+
+		if ( self:GetFadeTime() > 0 ) then
+
+			self.animFade:Start( self:GetFadeTime(), { OldTab = self.m_pActiveTab, NewTab = active } )
+
+		else
+
+			self.m_pActiveTab:GetPanel():SetVisible( false )
+
+		end
+
+	end
+
+	self.m_pActiveTab = active
+	self:InvalidateLayout()
+
+end
+
+function PANEL:OnActiveTabChanged( old, new )
+	-- For override
+end
+
+function PANEL:Think()
+
+	self.animFade:Run()
+
+end
+
 function PANEL:GetItems()
-	return self.m_tTabs
+
+	return self.Items
+
 end
 
---- GMod: DPropertySheet:SetFadeTime / GetFadeTime, SetShowIcons / GetShowIcons
---- (accessors around dpropertysheet.lua:153-155).  Recorded only: this fork
---- switches tabs instantly and draws icons through DTab.
-AccessorFunc( PANEL, "m_fFadeTime", "FadeTime", FORCE_NUMBER )
-AccessorFunc( PANEL, "m_bShowIcons", "ShowIcons", FORCE_BOOL )
+function PANEL:CrossFade( anim, delta, data )
 
---- GMod: DPropertySheet:SwitchToName( name ) (dpropertysheet.lua:376-389).
-function PANEL:SwitchToName( name )
-	for _, e in ipairs( self.m_tTabs ) do
-		if ( e.Name == name or e.label == name ) then
-			self:SetActiveTab( e.Tab )
-			return
+	if ( !data || !IsValid( data.OldTab ) || !IsValid( data.NewTab ) ) then return end
+
+	local old = data.OldTab:GetPanel()
+	local new = data.NewTab:GetPanel()
+
+	if ( !IsValid( old ) && !IsValid( new ) ) then return end
+
+	if ( anim.Finished ) then
+		if ( IsValid( old ) ) then
+			old:SetAlpha( 255 )
+			old:SetZPos( 0 )
+			old:SetVisible( false )
 		end
-	end
-end
 
---- GMod: DPropertySheet:CloseTab( tab, bRemovePanelToo ) (dpropertysheet.lua:405-443).
-function PANEL:CloseTab( tab, bRemovePanelToo )
-	local tabWasActive = self:GetActiveTab() == tab
-
-	for k, e in ipairs( self.m_tTabs ) do
-		if ( e.Tab == tab ) then
-			table.remove( self.m_tTabs, k )
-
-			if ( bRemovePanelToo and IsValid( e.Panel ) ) then
-				e.Panel:Remove()
-			end
-
-			if ( IsValid( tab ) ) then tab:Remove() end
-			break
+		if ( IsValid( new ) ) then
+			new:SetAlpha( 255 )
+			new:SetZPos( 0 )
+			new:SetVisible( true ) -- In case new == old
 		end
+
+		return
 	end
 
-	if ( tabWasActive ) then
-		local newTab = self.m_tTabs[ 1 ]
-		self:SetActiveTab( newTab and newTab.Tab or nil )
-	end
-
-	self:InvalidateLayout( true )
-end
-
---- GMod: DPropertySheet:Clear() -- remove every sheet (dpropertysheet.lua:445-461).
-function PANEL:Clear()
-	for _, e in ipairs( self.m_tTabs ) do
-		if ( IsValid( e.Tab ) ) then e.Tab:Remove() end
-		if ( IsValid( e.Panel ) ) then e.Panel:Remove() end
-	end
-
-	self.m_tTabs = {}
-	self.Items = self.m_tTabs
-	self.m_pActive = nil
-	self.m_pActiveTab = nil
-	self:InvalidateLayout( true )
-end
-
---- GMod: DPropertySheet:SizeToContentWidth() (dpropertysheet.lua:359-374) --
---- widen to the widest page plus padding.
-function PANEL:SizeToContentWidth()
-	local widest = 0
-
-	for _, e in ipairs( self.m_tTabs ) do
-		if ( IsValid( e.Panel ) and e.Panel.GetWide ) then
-			widest = math.max( widest, e.Panel:GetWide() )
+	if ( anim.Started ) then
+		if ( IsValid( old ) ) then
+			old:SetAlpha( 255 )
+			old:SetZPos( 0 )
 		end
+
+		if ( IsValid( new ) ) then
+			new:SetAlpha( 0 )
+			new:SetZPos( 1 )
+		end
+
 	end
-
-	self:SetWide( widest + self:GetPadding() * 2 )
-end
-
-function PANEL:Activate( entry )
-	for _, e in ipairs( self.m_tTabs ) do
-		e.pnl:SetVisible( e == entry )
-		e.tab.m_bDepressed = ( e == entry )
-	end
-
-	self.m_pActive = entry
-	self.m_pActiveTab = entry and entry.tab or nil
-
-	-- GMod: SetActiveTab ends with self:InvalidateLayout().  The tabs' heights are only
-	-- settled in PerformLayout (it re-runs each tab's scheme), so without this the strip
-	-- keeps the old tall/shallow pair after a switch.
-	self:InvalidateLayout( true )
-end
-
---- GMod: DPropertySheet:GetActiveTab() -> the active DTab.
-function PANEL:GetActiveTab()
-	return self.m_pActiveTab
-end
-
---- GMod: DPropertySheet:SetActiveTab( tab ) -- what DTab:DoClick calls.
-function PANEL:SetActiveTab( tab )
-	if ( !IsValid( tab ) ) then return end
-	if ( self.m_pActiveTab == tab ) then return end
-
-	local entry
-
-	for _, e in ipairs( self.m_tTabs ) do
-		if ( e.tab == tab ) then entry = e break end
-	end
-
-	if ( !entry ) then return end
-
-	local old = self.m_pActiveTab
-	self:Activate( entry )
 
 	if ( IsValid( old ) ) then
-		self:OnActiveTabChanged( old, tab )
+		old:SetVisible( true )
+		if ( !IsValid( new ) ) then old:SetAlpha( 255 * ( 1 - delta ) ) end
 	end
+
+	if ( IsValid( new ) ) then
+		new:SetVisible( true )
+		new:SetAlpha( 255 * delta )
+	end
+
 end
 
---- GMod: overridable callback, only run when a tab is actually switched.
-function PANEL:OnActiveTabChanged( old, new )
+function PANEL:PerformLayout()
+
+	local ActiveTab = self:GetActiveTab()
+	local Padding = self:GetPadding()
+
+	if ( !IsValid( ActiveTab ) ) then return end
+
+	-- Update size now, so the height is definitiely right.
+	ActiveTab:InvalidateLayout( true )
+
+	--self.tabScroller:StretchToParent( Padding, 0, Padding, nil )
+	self.tabScroller:SetTall( ActiveTab:GetTall() )
+
+	local ActivePanel = ActiveTab:GetPanel()
+
+	for k, v in pairs( self.Items ) do
+
+		if ( v.Tab:GetPanel() == ActivePanel ) then
+
+			if ( IsValid( v.Tab:GetPanel() ) ) then v.Tab:GetPanel():SetVisible( true ) end
+			v.Tab:SetZPos( 100 )
+
+		else
+
+			if ( IsValid( v.Tab:GetPanel() ) ) then v.Tab:GetPanel():SetVisible( false ) end
+			v.Tab:SetZPos( 1 )
+
+		end
+
+		v.Tab:ApplySchemeSettings()
+
+	end
+
+	if ( IsValid( ActivePanel ) ) then
+		if ( !ActivePanel.NoStretchX ) then
+			ActivePanel:SetWide( self:GetWide() - Padding * 2 )
+		else
+			ActivePanel:CenterHorizontal()
+		end
+
+		if ( !ActivePanel.NoStretchY ) then
+			local _, y = ActivePanel:GetPos()
+			ActivePanel:SetTall( self:GetTall() - y - Padding )
+		else
+			ActivePanel:CenterVertical()
+		end
+
+		ActivePanel:InvalidateLayout()
+	end
+
+	-- Give the animation a chance
+	self.animFade:Run()
+
 end
 
-function PANEL:GetPanel( i )
-	local e = self.m_tTabs[ i ]
-	return e and e.pnl
+function PANEL:SizeToContentWidth()
+
+	local wide = 0
+
+	for k, v in pairs( self.Items ) do
+
+		if ( IsValid( v.Panel ) ) then
+			v.Panel:InvalidateLayout( true )
+			wide = math.max( wide, v.Panel:GetWide() + self:GetPadding() * 2 )
+		end
+
+	end
+
+	self:SetWide( wide )
+
 end
 
---- GMod: DPropertySheet:SetPadding / GetPadding (AccessorFunc m_iPadding).  Used as the
---- border between the page and the sheet, and to inset the pages from the tab strip.
-function PANEL:SetPadding( i ) self.m_iPadding = i end
-function PANEL:GetPadding() return self.m_iPadding or PADDING end
+function PANEL:SwitchToName( name )
 
---- GMod: DPropertySheet:SetupCloseButton( func ) -- "Adds a close button to the
---- right side of the tab bar" (its dpropertysheet.lua:391).  DColorCombo inherits
---- it, and prop_vectorcolor uses it to put a close button on the colour popup.
---- GMod docks the button in `self.tabScroller`; this fork's sheet has no scroller,
---- so it is docked into the tab bar itself.
+	for k, v in pairs( self.Items ) do
+
+		if ( v.Name == name ) then
+			v.Tab:DoClick()
+			return true
+		end
+
+	end
+
+	return false
+
+end
+
 function PANEL:SetupCloseButton( func )
-	if ( IsValid( self.CloseButton ) ) then self.CloseButton:Remove() end
 
-	local parent = self.m_pTabBar or self
-
-	self.CloseButton = vgui.Create( "DImageButton", parent )
+	self.CloseButton = self.tabScroller:Add( "DImageButton" )
 	self.CloseButton:SetImage( "icon16/circlecross.png" )
 	self.CloseButton:SetColor( Color( 10, 10, 10, 200 ) )
 	self.CloseButton:DockMargin( 1, 1, 1, 9 )
@@ -249,80 +399,65 @@ function PANEL:SetupCloseButton( func )
 	self.CloseButton.DoClick = function()
 		if ( func ) then func() end
 	end
+
 end
 
-function PANEL:PerformLayout( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
+function PANEL:CloseTab( tab, bRemovePanelToo )
 
-	self.m_pTabBar:SetPos( 0, 0 )
-	self.m_pTabBar:SetSize( w, TABBAR_H )
+	for k, v in pairs( self.Items ) do
 
-	-- DTab sizes itself (its ApplySchemeSettings runs PerformLayout), so only the
-	-- x matters here, and the active (taller) tab sits on the strip's bottom edge.
-	-- NOTE: GMod re-runs every tab's scheme in this very loop (dpropertysheet.lua:333) --
-	-- that is what re-measures the tabs after the active one changed, so the tab that
-	-- just became active grows to 28 and the one that stopped being active shrinks to
-	-- 20.  Without it the previously active tab keeps its height: in game the strip
-	-- showed two tall tabs (2026-09-17).
-	local x = 0
-	for _, e in ipairs( self.m_tTabs ) do
-		e.tab:ApplySchemeSettings()
+		if ( v.Tab != tab ) then continue end
 
-		local tw = e.tab:GetWide()
-		local th = e.tab:GetTall()
+		table.remove( self.Items, k )
 
-		if ( tw <= 0 ) then tw = 90 end
-		if ( th <= 0 ) then th = TAB_H end
-
-		e.tab:SetPos( x, math.max( 0, TABBAR_H - th ) )
-		x = x + tw + TAB_GAP
 	end
 
-	self.m_pScroller:SetPos( 0, TABBAR_H + 2 )
-	self.m_pScroller:SetSize( w, math.max( 0, h - TABBAR_H - 2 ) )
+	for k, v in pairs( self.tabScroller.Panels ) do
 
-	-- GMod sizes the pages in the sheet's own PerformLayout (dpropertysheet.lua:337-352):
-	-- the page fills the area under the tab strip minus the padding, unless the sheet was
-	-- told not to stretch that axis (then it is centred instead).  It does this for every
-	-- page, visible or not.
-	-- NOTE: Without this the page keeps the engine's default panel size and every child is
-	-- clipped to it: in game on 2026-09-17 the demo's page label came out as "this is the
-	-- tl" - a 64px-wide page cutting a 330px captioned label, not a label bug.
-	local pad = self:GetPadding()
-	local sw, sh = self.m_pScroller:GetWide(), self.m_pScroller:GetTall()
+		if ( v != tab ) then continue end
 
-	for _, e in ipairs( self.m_tTabs ) do
-		local page = e.pnl
+		table.remove( self.tabScroller.Panels, k )
 
-		if ( IsValid( page ) ) then
-			local pw, ph = math.max( 0, sw - pad * 2 ), math.max( 0, sh - pad * 2 )
-			local px, py = pad, pad
-
-			if ( page.NoStretchX ) then
-				pw = page:GetWide()
-				px = math.max( 0, math.floor( ( sw - pw ) * 0.5 ) )
-			end
-
-			if ( page.NoStretchY ) then
-				ph = page:GetTall()
-				py = math.max( 0, math.floor( ( sh - ph ) * 0.5 ) )
-			end
-
-			page:SetPos( px, py )
-			page:SetSize( pw, ph )
-		end
 	end
+
+	self.tabScroller:InvalidateLayout( true )
+
+	if ( tab == self:GetActiveTab() ) then
+		local targetTab = self.Items[ #self.Items ].Tab
+		self:OnActiveTabChanged( self.m_pActiveTab, targetTab )
+		self.m_pActiveTab = targetTab
+	end
+
+	local pnl = tab:GetPanel()
+
+	if ( bRemovePanelToo ) then
+		pnl:Remove()
+	end
+
+	tab:Remove()
+
+	self:InvalidateLayout( true )
+
+	return pnl
+
 end
 
---- HL2SB (2026-10-16): GMod's DPropertySheet publishes Paint through the skin
---- (Derma_Hook( PANEL, "Paint", "Paint", "PropertySheet" ), reference
---- lua/vgui/dpropertysheet.lua:149).  This fork's sheet had no Paint at all,
---- and GMod's sandbox tool menu calls DPropertySheet.Paint( self, w, h )
---- directly (gamemodes/sandbox/gamemode/spawnmenu/toolmenu.lua:57), so the
---- class has to answer with that contract.  The fork's DPanel paints nothing
---- (the spawn menu paints its own background), so this stays a no-op.
-function PANEL:Paint( w, h )
+function PANEL:Clear()
+
+	-- Let whatever code know that the actie tab is gone
+	self:OnActiveTabChanged( self.m_pActiveTab, nil )
+	self.m_pActiveTab = nil
+
+	-- Remove everything from the scroller
+	self.tabScroller:Clear()
+
+	-- Remove all tabs and their panels
+	for k, tabInfo in ipairs( self.Items ) do
+		tabInfo.Tab:Remove()
+		if ( IsValid( tabInfo.Panel ) ) then tabInfo.Panel:Remove() end
+	end
+	self.Items = {}
+
 end
 
-derma.DefineControl( "DPropertySheet", "HL2SB tab container", PANEL, "DPanel" )
+derma.DefineControl( "DPropertySheet", "", PANEL, "Panel" )

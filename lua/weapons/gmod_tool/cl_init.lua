@@ -109,13 +109,13 @@ function SWEP:DrawHUD()
 	TextTable.font = "GModToolName"
 	TextTable.color = Color( 240, 240, 240, 255 )
 	TextTable.pos = { x, y }
-	TextTable.text = "#tool." .. mode .. ".name"
+	TextTable.text = language.GetPhrase( "tool." .. mode .. ".name" )
 	w, h = draw.TextShadow( TextTable, 2 )
 	y = y + h
 
 	TextTable.font = "GModToolSubtitle"
 	TextTable.pos = { x, y }
-	TextTable.text = "#tool." .. mode .. ".desc"
+	TextTable.text = language.GetPhrase( "tool." .. mode .. ".desc" )
 	w, h = draw.TextShadow( TextTable, 1 )
 	y = y + h + 8
 
@@ -133,7 +133,7 @@ function SWEP:DrawHUD()
 
 	if ( !toolObject.Information ) then
 		TextTable.pos = { x + self.InfoBoxHeight, y }
-		TextTable.text = toolObject:GetHelpText()
+		TextTable.text = language.GetPhrase( toolObject:GetHelpText() )
 		w, h = draw.TextShadow( TextTable, 1 )
 
 		surface.SetDrawColor( 255, 255, 255, 255 )
@@ -159,7 +159,7 @@ function SWEP:DrawHUD()
 		local txt = "#tool." .. mode .. "." .. name
 		if ( name == "info" ) then txt = toolObject:GetHelpText() end
 
-		TextTable.text = txt
+		TextTable.text = language.GetPhrase( txt )
 		TextTable.pos = { x + 21, y + h2 }
 
 		w, h = draw.TextShadow( TextTable, 1 )

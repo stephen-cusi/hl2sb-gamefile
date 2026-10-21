@@ -1,120 +1,109 @@
---[[ DMenuBar -- a row of drop-down menus.
-
-	AddMenu / AddOrGetMenu / GetOpenMenu per GMod's dmenubar.lua, plus the
-	toggle + hover-switch behaviour (click a label opens its menu, clicking the
-	open label closes it, hovering another label switches) and OnRemove cleanup:
-	the menus are ROOT panels (they must overlay everything), so a removed bar
-	has to remove them or they leak invisibly on screen forever. --]]
 
 local PANEL = {}
 
+AccessorFunc( PANEL, "m_bBackground",		"PaintBackground",	FORCE_BOOL )
+AccessorFunc( PANEL, "m_bBackground",		"DrawBackground",	FORCE_BOOL ) -- deprecated
+AccessorFunc( PANEL, "m_bIsMenuComponent",	"IsMenu",			FORCE_BOOL )
+
+Derma_Hook( PANEL, "Paint", "Paint", "MenuBar" )
+
 function PANEL:Init()
-	self:SetDrawBackground( false )
-	self.m_tButtons = {}
-	self.m_iNextX = 4
-	self.m_pOpenMenu = nil
+
+	self:Dock( TOP )
+	self:SetTall( 24 )
+
+	self.Menus = {}
+
 end
 
---- GMod: DMenuBar:GetOpenMenu() (dmenubar.lua:19-27).
 function PANEL:GetOpenMenu()
-	return self.m_pOpenMenu
-end
 
---- GMod: DMenuBar:AddOrGetMenu( name ) (dmenubar.lua:29-34).
-function PANEL:AddOrGetMenu( name )
-	for _, entry in ipairs( self.m_tButtons ) do
-		if ( entry.btn:GetText() == name ) then return entry.menu end
+	for k, v in pairs( self.Menus ) do
+		if ( v:IsVisible() ) then return v end
 	end
 
-	return self:AddMenu( name )
+	return nil
+
 end
 
-function PANEL:AddMenu( strLabel, iWide )
-	local menu = vgui.Create( "DMenu", nil, "Menu_" .. strLabel )
-	menu:SetVisible( false )
+function PANEL:AddOrGetMenu( label )
 
-	local btn = vgui.Create( "DButton", self, "Btn_" .. strLabel )
-	btn:SetText( strLabel )
-	btn.m_pMenu = menu
+	if ( self.Menus[ label ] ) then return self.Menus[ label ] end
+	return self:AddMenu( label )
 
-	btn.DoClick = function()
-		-- GMod toggles: clicking the label of the OPEN menu closes it
-		-- (dmenubar.lua:51-61)
-		if ( self.m_pOpenMenu == menu ) then
-			self:CloseMenus()
+end
+
+function PANEL:AddMenu( label )
+
+	local m = DermaMenu()
+	m:SetDeleteSelf( false )
+	m:SetDrawColumn( true )
+	m:Hide()
+	self.Menus[ label ] = m
+
+	local b = self:Add( "DButton" )
+	b:SetText( label )
+	b:Dock( LEFT )
+	b:DockMargin( 0, 0, 1, 0 )
+	b:SetIsMenu( true )
+	b:SetPaintBackground( false )
+	b:SizeToContentsX( 20 )
+	b.DoClick = function()
+
+		if ( m:IsVisible() ) then
+			m:Hide()
 			return
 		end
 
-		self:OpenMenu( btn, menu )
+		local x, y = b:LocalToScreen( 0, 0 )
+		m:Open( x, y + b:GetTall(), false, b )
+
 	end
 
-	btn.OnCursorEntered = function()
-		-- GMod switches to the hovered label while a menu is open
-		-- (dmenubar.lua:63-68)
-		if ( self.m_pOpenMenu ~= nil and self.m_pOpenMenu ~= menu ) then
-			self:OpenMenu( btn, menu )
-		end
+	b.OnCursorEntered = function()
+		local opened = self:GetOpenMenu()
+		if ( !IsValid( opened ) || opened == m ) then return end
+		opened:Hide()
+		b:DoClick()
 	end
 
-	self.m_tButtons[ #self.m_tButtons + 1 ] = { btn = btn, menu = menu }
-	self:InvalidateLayout( true )
-	return menu
+	return m
+
 end
 
-function PANEL:OpenMenu( btn, menu )
-	self:CloseMenus()
-
-	local x, y = btn:LocalToScreen( 0, btn:GetTall() )
-	menu:Open( x, y )
-	self.m_pOpenMenu = menu
-end
-
-function PANEL:CloseMenus()
-	for _, entry in ipairs( self.m_tButtons ) do
-		if ( IsValid( entry.menu ) ) then entry.menu:SetVisible( false ) end
-	end
-	self.m_pOpenMenu = nil
-end
-
---- The menus are unparented root popups: without this they outlive the bar.
 function PANEL:OnRemove()
-	for _, entry in ipairs( self.m_tButtons ) do
-		if ( IsValid( entry.menu ) ) then entry.menu:Remove() end
+
+	for id, pnl in pairs( self.Menus ) do
+		pnl:Remove()
 	end
+
 end
 
-function PANEL:PerformLayout( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
+function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
 
-	-- HL2SB (2026-10-16): measure the RESOLVED caption, not the raw token.
-	-- The labels arrive as "#menubar.drawing"-style tokens and the button
-	-- paints them through derma.DrawText (which resolves them); sizing from
-	-- the token's own byte length left every button far wider than its text,
-	-- and a localized (CJK) caption was sized from a 16-byte token while
-	-- painted as 2 glyphs.  derma.GetTextSize resolves through the same
-	-- chokepoint, so the measurement matches what is drawn.
-	local x = 4
-	for _, entry in ipairs( self.m_tButtons ) do
-		local text = entry.btn:GetText() or ""
-		local tw = 8
+	local pnl = vgui.Create( "Panel" )
+	pnl:Dock( FILL )
+	pnl:DockMargin( 2, 22, 2, 2 )
 
-		if ( derma ~= nil and derma.GetTextSize ~= nil ) then
-			local measured = derma.GetTextSize( "DermaDefault", text )
+	local ctrl = pnl:Add( ClassName )
+	local m = ctrl:AddMenu( "File" )
+	m:AddOption( "New", function() MsgN( "Chose New" ) end )
+	m:AddOption( "File", function() MsgN( "Chose File" ) end )
+	m:AddOption( "Exit", function() MsgN( "Chose Exit" ) end )
 
-			if ( measured ~= nil and measured > 0 ) then
-				tw = 8 + measured
-			else
-				tw = 8 + ( text ):len() * 8
-			end
-		else
-			tw = 8 + ( text ):len() * 8
-		end
+	local m2 = ctrl:AddMenu( "Edit" )
+	m2:AddOption( "Copy", function() MsgN( "Chose Copy" ) end )
+	m2:AddOption( "Paste", function() MsgN( "Chose Paste" ) end )
+	m2:AddOption( "Blah", function() MsgN( "Chose Blah" ) end )
 
-		entry.btn:SetPos( x, 0 )
-		entry.btn:SetSize( tw, h )
-		x = x + tw + 4
+	local sub = m:AddSubMenu( "Sub Menu" )
+	sub:SetDeleteSelf( false )
+	for i = 0, 5 do
+		sub:AddOption( "Option " .. i, function() MsgN( "Chose sub menu option " .. i ) end )
 	end
+
+	PropertySheet:AddSheet( ClassName, pnl, nil, true, true )
+
 end
 
-derma.DefineControl( "DMenuBar", "HL2SB menu bar", PANEL, "DPanel" )
+derma.DefineControl( "DMenuBar", "", PANEL, "DPanel" )

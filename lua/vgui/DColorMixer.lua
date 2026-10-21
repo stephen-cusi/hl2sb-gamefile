@@ -1,470 +1,405 @@
---[[ DColorMixer -- the standard Derma colour mixer (original implementation).
-
-	Wiki: https://wiki.facepunch.com/gmod/DColorMixer
-	  "A standard Derma color mixer".  Parent: DPanel.
-	  Event:  DColorMixer:ValueChanged( col )          -- override me
-	  Colour: SetColor / GetColor / SetVector / GetVector / SetBaseColor
-	          UpdateColor / UpdateDefaultColor / ValueChanged
-	  Layout: SetPalette / GetPalette / SetPaletteName / SetAlphaBar / GetAlphaBar /
-	          SetWangs / GetWangs / SetLabel / PerformLayout / Paint
-	  Convars: SetConVarR/G/B/A + Get* / UpdateConVar / UpdateConVars /
-	          ConVarThink / DoConVarThink / Think
-
-	The mixer is assembled from the controls the wiki says it is made of, all of which
-	now exist here: DRGBPicker (hue) + DColorCube (saturation/value) + DAlphaBar +
-	DColorPalette, with a preview swatch and - "wangs", in GMod's own wording - the
-	per-channel readout.
-
-	NOTE: Deliberate deviations, all of them about internals rather than the API:
-	  * The "wangs" are four read-only channel labels (GMod draws draggable channel
-	    gradients).  `SetWangs` / `GetWangs` show and hide the same panel.
-	  * `SetPaletteName` renames the palette's cookie (GMod also networks it; this fork
-	    has no client->server net channel - see DColorPalette).
-	  * `UpdateDefaultColor` keeps the current colour as the baseline the convar poll
-	    compares against, which is what makes SetColor survive an external convar write.
---]]
 
 local PANEL = {}
-
-local PAD = 4
-local PICKER_W = 28
-local BAR_W = 20
-local PALETTE_H = 44
 
 AccessorFunc( PANEL, "m_ConVarR", "ConVarR" )
 AccessorFunc( PANEL, "m_ConVarG", "ConVarG" )
 AccessorFunc( PANEL, "m_ConVarB", "ConVarB" )
 AccessorFunc( PANEL, "m_ConVarA", "ConVarA" )
+
 AccessorFunc( PANEL, "m_bPalette", "Palette", FORCE_BOOL )
 AccessorFunc( PANEL, "m_bAlpha", "AlphaBar", FORCE_BOOL )
 AccessorFunc( PANEL, "m_bWangsPanel", "Wangs", FORCE_BOOL )
 
+AccessorFunc( PANEL, "m_Color", "Color" )
+
+local BarWide = 26
+
+local function CreateWangFunction( self, colindex )
+	local function OnValueChanged( ptxt, strvar )
+		if ( ptxt.notuserchange ) then return end
+
+		local targetValue = tonumber( strvar ) or 0
+		self:GetColor()[ colindex ] = targetValue
+		if ( colindex == "a" ) then
+			self.Alpha:SetBarColor( ColorAlpha( self:GetColor(), 255 ) )
+			self.Alpha:SetValue( targetValue / 255 )
+		else
+			self.HSV:SetColor( self:GetColor() )
+
+			local h, s, v = ColorToHSV( self.HSV:GetBaseRGB() )
+			self.RGB.LastY = ( 1 - h / 360 ) * self.RGB:GetTall()
+		end
+
+		self:UpdateColor( self:GetColor() )
+	end
+
+	return OnValueChanged
+end
+
 function PANEL:Init()
-	self.m_Color = Color( 255, 255, 255, 255 )
-	self.m_bPalette = true
-	self.m_bAlpha = true
-	self.m_bWangsPanel = true
-	self.m_strLabel = ""
-	self.m_bValueChangedGuard = false
 
-	self:SetMouseInputEnabled( true )
+	self.Palette = vgui.Create( "DColorPalette", self )
+	self.Palette:Dock( BOTTOM )
+	self.Palette:SetTall( 75 )
+	self.Palette:SetButtonSize( 16 )
+	self.Palette:DockMargin( 0, 8, 0, 0 )
+	self.Palette:Reset()
+	self.Palette.DoClick = function( ctrl, color, btn )
+		self:SetColor( Color( color.r, color.g, color.b, self:GetAlphaBar() and color.a or 255 ) )
+	end
+	self.Palette.OnRightClickButton = function( ctrl, btn )
+		local m = DermaMenu()
+		-- TODO: Find a way to let the player know which palette(s) are going to be affected
+		m:AddOption( "#spawnmenu.menu.save_palette", function() ctrl:SaveColor( btn, self:GetColor() ) end ):SetIcon( "icon16/disk.png" )
+		m:AddOption( "#spawnmenu.menu.reset_palette", function() ctrl:ResetSavedColors() end ):SetIcon( "icon16/arrow_rotate_clockwise.png" )
+		m:Open()
+	end
+	self:SetPalette( true )
 
-	-- the pieces (GMod's own names are picked through BaseClass where they exist)
-	self.picker = vgui.Create( "DRGBPicker", self )
-	self.cube = vgui.Create( "DColorCube", self )
-	self.alphabar = vgui.Create( "DAlphaBar", self )
-	self.palette = vgui.Create( "DColorPalette", self )
-	self.Wangs = vgui.Create( "DPanel", self )
-	self.Label = vgui.Create( "DLabel", self )
-	self.Preview = vgui.Create( "DColorButton", self )
+	-- The label
+	self.label = vgui.Create( "DLabel", self )
+	self.label:SetText( "" )
+	self.label:Dock( TOP )
+	self.label:SetDark( true )
+	self.label:SetVisible( false )
 
-	if ( self.picker ) then
-		self.picker.OnChange = function( _, col )
-			if ( not IsValid( self.cube ) ) then return end
+	--The number stuff
+	self.WangsPanel = vgui.Create( "Panel", self )
+	self.WangsPanel:SetWide( 50 )
+	self.WangsPanel:Dock( RIGHT )
+	self.WangsPanel:DockMargin( 4, 0, 0, 0 )
+	self:SetWangs( true )
 
-			local _, s, v = ColorToHSV( self.cube:GetRGB() )
-			local h = ColorToHSV( col )
+	self.txtR = self.WangsPanel:Add( "DNumberWang" )
+	self.txtR:SetDecimals( 0 )
+	self.txtR:SetMinMax( 0, 255 )
+	self.txtR:SetTall( 20 )
+	self.txtR:Dock( TOP )
+	self.txtR:DockMargin( 0, 0, 0, 0 )
+	self.txtR:SetTextColor( Color( 150, 0, 0, 255 ) )
 
-			self.cube:SetBaseRGB( HSVToColor( h, 1, 1 ) )
-			self.cube:SetColor( HSVToColor( h, s, v ) )
-			local col = self.cube:GetRGB()
-			col.a = self.m_Color.a
-			self:UpdateColor( col )
-		end
+	self.txtG = self.WangsPanel:Add( "DNumberWang" )
+	self.txtG:SetDecimals( 0 )
+	self.txtG:SetMinMax( 0, 255 )
+	self.txtG:SetTall( 20 )
+	self.txtG:Dock( TOP )
+	self.txtG:DockMargin( 0, 4, 0, 0 )
+	self.txtG:SetTextColor( Color( 0, 150, 0, 255 ) )
+
+	self.txtB = self.WangsPanel:Add( "DNumberWang" )
+	self.txtB:SetDecimals( 0 )
+	self.txtB:SetMinMax( 0, 255 )
+	self.txtB:SetTall( 20 )
+	self.txtB:Dock( TOP )
+	self.txtB:DockMargin( 0, 4, 0, 0 )
+	self.txtB:SetTextColor( Color( 0, 0, 150, 255 ) )
+
+	self.txtA = self.WangsPanel:Add( "DNumberWang" )
+	self.txtA:SetDecimals( 0 )
+	self.txtA:SetMinMax( 0, 255 )
+	self.txtA:SetTall( 20 )
+	self.txtA:Dock( TOP )
+	self.txtA:DockMargin( 0, 4, 0, 0 )
+	self.txtA:SetTextColor( Color( 80, 80, 80, 255 ) )
+
+	self.txtR.OnValueChanged = CreateWangFunction( self, "r" )
+	self.txtG.OnValueChanged = CreateWangFunction( self, "g" )
+	self.txtB.OnValueChanged = CreateWangFunction( self, "b" )
+	self.txtA.OnValueChanged = CreateWangFunction( self, "a" )
+
+	-- The colouring stuff
+	self.HSV = vgui.Create( "DColorCube", self )
+	self.HSV:Dock( FILL )
+	self.HSV.OnUserChanged = function( ctrl, color )
+		color.a = self:GetColor().a
+		self:UpdateColor( color )
 	end
 
-	if ( self.cube ) then
-		self.cube.OnUserChanged = function( _, col )
-			-- the cube only knows RGB: keep the mixer's alpha (GMod dcolormixer.lua:114)
-			col.a = self.m_Color.a
-			self:UpdateColor( col )
-		end
+	self.RGB = vgui.Create( "DRGBPicker", self )
+	self.RGB:Dock( RIGHT )
+	self.RGB:SetWidth( BarWide )
+	self.RGB:DockMargin( 4, 0, 0, 0 )
+	self.RGB.OnChange = function( ctrl, color )
+		self:SetBaseColor( color )
 	end
 
-	if ( self.alphabar ) then
-		self.alphabar.OnChange = function( _, fAlpha )
-			local c = self.m_Color
-			self:UpdateColor( Color( c.r, c.g, c.b, math.floor( 255 * fAlpha ) ) )
-		end
+	self.Alpha = vgui.Create( "DAlphaBar", self )
+	self.Alpha:DockMargin( 4, 0, 0, 0 )
+	self.Alpha:Dock( RIGHT )
+	self.Alpha:SetWidth( BarWide )
+	self.Alpha.OnChange = function( ctrl, fAlpha )
+		self:GetColor().a = math.floor( fAlpha * 255 )
+		self:UpdateColor( self:GetColor() )
+	end
+	self:SetAlphaBar( true )
+
+	-- Layout
+	self:SetColor( Color( 255, 0, 0, 255 ) )
+	self:SetSize( 256, 230 )
+	self:InvalidateLayout()
+
+	self.NextConVarCheck = 0
+
+end
+
+function PANEL:SetLabel( text )
+
+	if ( !text or text == "" ) then
+		self.label:SetVisible( false )
+
+		return
 	end
 
-	if ( self.palette ) then
-		self.palette.OnValueChanged = function( _, col )
-			self:SetColor( col )
-		end
-	end
+	self.label:SetText( text )
+	self.label:SetVisible( true )
 
-	if ( self.Wangs ) then
-		self.Wangs:SetDrawBackground( false )
-		self.Wangs.m_tLabels = {}
-
-		for i, key in ipairs( { "r", "g", "b", "a" } ) do
-			local lbl = vgui.Create( "DLabel", self.Wangs )
-			lbl:SetText( string.upper( key ) .. ": 255" )
-			lbl:SetTextColor( Color( 200, 200, 200, 255 ) )
-			self.Wangs.m_tLabels[ key ] = lbl
-		end
-	end
-
-	if ( self.Label ) then
-		self.Label:SetText( "" )
-	end
-
-	self:SetColor( self.m_Color )
-end
-
--------------------------------------------------------------------------------
--- colour
--------------------------------------------------------------------------------
---- Wiki: "An AccessorFunc that sets the color of the DColorMixer."
-function PANEL:SetColor( col )
-	if ( not col ) then return end
-
-	col = Color( col.r or 255, col.g or 255, col.b or 255, col.a or 255 )
-	self.m_Color = col
-
-	self.m_bValueChangedGuard = true
-
-	if ( IsValid( self.cube ) ) then self.cube:SetColor( col ) end
-	if ( IsValid( self.alphabar ) ) then self.alphabar:SetBarColor( col ) end
-	if ( IsValid( self.alphabar ) ) then self.alphabar:SetValue( ( col.a or 255 ) / 255 ) end
-	if ( IsValid( self.picker ) ) then
-		self:SyncPicker()
-	end
-	if ( IsValid( self.Preview ) ) then self.Preview:SetColor( col, true ) end
-	if ( IsValid( self.Wangs ) and self.Wangs.m_tLabels ) then
-		for key, lbl in pairs( self.Wangs.m_tLabels ) do
-			if ( IsValid( lbl ) ) then
-				lbl:SetText( string.upper( key ) .. ": " .. tostring( col[ key ] or 255 ) )
-			end
-		end
-	end
-
-	self.m_bValueChangedGuard = false
-
-	self:ValueChanged( { r = col.r, g = col.g, b = col.b, a = col.a } )
-	self:UpdateConVars( col )
-end
-
-function PANEL:GetColor()
-	return self.m_Color
-end
-
---- Put the hue picker's indicator on the current colour's hue WITHOUT going through
---- DRGBPicker:OnChange (that would snap saturation/value back to full).
-function PANEL:SyncPicker()
-	if ( not IsValid( self.picker ) ) then return end
-
-	local h = ColorToHSV( self.m_Color )
-
-	self.picker.LastY = ( ( h % 360 ) / 360 ) * math.max( 1, self.picker:GetTall() )
-	self.picker.m_RGB = HSVToColor( h, 1, 1 )
-end
-
---- Wiki: "Returns the color as a normalized Vector."
-function PANEL:GetVector()
-	local c = self.m_Color
-
-	return Vector( ( c.r or 0 ) / 255, ( c.g or 0 ) / 255, ( c.b or 0 ) / 255 )
-end
-
---- Wiki: "Sets the color of DColorMixer from a Vector. Alpha is not included."
-function PANEL:SetVector( vec )
-	if ( not vec ) then return end
-
-	self:SetColor( Color( math.floor( vec.x * 255 ), math.floor( vec.y * 255 ),
-		math.floor( vec.z * 255 ), self.m_Color.a or 255 ) )
-end
-
---- Wiki: "Sets the base color of the DColorCube part of the DColorMixer."
-function PANEL:SetBaseColor( col )
-	if ( IsValid( self.cube ) ) then self.cube:SetBaseRGB( col ) end
-end
-
---- Wiki: "Called when the player changes the color of the DColorMixer. Meant to be
---- overridden.  The returned color will not have the color metatable."
-function PANEL:ValueChanged( col )
-end
-
---- Wiki: "sets the default color of the element to the currently selected color"
---- (kept as the baseline the convar poll compares against, see the header).
-function PANEL:UpdateDefaultColor()
-	self.m_DefaultColor = table.Copy( self.m_Color )
-end
-
---- GMod keeps the "default" on the HSV picker: `panel.HSV:SetDefaultColor( color )`
---- (gamemodes/sandbox/gamemode/editor_player.lua:6-11).  This fork has no HSV sub-object,
---- so the baseline lives here - and unlike UpdateDefaultColor() it does NOT read the
---- current colour: setting the default must never change what the panel shows.
-function PANEL:SetDefaultColor( col )
-	if ( not col ) then return end
-
-	self.m_DefaultColor = Color( col.r or 255, col.g or 255, col.b or 255, col.a or 255 )
-end
-
---- Wiki: "Internal ... Use DColorMixer:SetColor instead!"
-function PANEL:UpdateColor( col )
-	local c = col or ( IsValid( self.cube ) and self.cube:GetRGB() ) or self.m_Color
-
-	-- keep the INCOMING alpha (GMod dcolormixer.lua:326 stores col as-is); the
-	-- old discard here made the alpha bar a no-op decoration
-	self.m_Color = Color( c.r or 255, c.g or 255, c.b or 255, c.a or self.m_Color.a or 255 )
-
-	if ( IsValid( self.alphabar ) ) then self.alphabar:SetBarColor( self.m_Color ) end
-	if ( IsValid( self.Preview ) ) then self.Preview:SetColor( self.m_Color, true ) end
-	if ( IsValid( self.Wangs ) and self.Wangs.m_tLabels ) then
-		for key, lbl in pairs( self.Wangs.m_tLabels ) do
-			if ( IsValid( lbl ) ) then
-				lbl:SetText( string.upper( key ) .. ": " .. tostring( self.m_Color[ key ] or 255 ) )
-			end
-		end
-	end
-
-	self:ValueChanged( { r = self.m_Color.r, g = self.m_Color.g,
-		b = self.m_Color.b, a = self.m_Color.a } )
-	self:UpdateConVars( self.m_Color )
-end
-
--------------------------------------------------------------------------------
--- convars
--------------------------------------------------------------------------------
-function PANEL:SetConVarR( str ) self.m_ConVarR = str; self:UpdateConVars( self.m_Color ) end
-function PANEL:SetConVarG( str ) self.m_ConVarG = str; self:UpdateConVars( self.m_Color ) end
-function PANEL:SetConVarB( str ) self.m_ConVarB = str; self:UpdateConVars( self.m_Color ) end
-function PANEL:SetConVarA( str ) self.m_ConVarA = str; self:UpdateConVars( self.m_Color ) end
-
-function PANEL:UpdateConVar( cvar, part, col )
-	if ( not cvar or cvar == "" or not col ) then return end
-
-	local v = col[ part ] or 0
-
-	if ( ConVarExists and ConVarExists( cvar ) ) then
-		RunConsoleCommand( cvar, tostring( v ) )
-	end
-end
-
-function PANEL:UpdateConVars( col )
-	if ( not col ) then return end
-
-	self:UpdateConVar( self.m_ConVarR, "r", col )
-	self:UpdateConVar( self.m_ConVarG, "g", col )
-	self:UpdateConVar( self.m_ConVarB, "b", col )
-	self:UpdateConVar( self.m_ConVarA, "a", col )
-
-	self.m_LastConVars = { r = col.r, g = col.g, b = col.b, a = col.a }
-end
-
---- The convar poll: if a convar changed under us (a console write, another panel),
---- pull the colour back in.  GMod does this from Panel:Think.
-function PANEL:DoConVarThink( cvar )
-	if ( not cvar or cvar == "" or not GetConVar ) then return false end
-
-	local cv = GetConVar( cvar )
-	if ( not cv ) then return false end
-
-	local v = cv.GetInt and cv:GetInt() or nil
-	if ( v == nil ) then return false end
-
-	local last = self.m_LastConVars or {}
-	local part = nil
-
-	if ( cvar == self.m_ConVarR ) then part = "r"
-	elseif ( cvar == self.m_ConVarG ) then part = "g"
-	elseif ( cvar == self.m_ConVarB ) then part = "b"
-	elseif ( cvar == self.m_ConVarA ) then part = "a" end
-
-	if ( part == nil or last[ part ] == v ) then return false end
-
-	local c = self.m_Color
-	local newcol = Color( c.r, c.g, c.b, c.a )
-	newcol[ part ] = v
-
-	self.m_bValueChangedGuard = true
-	self.m_Color = newcol
-	self.m_bValueChangedGuard = false
-
-	if ( IsValid( self.Preview ) ) then self.Preview:SetColor( newcol, true ) end
-	if ( IsValid( self.Wangs ) and self.Wangs.m_tLabels and self.Wangs.m_tLabels[ part ] ) then
-		self.Wangs.m_tLabels[ part ]:SetText( string.upper( part ) .. ": " .. tostring( v ) )
-	end
-
-	(self.m_LastConVars or {})[ part ] = v
-
-	return true
-end
-
-function PANEL:ConVarThink()
-	if ( not ( ConVarExists and ConVarExists ) ) then return end
-
-	-- Gather the per-channel probes first, THEN resync through SetColor: the old
-	-- version patched only m_Color + the preview + the ONE changed label, so the
-	-- cube grip, hue indicator, alpha bar and the other wangs kept the old colour,
-	-- and ValueChanged never fired for an external write (GMod dcolormixer.lua
-	-- :361-380 does SetColor( Color( r, g, b, a ) )).
-	local r, g, b, a
-	local changed = false
-
-	if ( self:DoConVarThink( self.m_ConVarR ) ) then changed = true end
-	if ( self:DoConVarThink( self.m_ConVarG ) ) then changed = true end
-	if ( self:DoConVarThink( self.m_ConVarB ) ) then changed = true end
-	if ( self:DoConVarThink( self.m_ConVarA ) ) then changed = true end
-
-	if ( changed and self.m_Color ) then
-		local c = self.m_Color
-		self:SetColor( Color( c.r, c.g, c.b, c.a ) )
-	end
-end
-
---- NOTE: This fork's scripted panels dispatch OnThink, not Think (see the note in
---- lua/vgui/DScrollPanel.lua), so the poll runs from OnThink; Think is kept as an
---- alias because GMod scripts override it.
-function PANEL:OnThink()
-	self:ConVarThink()
-end
-
-function PANEL:Think()
-	self:ConVarThink()
-end
-
--------------------------------------------------------------------------------
--- layout
--------------------------------------------------------------------------------
-function PANEL:SetLabel( strText )
-	self.m_strLabel = strText or ""
-
-	if ( IsValid( self.Label ) ) then
-		self.Label:SetText( self.m_strLabel )
-		self:InvalidateLayout( true )
-	end
+	self:InvalidateLayout()
 end
 
 function PANEL:SetPalette( bEnabled )
-	self.m_bPalette = bEnabled and true or false
+	self.m_bPalette = bEnabled
 
-	if ( IsValid( self.palette ) ) then self.palette:SetVisible( self.m_bPalette ) end
+	self.Palette:SetVisible( bEnabled )
 
-	self:InvalidateLayout( true )
+	self:InvalidateLayout()
 end
 
-function PANEL:SetPaletteName( strName )
-	if ( not IsValid( self.palette ) ) then return end
+function PANEL:SetPaletteName( name )
+	self.Palette:SetCookieName( name )
 
-	if ( self.palette.SetCookieName ) then
-		self.palette:SetCookieName( "hl2sb_colorpalette_" .. tostring( strName ) )
-
-		if ( self.palette.LoadCookies ) then self.palette:LoadCookies() end
-	end
+	-- Load the palette colors. Is there a better way?
+	-- One that that does not create all the panels in DColorPalette:Init() regardless
+	self.Palette:Reset()
 end
 
 function PANEL:SetAlphaBar( bEnabled )
-	self.m_bAlpha = bEnabled and true or false
+	self.m_bAlpha = bEnabled
 
-	if ( IsValid( self.alphabar ) ) then self.alphabar:SetVisible( self.m_bAlpha ) end
+	self.Alpha:SetVisible( bEnabled )
+	self.txtA:SetVisible( bEnabled )
 
-	self:InvalidateLayout( true )
+	self:InvalidateLayout()
 end
 
 function PANEL:SetWangs( bEnabled )
-	self.m_bWangsPanel = bEnabled and true or false
+	self.m_bWangsPanel = bEnabled
 
-	if ( IsValid( self.Wangs ) ) then self.Wangs:SetVisible( self.m_bWangsPanel ) end
+	self.WangsPanel:SetVisible( bEnabled )
 
-	self:InvalidateLayout( true )
+	self:InvalidateLayout()
+end
+
+function PANEL:SetConVarR( cvar )
+	self.m_ConVarR = cvar
+	self:UpdateDefaultColor()
+end
+
+function PANEL:SetConVarG( cvar )
+	self.m_ConVarG = cvar
+	self:UpdateDefaultColor()
+end
+
+function PANEL:SetConVarB( cvar )
+	self.m_ConVarB = cvar
+	self:UpdateDefaultColor()
+end
+
+function PANEL:SetConVarA( cvar )
+	self.m_ConVarA = cvar
+	self:SetAlphaBar( cvar != nil )
+	self:UpdateDefaultColor()
+end
+
+function PANEL:UpdateDefaultColor()
+
+	local function GetConVarDefault( str )
+		if ( str and GetConVar( str ) ) then return tonumber( GetConVar( str ):GetDefault() ) end
+		return 255
+	end
+
+	local defRGB = Color(
+		GetConVarDefault( self.m_ConVarR ),
+		GetConVarDefault( self.m_ConVarG ),
+		GetConVarDefault( self.m_ConVarB ),
+		GetConVarDefault( self.m_ConVarA )
+	)
+
+	self.HSV:SetDefaultColor( defRGB )
+
+	-- Allow immediate read of convar values
+	self.NextConVarCheck = 0
 end
 
 function PANEL:PerformLayout( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
 
-	local labelH = ( self.m_strLabel ~= "" ) and 16 or 0
-	local paletteH = self.m_bPalette and PALETTE_H or 0
+	local hue, s, v = ColorToHSV( self.HSV:GetBaseRGB() )
+	self.RGB.LastY = ( 1 - hue / 360 ) * self.RGB:GetTall()
 
-	local top = PAD + labelH
-	local boxH = math.max( 32, h - top - PAD - paletteH - PAD )
+	-- Figure out perfect row count to fit buttons exactly and pad the palette to center it
+	local buttons = #self.Palette:GetChildren()
+	local buttonSize = self.Palette:GetButtonSize()
+	local btnsPerRow = math.floor( w / buttonSize )
+	local rows = math.ceil( buttons / btnsPerRow )
+	local idealWidth = math.ceil( buttons / rows ) * buttonSize -- This is not ideal
 
-	local barW = self.m_bAlpha and BAR_W or 0
-	local wangsW = self.m_bWangsPanel and 54 or 0
+	--self.Palette:SetWide( idealWidth )
+	local leftPad = math.floor( ( w - idealWidth ) * 0.5 )
+	self.Palette:DockMargin( leftPad, 8, leftPad, 0 )
 
-	local cubeW = math.max( 32, w - PAD * 2 - PICKER_W - PAD - barW - PAD - wangsW - PAD )
-
-	if ( IsValid( self.Label ) ) then
-		self.Label:SetVisible( self.m_strLabel ~= "" )
-		self.Label:SetPos( PAD, PAD )
-		self.Label:SetSize( w - 2 * PAD, 14 )
-	end
-
-	if ( IsValid( self.cube ) ) then
-		self.cube:SetPos( PAD, top )
-		self.cube:SetSize( cubeW, boxH )
-	end
-
-	-- GMod puts the hue strip to the RIGHT of the square (dcolormixer.lua's
-	-- PerformLayout: cube first, then the picker, then the Wangs), which is what the
-	-- GMod screenshot shows; this fork had it on the left (2026-09-17).
-	if ( IsValid( self.picker ) ) then
-		self.picker:SetPos( PAD + cubeW + PAD, top )
-		self.picker:SetSize( PICKER_W, boxH )
-	end
-
-	if ( IsValid( self.alphabar ) ) then
-		self.alphabar:SetPos( PAD + cubeW + PAD + PICKER_W + PAD, top )
-		self.alphabar:SetSize( barW, boxH )
-	end
-
-	if ( IsValid( self.Wangs ) ) then
-		self.Wangs:SetPos( PAD + cubeW + PAD + PICKER_W + PAD + barW + PAD, top )
-		self.Wangs:SetSize( wangsW, boxH )
-
-		for i, key in ipairs( { "r", "g", "b", "a" } ) do
-			local lbl = self.Wangs.m_tLabels and self.Wangs.m_tLabels[ key ]
-
-			if ( IsValid( lbl ) ) then
-				lbl:SetPos( 0, ( i - 1 ) * 14 )
-				lbl:SetSize( wangsW, 12 )
-			end
-		end
-	end
-
-	if ( IsValid( self.Preview ) ) then
-		self.Preview:SetPos( PAD, top + boxH + PAD )
-		self.Preview:SetSize( w - 2 * PAD, 12 )
-		self.Preview:SetVisible( true )
-	end
-
-	if ( IsValid( self.palette ) ) then
-		self.palette:SetVisible( self.m_bPalette )
-		self.palette:SetPos( PAD, h - PAD - paletteH + 4 )
-		self.palette:SetSize( w - 2 * PAD, paletteH - 8 )
-	end
-
-	self:SyncPicker()
 end
 
-function PANEL:Paint( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
+function PANEL:Paint()
+	-- Invisible background!
+end
 
-	surface.DrawSetColor( 40, 40, 40, 255 )
-	surface.DrawFilledRect( 0, 0, w, h )
+function PANEL:SetColor( color )
 
-	surface.DrawSetColor( 0, 0, 0, 255 )
-	surface.DrawOutlinedRect( 0, 0, w, h )
+	local hue, s, v = ColorToHSV( color )
+	self.RGB.LastY = ( 1 - hue / 360 ) * self.RGB:GetTall()
+
+	self.HSV:SetColor( color )
+
+	self:UpdateColor( color )
+
+end
+
+function PANEL:SetVector( vec )
+
+	self:SetColor( vec:ToColor() )
+
+end
+
+function PANEL:SetBaseColor( color )
+	self.HSV:SetBaseRGB( color )
+	self.HSV:TranslateValues()
+end
+
+function PANEL:UpdateConVar( strName, strKey, color )
+	if ( !strName ) then return end
+	local col = color[ strKey ]
+
+	RunConsoleCommand( strName, tostring( col ) )
+
+	self[ "ConVarOld" .. strName ] = col
+end
+
+function PANEL:UpdateConVars( color )
+
+	self.NextConVarCheck = SysTime() + 0.2
+
+	self:UpdateConVar( self.m_ConVarR, "r", color )
+	self:UpdateConVar( self.m_ConVarG, "g", color )
+	self:UpdateConVar( self.m_ConVarB, "b", color )
+	self:UpdateConVar( self.m_ConVarA, "a", color )
+
+end
+
+function PANEL:UpdateColor( color )
+
+	self.Alpha:SetBarColor( ColorAlpha( color, 255 ) )
+	self.Alpha:SetValue( color.a / 255 )
+
+	if ( color.r != self.txtR:GetValue() ) then
+		self.txtR.notuserchange = true
+		self.txtR:SetValue( color.r )
+		self.txtR.notuserchange = nil
+	end
+
+	if ( color.g != self.txtG:GetValue() ) then
+		self.txtG.notuserchange = true
+		self.txtG:SetValue( color.g )
+		self.txtG.notuserchange = nil
+	end
+
+	if ( color.b != self.txtB:GetValue() ) then
+		self.txtB.notuserchange = true
+		self.txtB:SetValue( color.b )
+		self.txtB.notuserchange = nil
+	end
+
+	if ( color.a != self.txtA:GetValue() ) then
+		self.txtA.notuserchange = true
+		self.txtA:SetValue( color.a )
+		self.txtA.notuserchange = nil
+	end
+
+	self.m_Color = color
+
+	self:UpdateConVars( color )
+	self:ValueChanged( color )
+
+end
+
+function PANEL:ValueChanged( color )
+	-- Override
+end
+
+function PANEL:GetColor()
+
+	self.m_Color.a = 255
+	if ( self.Alpha:IsVisible() ) then
+		self.m_Color.a = math.floor( self.Alpha:GetValue() * 255 )
+	end
+
+	return self.m_Color
+
+end
+
+function PANEL:GetVector()
+
+	local col = self:GetColor()
+	return Vector( col.r / 255, col.g / 255, col.b / 255 )
+
+end
+
+function PANEL:Think()
+
+	self:ConVarThink()
+
+end
+
+function PANEL:ConVarThink()
+
+	-- Don't update the convars while we're changing them!
+	if ( input.IsMouseDown( MOUSE_LEFT ) ) then return end
+	if ( self.NextConVarCheck > SysTime() ) then return end
+
+	local r, changed_r = self:DoConVarThink( self.m_ConVarR )
+	local g, changed_g = self:DoConVarThink( self.m_ConVarG )
+	local b, changed_b = self:DoConVarThink( self.m_ConVarB )
+	local a, changed_a = 255, false
+
+	if ( self.m_ConVarA ) then
+		a, changed_a = self:DoConVarThink( self.m_ConVarA )
+	end
+
+	if ( changed_r or changed_g or changed_b or changed_a ) then
+		self:SetColor( Color( r, g, b, a ) )
+	end
+
+end
+
+function PANEL:DoConVarThink( convar )
+
+	if ( !convar ) then return 255, false end
+
+	local fValue = GetConVarNumber( convar )
+	local fOldValue = self[ "ConVarOld" .. convar ]
+	if ( fOldValue and fValue == fOldValue ) then return fOldValue, false end
+
+	self[ "ConVarOld" .. convar ] = fValue
+
+	return fValue, true
+
 end
 
 function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
+
 	local ctrl = vgui.Create( ClassName )
+	ctrl:SetSize( 256, 256 )
 
-	ctrl:SetSize( Width or 267, Height or 186 )
-	ctrl:SetPalette( true )
-	ctrl:SetAlphaBar( true )
-	ctrl:SetWangs( true )
-	ctrl:SetColor( Color( 30, 100, 160 ) )
+	PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )
 
-	if ( PropertySheet and PropertySheet.AddSheet ) then
-		PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )
-	end
-
-	return ctrl
 end
 
-derma.DefineControl( "DColorMixer", "The standard Derma colour mixer", PANEL, "DPanel" )
+derma.DefineControl( "DColorMixer", "", PANEL, "DPanel" )

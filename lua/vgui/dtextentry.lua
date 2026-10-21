@@ -1,355 +1,439 @@
---[[ DTextEntry -- single/multi-line text field (original implementation).
-
-	Based on the engine's scripted TextEntry: typed-character handling, the caret
-	and selection all live in vgui2's stock control.  What this Lua layer adds
-	is the GMod surface: SetValue/GetValue aliases, the OnTextChanged / OnEnter
-	hooks (dispatched by scripted_controls/lTextEntry.h), placeholder text, and
-	skin painting behind the native text. --]]
 
 local PANEL = {}
 
--- The engine's SetText lives on the TextEntry metatable; a class override here
--- would hide it, so capture it first.
-local TextEntryMeta = FindMetaTable( "TextEntry" )
-local EngineSetText = TextEntryMeta and TextEntryMeta.SetText
--- ... and the same for SetFont: the engine control is the one that draws the text, so the
--- Derma font has to reach IT.  GMod splits this in two (`SetFont` = the Lua accessor,
--- `SetFontInternal` = the engine setter); here the accessor below forwards to the binding.
-local EngineSetFont = TextEntryMeta and TextEntryMeta.SetFont
+local strAllowedNumericCharacters = "1234567890.-"
 
---[[ The focus pair, GMod's OnGetFocus / OnLoseFocus.
+AccessorFunc( PANEL, "m_bAllowEnter", "EnterAllowed", FORCE_BOOL )
+AccessorFunc( PANEL, "m_bUpdateOnType", "UpdateOnType", FORCE_BOOL ) -- Update the convar as we type
+AccessorFunc( PANEL, "m_bNumeric", "Numeric", FORCE_BOOL )
+AccessorFunc( PANEL, "m_bHistory", "HistoryEnabled", FORCE_BOOL )
+AccessorFunc( PANEL, "m_bDisableTabbing", "TabbingDisabled", FORCE_BOOL )
 
-	GMod's engine TextEntry dispatches both from the panel's focus messages.  This
-	fork's LTextEntry used to forward only ApplySchemeSettings / OnMousePressed /
-	OnTextChanged / OnEnter, so `self.OnLoseFocus = function() ... end` never ran -
-	which is what DLabelEditable and every GMod addon text entry expects to end an
-	edit with, and DComboBox/DNumberWang build on it too.
+AccessorFunc( PANEL, "m_FontName", "Font" )
+AccessorFunc( PANEL, "m_bBorder", "DrawBorder" )
+AccessorFunc( PANEL, "m_bBackground", "PaintBackground" )
+AccessorFunc( PANEL, "m_bBackground", "DrawBackground" ) -- Deprecated
 
-	The engine now dispatches the whole surface itself (Paint / PerformLayout /
-	OnThink / OnSetFocus+OnGetFocus / OnKillFocus+OnLoseFocus / mouse / cursor / keys;
-	game/client/lua/scripted_controls/lTextEntry.h), and it announces that with the
-	global HL2SB_TEXTENTRY_DISPATCH, set while the TextEntry Lua library is opened.
-	When it is present the poller below is NOT installed: otherwise every focus change
-	would fire OnGetFocus / OnLoseFocus a second time, one frame late.
+AccessorFunc( PANEL, "m_colText", "TextColor" )
+AccessorFunc( PANEL, "m_colHighlight", "HighlightColor" )
+AccessorFunc( PANEL, "m_colCursor", "CursorColor" )
 
-	The poller stays as the fallback for an older client.dll (it is harmless there:
-	the callbacks simply would not run at all without it).  --]]
-local HL2SB_ENGINE_DISPATCHES_TEXTENTRY = ( HL2SB_TEXTENTRY_DISPATCH == true )
+AccessorFunc( PANEL, "m_colPlaceholder", "PlaceholderColor" )
+AccessorFunc( PANEL, "m_txtPlaceholder", "PlaceholderText" )
 
-local FocusWatchers = setmetatable( {}, { __mode = "k" } )
-local FOCUS_HOOK = "HL2SB_DTextEntry_Focus"
-
-local function FocusThink()
-	local alive = false
-
-	for pnl, bHadFocus in pairs( FocusWatchers ) do
-		if ( not IsValid( pnl ) ) then
-			FocusWatchers[ pnl ] = nil
-		else
-			alive = true
-
-			local bHasFocus = pnl:HasFocus() == true
-
-			if ( bHasFocus != bHadFocus ) then
-				FocusWatchers[ pnl ] = bHasFocus
-
-				if ( bHasFocus ) then
-					pnl:OnGetFocus()
-				else
-					pnl:OnLoseFocus()
-				end
-			end
-		end
-	end
-
-	if ( not alive and hook and hook.Remove ) then
-		hook.Remove( "Think", FOCUS_HOOK )
-	end
-end
+Derma_Install_Convar_Functions( PANEL )
 
 function PANEL:Init()
-	self:SetMouseInputEnabled( true )
-	self:SetKeyBoardInputEnabled( true )
 
-	-- GMod: dtextentry.lua:55 -- opt in to dropping the keyboard when a click
-	-- lands away from the field.  The click-away handler in
-	-- lua/derma/hl2sb_derma_menus.lua reads this field, so only a DTextEntry (and
-	-- its subclasses: DComboBox/DNumSlider editors, the spawnmenu search, ...)
-	-- loses focus on an outside click.  Native engine text entries -- above all
-	-- the chatbox -- never set it and so keep their focus, exactly like GMod.
+	self:SetHistoryEnabled( false )
+	self.History = {}
+	self.HistoryPos = 0
+
+	--
+	-- We're going to draw these ourselves in
+	-- the skin system - so disable them here.
+	-- This will leave it only drawing text.
+	--
+	self:SetPaintBorderEnabled( false )
+	self:SetPaintBackgroundEnabled( false )
+
+	--
+	-- These are Lua side commands
+	-- Defined above using AccessorFunc
+	--
+	self:SetDrawBorder( true )
+	self:SetPaintBackground( true )
+	self:SetEnterAllowed( true )
+	self:SetUpdateOnType( false )
+	self:SetNumeric( false )
+	self:SetAllowNonAsciiCharacters( true )
+
+	-- Nicer default height
+	self:SetTall( 20 )
+
+	-- Clear keyboard focus when we click away
 	self.m_bLoseFocusOnClickAway = true
 
-	self.m_strPlaceholder = ""
-	self.m_strFont = "DermaDefault"
+	-- Beam Me Up Scotty
+	self:SetCursor( "beam" )
 
-	-- GMod: dtextentry.lua:Init -- the engine's own chrome is switched off ("We're going to
-	-- draw these ourselves in the skin system - so disable them here.  This will leave it
-	-- only drawing text") and the control is given a Derma font:
-	--
-	--     self:SetPaintBorderEnabled( false )
-	--     self:SetPaintBackgroundEnabled( false )
-	--     self:SetFont( "DermaDefault" )
-	--
-	-- The *background* one cannot be copied here.  In this tree the engine's TextEntry
-	-- draws the text ITSELF, inside PaintBackground() (vgui2/vgui_controls/TextEntry.cpp:638
-	-- - its opaque fill is commented out at :657), and Panel::PaintTraverse only calls
-	-- PaintBackground() while PAINT_BACKGROUND_ENABLED is set
-	-- (vgui2/vgui_controls/Panel.cpp:1217).  GMod's engine fork had moved the text out of
-	-- there; this one has not, so switching it off would leave an empty box.
-	-- What we can do is make that fill invisible, because it is `GetBgColor()`
-	-- (TextEntry.cpp:646): that is the black rectangle that sat behind the value, and the
-	-- scheme's default font is the huge one - both fixed here (2026-09-17).
-	self:SetPaintBorderEnabled( false )
-	if ( self.SetBGColor ) then self:SetBGColor( 0, 0, 0, 0 ) end	-- GMod form: r, g, b, a
-	self:SetFont( self.m_strFont )
+	self:SetFont( "DermaDefault" )
 
-	-- the native control paints the text buffer itself; our skin paints the
-	-- field chrome around it, so native text rendering stays on
+end
 
-	-- only when the engine does NOT dispatch the focus pair itself (see above)
-	if ( not HL2SB_ENGINE_DISPATCHES_TEXTENTRY ) then
-		FocusWatchers[ self ] = self:HasFocus() == true
-		hook.Add( "Think", FOCUS_HOOK, FocusThink )
+function PANEL:IsEditing()
+	return self == vgui.GetKeyboardFocus()
+end
+
+function PANEL:OnKeyCodeTyped( code )
+
+	self:OnKeyCode( code )
+
+	if ( code == KEY_ENTER && !self:IsMultiline() && self:GetEnterAllowed() ) then
+
+		if ( IsValid( self.Menu ) ) then
+			self.Menu:Remove()
+		end
+
+		self:FocusNext()
+		self:OnEnter( self:GetText() )
+		self.HistoryPos = 0
+
 	end
+
+	if ( self.m_bHistory || IsValid( self.Menu ) ) then
+
+		if ( code == KEY_UP ) then
+			self.HistoryPos = self.HistoryPos - 1
+			self:UpdateFromHistory()
+		end
+
+		if ( code == KEY_DOWN || code == KEY_TAB ) then
+			self.HistoryPos = self.HistoryPos + 1
+			self:UpdateFromHistory()
+		end
+
+	end
+
 end
 
---- GMod: overridable no-ops, so DLabelEditable's explicit `TextEdit:OnGetFocus()`
---- and the frame hook above can always call them.
-function PANEL:OnGetFocus()
+function PANEL:OnKeyCode( code )
 end
 
-function PANEL:OnLoseFocus()
-end
+function PANEL:ApplySchemeSettings()
 
-function PANEL:SetText( strText )
-	if ( EngineSetText ) then EngineSetText( self, strText ) end
-	self:OnTextChanged()
-end
+	self:SetFontInternal( self.m_FontName )
 
---- GMod's SetText/GetText are engine bindings here; SetValue/GetValue are NOT -
---- the old comment claimed an engine alias that a binding-table grep never
---- finds (lPanel.cpp / lTextEntry.cpp carry neither).  GMod's TextEntry engine
---- method is what the ported DNumSlider calls on its TextArea, so it lives
---- here: SetValue writes the text exactly like SetText.
-function PANEL:SetValue( strText )
-	self:SetText( strText )
-end
+	derma.SkinHook( "Scheme", "TextEntry", self )
 
-function PANEL:GetValue()
-	return self:GetText()
-end
-
---- GMod: DTextEntry:SetFont( name ) / GetFont() -- GMod's pair is an AccessorFunc on
---- m_FontName plus `SetFontInternal` in the scheme pass (dtextentry.lua:37/105).  Here the
---- engine binding already takes the NAME (game/client/lua/scripted_controls/lTextEntry.cpp:322
---- -> luaL_checkfont resolves it), so this stores it and hands it over: the engine control
---- is what actually draws the text, and without this it kept the scheme's font - which is
---- how the value box of a DNumSlider ended up with a huge number in it (2026-09-17).
-function PANEL:SetFont( strFont )
-	self.m_strFont = tostring( strFont or "DermaDefault" )
-
-	if ( EngineSetFont ) then EngineSetFont( self, self.m_strFont ) end
-end
-
-function PANEL:GetFont()
-	return self.m_strFont
-end
-
---- GMod: TextEntry's engine SetTextColor / GetTextColor pair.  GMod's DNumSlider
---- copies its label colour onto the text entry in ApplySchemeSettings, so the
---- verbatim port calls this on every row.  This engine has no such binding and
---- paints the entry's text from GetFgColor (vgui2/vgui_controls/TextEntry.cpp),
---- so the colour is stored and pushed through SetFGColor.  ApplySchemeSettings
---- below re-applies it for the same reason it re-applies the font there: the
---- engine's scheme pass overwrites the fg colour from "TextEntry.TextColor".
-function PANEL:SetTextColor( col )
-	self.m_colText = col
-
-	if ( self.SetFGColor ) then self:SetFGColor( col ) end
 end
 
 function PANEL:GetTextColor()
-	return self.m_colText
+
+	return self.m_colText || self:GetSkin().colTextEntryText
+
 end
 
---- GMod: DTextEntry:ApplySchemeSettings() -- `self:SetFontInternal( self.m_FontName )` +
---- the skin hook.  LTextEntry runs the ENGINE's pass first and then this hook
---- (game/client/lua/scripted_controls/lTextEntry.h), and that engine pass resets both the
---- font and the background colour from the scheme (vgui2/vgui_controls/TextEntry.cpp:136),
---- so both are re-applied here.
-function PANEL:ApplySchemeSettings()
-	self:SetFont( self.m_strFont )
-	if ( self.SetBGColor ) then self:SetBGColor( 0, 0, 0, 0 ) end
-	if ( self.m_colText and self.SetFGColor ) then self:SetFGColor( self.m_colText ) end
+function PANEL:GetPlaceholderColor()
 
-	-- GMod takes the selection/cursor colours from its skin too
-	-- (colTextEntryTextHighlight / colTextEntryTextCursor); this engine paints them
-	-- from ITS scheme, which is the last "Source" tell left inside a Derma text field.
-	-- The derma skin here is dark, so a light cursor and a blue selection.
-	if ( self.SetSelectionTextColor ) then self:SetSelectionTextColor( Color( 255, 255, 255, 255 ) ) end
-	if ( self.SetSelectionBackgroundColor ) then self:SetSelectionBackgroundColor( Color( 60, 120, 200, 255 ) ) end
-	if ( self.SetSelectionUnfocusedBackgroundColor ) then
-		self:SetSelectionUnfocusedBackgroundColor( Color( 90, 90, 90, 160 ) )
-	end
+	return self.m_colPlaceholder || self:GetSkin().colTextEntryTextPlaceholder
+
 end
 
-function PANEL:SetPlaceholderText( strText )
-	self.m_strPlaceholder = strText or ""
+function PANEL:GetHighlightColor()
+
+	return self.m_colHighlight || self:GetSkin().colTextEntryTextHighlight
+
 end
 
-function PANEL:GetPlaceholderText()
-	return self.m_strPlaceholder or ""
+function PANEL:GetCursorColor()
+
+	return self.m_colCursor || self:GetSkin().colTextEntryTextCursor
+
 end
 
---- GMod idiom: replace the OnEnter field with a callable.  The engine dispatch
---- (game/client/lua/scripted_controls/lTextEntry.h) now pushes the entry's text
---- as the argument and only fires when the base accepts the enter key
---- (single-line, or multiline with send-new-lines) -- GMod's signature.
-function PANEL:OnEnter( strText )
-	if ( self.OnChange ) then self:OnChange( self ) end
+function PANEL:UpdateFromHistory()
 
-	if ( self.OnValueChange ) then
-		self:OnValueChange( strText or self:GetValue() )
-	end
-end
-
---- GMod: DTextEntry:GetInt() / GetFloat() -- the documented getters (engine
---- spells GetValueAsInteger / GetValueAsFloat).
-function PANEL:GetInt()
-	if ( self.GetValueAsInteger ) then return self:GetValueAsInteger() end
-	return tonumber( self:GetValue() ) or 0
-end
-
-function PANEL:GetFloat()
-	if ( self.GetValueAsFloat ) then return self:GetValueAsFloat() end
-	return tonumber( self:GetValue() ) or 0.0
-end
-
---- GMod: DTextEntry:SetEnterAllowed( b ) / GetEnterAllowed() -- multiline
---- entries swallow the enter key unless allowed; recorded here (the engine's
---- multiline gate reads its own flag).
-AccessorFunc( PANEL, "m_bEnterAllowed", "EnterAllowed", FORCE_BOOL )
-
---- HL2SB (2026-10-19): drive the engine's own gate from the same flag.  GMod
---- keeps m_bAllowEnter on the Lua side and its key handling reads it; here the
---- real Enter gate lives in the engine (SetCatchEnterKey), so without this the
---- flag was recorded and never consulted -- SetEnterAllowed( false ) did
---- nothing.  Wrapping keeps the AccessorFunc's storage/GetEnterAllowed intact.
-local _DTextEntry_SetEnterAllowed = PANEL.SetEnterAllowed
-function PANEL:SetEnterAllowed( b )
-	_DTextEntry_SetEnterAllowed( self, b )
-
-	if ( self.SetCatchEnterKey ~= nil ) then
-		self:SetCatchEnterKey( self:GetEnterAllowed() )
-	end
-end
-
---- GMod: DTextEntry:SetCaretPos( i ) / GetCaretPos() -- the wiki spellings of
---- the engine's cursor-position pair.
-function PANEL:SetCaretPos( i )
-	if ( self.SetCursorPosition ) then return self:SetCursorPosition( tonumber( i ) or 0 ) end
-end
-
-function PANEL:GetCaretPos()
-	if ( self.GetCursorPosition ) then return self:GetCursorPosition() end
-	return 0
-end
-
---- GMod: DTextEntry:SetNumeric( b ) -- "Sets whether or not the text entry will
---- only allow numbers".  The engine's TextEntry has no such filter, so the text
---- is cleaned here and written back (m_bFiltering stops the write-back from
---- re-entering this function).
-function PANEL:SetNumeric( b )
-	self.m_bNumeric = b and true or false
-end
-
-function PANEL:GetNumeric()
-	return self.m_bNumeric == true
-end
-
---- GMod: DTextEntry:SetUpdateOnType( b ) -- whether typing commits a value.
---- GMod's default is false (the value is committed on Enter / focus loss); the
---- wiki and DNumberWang call SetUpdateOnType( true ) to get the live behaviour
---- this fork always had, so an unset flag keeps it.
-function PANEL:SetUpdateOnType( b )
-	self.m_bUpdateOnType = b and true or false
-end
-
-function PANEL:GetUpdateOnType()
-	return self.m_bUpdateOnType ~= false
-end
-
---- Stage-1 engine dispatch calls this with no arguments; add the GMod value
---- argument for convenience.
-function PANEL:OnTextChanged()
-	if ( self.m_bNotifying == false ) then return end
-
-	if ( self.m_bNumeric and not self.m_bFiltering ) then
-		local txt = self:GetValue() or ""
-		local clean = string.gsub( txt, "[^%d%.%-]", "" )
-
-		if ( clean ~= txt ) then
-			self.m_bFiltering = true
-			self:SetText( clean )
-			self.m_bFiltering = false
-		end
+	if ( IsValid( self.Menu ) ) then
+		return self:UpdateFromMenu()
 	end
 
-	-- "the text changed" in GMod's spelling; DNumberWang assigns self.OnChange
-	-- (its wiki page: `self.OnChange = function() ... end`).
-	if ( self.OnChange ) then
-		self:OnChange( self )
+	local pos = self.HistoryPos
+	-- Is the Pos within bounds?
+	if ( pos < 0 ) then pos = #self.History end
+	if ( pos > #self.History ) then pos = 0 end
+
+	local text = self.History[ pos ]
+	if ( !text ) then text = "" end
+
+	self:SetText( text )
+	self:SetCaretPos( utf8.len( text ) )
+
+	self:OnTextChanged()
+
+	self.HistoryPos = pos
+
+end
+
+function PANEL:UpdateFromMenu()
+
+	local pos = self.HistoryPos
+	local num = self.Menu:ChildCount()
+
+	self.Menu:ClearHighlights()
+
+	if ( pos < 0 ) then pos = num end
+	if ( pos > num ) then pos = 0 end
+
+	local item = self.Menu:GetChild( pos )
+	if ( !item ) then
+		self:SetText( "" )
+		self.HistoryPos = pos
+		return
 	end
 
-	if ( self.m_bUpdateOnType ~= false and self.OnValueChange ) then
-		self:OnValueChange( self:GetValue() )
+	self.Menu:HighlightItem( item )
+
+	local txt = item:GetText()
+
+	self:SetText( txt )
+	self:SetCaretPos( utf8.len( txt ) )
+
+	self:OnTextChanged( true )
+
+	self.HistoryPos = pos
+
+end
+
+function PANEL:OnTextChanged( noMenuRemoval )
+
+	self.HistoryPos = 0
+
+	if ( self:GetUpdateOnType() ) then
+		self:UpdateConvarValue()
+		self:OnValueChange( self:GetText() )
 	end
+
+	if ( IsValid( self.Menu ) && !noMenuRemoval ) then
+		self.Menu:Remove()
+	end
+
+	local tab = self:GetAutoComplete( self:GetText() )
+	if ( tab ) then
+		self:OpenAutoComplete( tab )
+	end
+
+	self:OnChange()
+
 end
 
-function PANEL:SetNotified( b )
-	self.m_bNotifying = b
+function PANEL:OnChange()
 end
 
---- GMod: DTextEntry:IsEditing() -- "Returns whether the text entry is currently
---- being edited".  GMod compares against vgui.GetKeyboardFocus(); that binding
---- only exists in the gmod_compatibility shim this fork never loads, so the
---- engine's own HasFocus is used, which is the same question.
-function PANEL:IsEditing()
-	return self:HasFocus() == true
+function PANEL:OpenAutoComplete( tab )
+
+	if ( !tab ) then return end
+	if ( #tab == 0 ) then return end
+
+	-- If we have a modal parent at some level, we gotta parent to
+	-- that or our menu items are not gonna be selectable
+	local parent = self
+	while ( IsValid( parent ) && !parent:IsModal() ) do
+		parent = parent:GetParent()
+	end
+	if ( !IsValid( parent ) ) then parent = self end
+
+	self.Menu = DermaMenu( false, parent )
+
+	for k, v in pairs( tab ) do
+
+		self.Menu:AddOption( v, function() self:SetText( v ) self:SetCaretPos( utf8.len( v ) ) self:RequestFocus() end )
+
+	end
+
+	local x, y = self:LocalToScreen( 0, self:GetTall() )
+	self.Menu:SetMinimumWidth( self:GetWide() )
+	self.Menu:Open( x, y, true, self )
+	self.Menu:SetPos( x, y )
+	self.Menu:SetMaxHeight( ( ScrH() - y ) - 10 )
+
 end
 
---- GMod: DTextEntry:SetPaintBackground( b ) -- DProperty_Generic and friends call
---- it with false to drop the field's chrome.  This fork paints through the skin's
---- PaintTextEntry hook, so the flag gates that hook.
-function PANEL:SetPaintBackground( b )
-	self.m_bPaintBackground = b and true or false
+function PANEL:Think()
+
+	self:ConVarStringThink()
+
 end
 
-function PANEL:GetPaintBackground()
-	return self.m_bPaintBackground ~= false
+function PANEL:OnRemove()
+
+	if ( IsValid( self.Menu ) ) then
+		self.Menu:Remove()
+	end
+
 end
 
-function PANEL:OnMousePressed( code )
-	self:RequestFocus()	-- engine Panel binding, resolved through the metatable chain
+function PANEL:OnEnter( val )
+
+	-- For override
+	self:UpdateConvarValue()
+	self:OnValueChange( self:GetText() )
+
+end
+
+function PANEL:UpdateConvarValue()
+
+	-- This only kicks into action if this variable has
+	-- a ConVar associated with it.
+	self:ConVarChanged( self:GetValue() )
+
 end
 
 function PANEL:Paint( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
 
-	-- DProperty_Generic:Setup calls SetPaintBackground( false ) so the property
-	-- editor's text box has no chrome of its own
-	if ( self.m_bPaintBackground ~= false ) then
-		derma.SkinHook( "Paint", "TextEntry", self, w, h )
-	end
+	derma.SkinHook( "Paint", "TextEntry", self, w, h )
+	return false
 
-	-- placeholder while empty
-	local cur = self:GetValue()
-	if ( ( not cur or cur == "" ) and self.m_strPlaceholder ~= "" and not self:HasFocus() ) then
-		local _, th = derma.GetTextSize( self.m_strFont, "Xg" )
-		derma.DrawText( self.m_strFont, 6, math.floor( ( h - th ) / 2 ),
-			self.m_strPlaceholder, Color( 130, 130, 130, 255 ) )
-	end
 end
 
-derma.DefineControl( "DTextEntry", "HL2SB text field", PANEL, "TextEntry" )
+function PANEL:PerformLayout()
+
+	derma.SkinHook( "Layout", "TextEntry", self )
+
+end
+
+function PANEL:SetValue( strValue )
+
+	-- Don't update if we're typing into it!
+	-- I'm sure a lot of people will want to reverse this behaviour :(
+	if ( vgui.GetKeyboardFocus() == self ) then return end
+
+	local CaretPos = self:GetCaretPos()
+
+	self:SetText( strValue )
+	self:OnValueChange( strValue )
+
+	self:SetCaretPos( CaretPos )
+
+end
+
+function PANEL:OnValueChange( strValue )
+	-- For Override
+end
+
+function PANEL:CheckNumeric( strValue )
+
+	-- Not purely numeric, don't run the check
+	if ( !self:GetNumeric() ) then return false end
+
+	-- God I hope numbers look the same in every language
+	if ( !string.find( strAllowedNumericCharacters, strValue, 1, true ) ) then
+
+		-- Noisy Error?
+		return true
+
+	end
+
+	return false
+
+end
+
+-- Backwards compatibility. Do not use.
+function PANEL:SetDisabled( bDisabled )
+	self:SetEnabled( !bDisabled )
+end
+
+function PANEL:GetDisabled()
+	return !self:IsEnabled()
+end
+
+function PANEL:AllowInput( strValue )
+
+	-- This is layed out like this so you can easily override and
+	-- either keep or remove this numeric check.
+	if ( self:CheckNumeric( strValue ) ) then return true end
+
+end
+
+function PANEL:SetEditable( b )
+
+	self:SetKeyboardInputEnabled( b )
+	self:SetMouseInputEnabled( b )
+
+end
+
+function PANEL:OnGetFocus()
+
+	--
+	-- These hooks are here for the sake of things like the spawn menu
+	-- which don't have key focus until you click on one of the text areas.
+	--
+	-- If you make a control for the spawnmenu that requires keyboard input
+	-- You should have these 3 functions in your panel, so it can handle it.
+	--
+
+	hook.Run( "OnTextEntryGetFocus", self )
+
+end
+
+function PANEL:OnLoseFocus()
+
+	self:UpdateConvarValue()
+
+	hook.Call( "OnTextEntryLoseFocus", nil, self )
+
+end
+
+function PANEL:OnMousePressed( mcode )
+
+	if ( mcode == MOUSE_LEFT ) then
+		self:OnGetFocus()
+	end
+
+end
+
+function PANEL:AddHistory( txt )
+
+	if ( !txt || txt == "" ) then return end
+
+	table.RemoveByValue( self.History, txt )
+	table.insert( self.History, txt )
+
+end
+
+function PANEL:GetAutoComplete( txt )
+	-- for override. Return a table of strings.
+end
+
+function PANEL:GetInt()
+
+	local num = tonumber( self:GetText() )
+	if ( !num ) then return nil end
+
+	return math.Round( num )
+
+end
+
+function PANEL:GetFloat()
+
+	return tonumber( self:GetText() )
+
+end
+
+function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
+
+	local ctrl = vgui.Create( ClassName )
+	ctrl:SetText( "Edit Me!" )
+	ctrl:SetWide( 150 )
+	ctrl.OnEnter = function( slf ) Derma_Message( "You Typed: " .. slf:GetValue() ) end
+
+	PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )
+
+end
+
+derma.DefineControl( "DTextEntry", "A simple TextEntry control", PANEL, "TextEntry" )
+
+--[[---------------------------------------------------------
+	Clear the focus when we click away from us..
+-----------------------------------------------------------]]
+function TextEntryLoseFocus( panel, mcode )
+
+	local textArea = vgui.GetKeyboardFocus()
+	if ( !textArea ) then return end
+	if ( textArea == panel ) then return end
+	if ( textArea:IsOurChild( panel ) ) then return end -- Do not lose focus when clicking panels parented to the text entry (Autocomplete DMenu)
+	if ( !textArea.m_bLoseFocusOnClickAway ) then return end
+
+	-- We gotta find the EdtiablePanel parent and call KillFocus on it
+	-- We do it from the panel clicked, not the KB focus, which is necessary for DTextEntry autocomplete to not break
+	local prnt = panel
+	while ( IsValid( prnt ) ) do
+		if ( prnt:GetClassName() == "EditablePanel" || prnt:GetClassName() == "LuaEditablePanel" ) then
+			prnt:KillFocus()
+			return
+		end
+		prnt = prnt:GetParent()
+	end
+
+end
+hook.Add( "VGUIMousePressed", "TextEntryLoseFocus", TextEntryLoseFocus )

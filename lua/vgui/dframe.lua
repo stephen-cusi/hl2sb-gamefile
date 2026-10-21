@@ -1,385 +1,260 @@
---[[ DFrame -- a draggable window (original implementation).
-
-	Built on the scripted Panel rather than the engine's C Frame: this fork's
-	LFrame has no Lua ApplySchemeSettings dispatch and its close button is
-	C++-owned, while GMod's DFrame draws its entire chrome in Lua.  Dragging
-	uses the panel's own mouse capture + OnCursorMoved (LPanel dispatches
-	both), so there is no global Think poll. --]]
 
 local PANEL = {}
 
-local TITLEBAR_TALL = 24
+AccessorFunc( PANEL, "m_bIsMenuComponent",	"IsMenu",			FORCE_BOOL )
+AccessorFunc( PANEL, "m_bDraggable",		"Draggable",		FORCE_BOOL )
+AccessorFunc( PANEL, "m_bSizable",			"Sizable",			FORCE_BOOL )
+AccessorFunc( PANEL, "m_bScreenLock",		"ScreenLock",		FORCE_BOOL )
+AccessorFunc( PANEL, "m_bDeleteOnClose",	"DeleteOnClose",	FORCE_BOOL )
+AccessorFunc( PANEL, "m_bPaintShadow",		"PaintShadow",		FORCE_BOOL )
 
--- Engine MakePopup captured before the override below hides the name.
-local PanelMeta = FindMetaTable( "Panel" )
-local EngineMakePopup = PanelMeta and PanelMeta.MakePopup
+AccessorFunc( PANEL, "m_iMinWidth",			"MinWidth",			FORCE_NUMBER )
+AccessorFunc( PANEL, "m_iMinHeight",		"MinHeight",		FORCE_NUMBER )
+
+AccessorFunc( PANEL, "m_bBackgroundBlur",	"BackgroundBlur",	FORCE_BOOL )
 
 function PANEL:Init()
-	self:SetSize( 400, 300 )
-	self:SetVisible( true )
-	self:SetMouseInputEnabled( true )
-	self:SetKeyBoardInputEnabled( false )
-	self:SetDrawBackground( false )	-- the frame paints itself
 
-	self.m_strTitle = ""
-	self.m_bDragMoving = false
-	self.m_bActive = false
+	self:SetFocusTopLevel( true )
 
-	-- close button in the title bar
-	self.m_pCloseButton = vgui.Create( "DButton", self, "CloseButton" )
-	self.m_pCloseButton:SetText( "" )	-- the skin paints the glyph
-	self.m_pCloseButton.DoClick = function( btn ) self:Close() end
-	self.m_pCloseButton.Paint = function( btn, w, h )
-		derma.SkinHook( "Paint", "CloseButton", btn, w, h )
+	--self:SetCursor( "sizeall" )
+
+	self:SetPaintShadow( true )
+
+	self.btnClose = vgui.Create( "DButton", self )
+	self.btnClose:SetText( "" )
+	self.btnClose.DoClick = function ( button ) self:Close() end
+	self.btnClose.Paint = function( panel, w, h ) derma.SkinHook( "Paint", "WindowCloseButton", panel, w, h ) end
+
+	self.btnMaxim = vgui.Create( "DButton", self )
+	self.btnMaxim:SetText( "" )
+	self.btnMaxim.DoClick = function ( button ) self:Close() end
+	self.btnMaxim.Paint = function( panel, w, h ) derma.SkinHook( "Paint", "WindowMaximizeButton", panel, w, h ) end
+	self.btnMaxim:SetEnabled( false )
+
+	self.btnMinim = vgui.Create( "DButton", self )
+	self.btnMinim:SetText( "" )
+	self.btnMinim.DoClick = function ( button ) self:Close() end
+	self.btnMinim.Paint = function( panel, w, h ) derma.SkinHook( "Paint", "WindowMinimizeButton", panel, w, h ) end
+	self.btnMinim:SetEnabled( false )
+
+	self.lblTitle = vgui.Create( "DLabel", self )
+	self.lblTitle.UpdateColours = function( label, skin )
+
+		if ( self:IsActive() ) then return label:SetTextStyleColor( skin.Colours.Window.TitleActive ) end
+
+		return label:SetTextStyleColor( skin.Colours.Window.TitleInactive )
+
 	end
 
-	-- caption buttons: GMod's DFrame has these too, hidden until asked for with
-	-- SetMinimizeButtonVisible( true ) / SetMaximizeButtonVisible( true ).
-	self.m_pMinimizeButton = vgui.Create( "DButton", self, "MinimizeButton" )
-	self.m_pMinimizeButton:SetText( "" )
-	self.m_pMinimizeButton:SetVisible( false )
-	self.m_pMinimizeButton.DoClick = function( btn ) self:Minimize() end
-	self.m_pMinimizeButton.Paint = function( btn, w, h )
-		derma.SkinHook( "Paint", "MinimizeButton", btn, w, h )
-	end
+	self:SetDraggable( true )
+	self:SetSizable( false )
+	self:SetScreenLock( false )
+	self:SetDeleteOnClose( true )
+	self:SetTitle( "Window" )
 
-	self.m_pMaximizeButton = vgui.Create( "DButton", self, "MaximizeButton" )
-	self.m_pMaximizeButton:SetText( "" )
-	self.m_pMaximizeButton:SetVisible( false )
-	self.m_pMaximizeButton.DoClick = function( btn ) self:Maximize() end
-	self.m_pMaximizeButton.Paint = function( btn, w, h )
-		derma.SkinHook( "Paint", "MaximizeButton", btn, w, h )
-	end
+	self:SetMinWidth( 50 )
+	self:SetMinHeight( 50 )
 
-	-- body panel: GMod's DFrame content docks into this, not the frame itself
-	self.m_pBody = vgui.Create( "DPanel", self, "Body" )
-	self.m_pBody:SetDrawBackground( false )
+	-- This turns off the engine drawing
+	self:SetPaintBackgroundEnabled( false )
+	self:SetPaintBorderEnabled( false )
 
-	-- GMod docks the title bar area out of the frame's dock space
-	-- (gmod/vgui/dframe.lua:65 `self:DockPadding( 5, 24+5, 5, 5 )`): children
-	-- docked DIRECTLY onto the frame (a common addon idiom -- only frame:Add()
-	-- routes to the body) were laid out across the painted title bar.
-	if ( self.SetDockPadding ) then
-		self:SetDockPadding( 0, TITLEBAR_TALL, 0, 0 )
-	end
+	self.m_fCreateTime = SysTime()
+
+	self:DockPadding( 5, 24 + 5, 5, 5 )
+
 end
 
--- HL2SB: GMod's DFrame:Add() parents the child to the body (the area below the
--- title bar), not to the frame itself.  Without this, window:Add("DHorizontalDivider")
--- puts the divider behind the title bar and the layout collapses.
-function PANEL:Add( class, name )
-	local pnl = vgui.Create( class, self.m_pBody, name )
-	return pnl
-end
+function PANEL:ShowCloseButton( bShow )
 
-function PANEL:SetTitle( strTitle )
-	self.m_strTitle = tostring( strTitle or "" )
+	self.btnClose:SetVisible( bShow )
+	self.btnMaxim:SetVisible( bShow )
+	self.btnMinim:SetVisible( bShow )
+
 end
 
 function PANEL:GetTitle()
-	return self.m_strTitle or ""
+
+	return self.lblTitle:GetText()
+
 end
 
---- GMod's DFrame:GetClientArea() -> x, y, w, h of the content region.
-function PANEL:GetClientArea()
-	local w, h = self:GetSize()
-	return 0, TITLEBAR_TALL, w, math.max( 0, h - TITLEBAR_TALL )
-end
+function PANEL:SetTitle( strTitle )
 
-function PANEL:SetSizable( b )
-	self.m_bSizable = b
-end
+	self.lblTitle:SetText( strTitle )
 
-function PANEL:SetDeleteOnClose( b )
-	self.m_bDeleteOnClose = b
-end
-
---- GMod: DFrame:SetMinWidth / GetMinWidth / SetMinHeight / GetMinHeight
---- (AccessorFunc( PANEL, "m_iMinWidth", "MinWidth", FORCE_NUMBER ) in GMod's
---- lua/vgui/dframe.lua:11-12).
---- ⚠️ They only store the values: this fork's DFrame has no resize implementation at
---- all (SetSizable above just records a flag and the engine's C Frame resize handles are
---- unreachable from a scripted panel), so there is no size the minimum could clamp.
---- They exist so GMod code keeps working, e.g. the player model selector
---- (garrysmod/gamemodes/sandbox/gamemode/editor_player.lua:25-26:
----  window:SetMinWidth( 400 ) / window:SetMinHeight( 250 )).
-function PANEL:SetMinWidth( i )
-	self.m_iMinWidth = i
-end
-
-function PANEL:GetMinWidth()
-	return self.m_iMinWidth or 0
-end
-
-function PANEL:SetMinHeight( i )
-	self.m_iMinHeight = i
-end
-
-function PANEL:GetMinHeight()
-	return self.m_iMinHeight or 0
-end
-
---- GMod's DFrame chrome API.  The engine's C Frame bindings ("Frame" metatable) are
---- unreachable from here because DFrame is built on the scripted Panel (see the header
---- comment), so these live in Lua.  Without them
----     Frame:SetDraggable( false ) / Frame:ShowCloseButton( true )
---- threw "attempt to call a nil value" and MakePopup() was never reached.
-function PANEL:SetDraggable( b )
-	self.m_bDraggable = b and true or false
-
-	if ( not self.m_bDraggable and self.m_bDragMoving ) then
-		self.m_bDragMoving = false
-		self:MouseCapture( false )
-	end
-end
-
-function PANEL:IsDraggable()
-	return self.m_bDraggable ~= false
-end
-
-function PANEL:ShowCloseButton( b )
-	if ( self.m_pCloseButton ) then
-		self.m_pCloseButton:SetVisible( b ~= false )
-	end
-end
-
-function PANEL:IsCloseButtonVisible()
-	return self.m_pCloseButton ~= nil and self.m_pCloseButton:IsVisible()
-end
-
---- Not drawn by this fork's DFrame; kept so guide / addon code does not die on them.
-function PANEL:SetTitleBarVisible( b )
-	self.m_bTitleBarVisible = b ~= false
-end
-
---- GMod's caption buttons.  They are hidden by default; GMod's own DFrame:Init hides
---- them too, and guide code turns them on with the setters below.
-function PANEL:SetMinimizeButtonVisible( b )
-	if ( self.m_pMinimizeButton ) then self.m_pMinimizeButton:SetVisible( b ~= false ) end
-	if ( self.InvalidateLayout ) then self:InvalidateLayout( true ) end
-end
-
-function PANEL:SetMaximizeButtonVisible( b )
-	if ( self.m_pMaximizeButton ) then self.m_pMaximizeButton:SetVisible( b ~= false ) end
-	if ( self.InvalidateLayout ) then self:InvalidateLayout( true ) end
-end
-
-function PANEL:IsMinimizeButtonVisible()
-	return self.m_pMinimizeButton ~= nil and self.m_pMinimizeButton:IsVisible()
-end
-
-function PANEL:IsMaximizeButtonVisible()
-	return self.m_pMaximizeButton ~= nil and self.m_pMaximizeButton:IsVisible()
-end
-
--- GMod 12 spellings, still used by old addons.
-function PANEL:ShowMinimizeButton( b ) self:SetMinimizeButtonVisible( b ) end
-function PANEL:ShowMaximizeButton( b ) self:SetMaximizeButtonVisible( b ) end
-
-function PANEL:Minimize()
-	if ( self.m_bMinimized ) then return end
-
-	self.m_bMinimized = true
-	self.m_nRestoreW, self.m_nRestoreH = self:GetSize()
-
-	if ( self.m_pBody ) then self.m_pBody:SetVisible( false ) end
-	self:SetTall( TITLEBAR_TALL )
-end
-
-function PANEL:Restore()
-	if ( self.m_pBody ) then self.m_pBody:SetVisible( true ) end
-
-	if ( not self.m_bMinimized ) then return end
-
-	self.m_bMinimized = false
-	self:SetSize( self.m_nRestoreW or 400, self.m_nRestoreH or 300 )
-end
-
-function PANEL:Maximize()
-	local pParent = self:GetParent()
-	if ( not IsValid( pParent ) ) then return end
-
-	if ( not self.m_bMaximized ) then
-		self.m_nRestoreX, self.m_nRestoreY = self:GetPos()
-		self.m_nRestoreW, self.m_nRestoreH = self:GetSize()
-
-		self:SetPos( 0, 0 )
-		self:SetSize( pParent:GetWide(), pParent:GetTall() )
-		self.m_bMaximized = true
-	else
-		self:SetPos( self.m_nRestoreX or 5, self.m_nRestoreY or 5 )
-		self:SetSize( self.m_nRestoreW or 400, self.m_nRestoreH or 300 )
-		self.m_bMaximized = false
-	end
-end
-
-function PANEL:IsMaximized()
-	return self.m_bMaximized == true
 end
 
 function PANEL:Close()
+
 	self:SetVisible( false )
 
-	if ( self.OnClose ) then
-		local ok, err = pcall( self.OnClose, self )
-		if ( not ok ) then Warning( "DFrame:OnClose failed: " .. tostring( err ) .. "\n" ) end
-	end
-
-	if ( self.m_bDeleteOnClose ~= false ) then
+	if ( self:GetDeleteOnClose() ) then
 		self:Remove()
 	end
+
+	self:OnClose()
+
 end
 
-function PANEL:MakePopup()
-	if ( EngineMakePopup ) then EngineMakePopup( self ) end
-	self:SetKeyBoardInputEnabled( true )
-	self.m_bActive = true
+function PANEL:OnClose()
 end
 
-function PANEL:SetActive( b )
-	self.m_bActive = b
+function PANEL:Center()
+
+	self:InvalidateLayout( true )
+	self:CenterVertical()
+	self:CenterHorizontal()
+
 end
 
 function PANEL:IsActive()
-	return self.m_bActive
+
+	if ( self:HasFocus() ) then return true end
+	if ( vgui.FocusedHasParent( self ) ) then return true end
+
+	return false
+
 end
 
---- GMod's resize grip: a `SIZEGRIP`-sized square in the bottom-right corner that drags
---- the frame's size, clamped by SetMinWidth/SetMinHeight (DFrame:SetSizable( true ) used
---- to be a flag this fork stored and never acted on, so every GMod window that asks to be
---- resizable - the player model selector does - simply could not be).
-local SIZEGRIP = 16
+function PANEL:SetIcon( str )
 
-function PANEL:IsSizeGripPoint( x, y )
-	if ( not self.m_bSizable ) then return false end
+	if ( !str && IsValid( self.imgIcon ) ) then
+		return self.imgIcon:Remove() -- We are instructed to get rid of the icon, do it and bail.
+	end
 
-	local w, h = self:GetSize()
+	if ( !IsValid( self.imgIcon ) ) then
+		self.imgIcon = vgui.Create( "DImage", self )
+	end
 
-	return x >= w - SIZEGRIP and y >= h - SIZEGRIP
+	if ( IsValid( self.imgIcon ) ) then
+		self.imgIcon:SetMaterial( Material( str ) )
+	end
+
 end
 
-function PANEL:OnMousePressed( code )
-	if ( code != MOUSE_LEFT ) then return end
+function PANEL:Think()
 
-	local x, y = derma.CursorPos( self )
+	local mousex = math.Clamp( gui.MouseX(), 1, ScrW() - 1 )
+	local mousey = math.Clamp( gui.MouseY(), 1, ScrH() - 1 )
 
-	-- the grip is in the bottom-right corner; it wins over the title bar / dragging
-	if ( self:IsSizeGripPoint( x, y ) ) then
-		self.m_bResizing = true
-		self.m_nResizeW, self.m_nResizeH = self:GetSize()
-		self.m_nResizeX, self.m_nResizeY = x, y
+	if ( self.Dragging ) then
+
+		local x = mousex - self.Dragging[1]
+		local y = mousey - self.Dragging[2]
+
+		-- Lock to screen bounds if screenlock is enabled
+		if ( self:GetScreenLock() ) then
+
+			x = math.Clamp( x, 0, ScrW() - self:GetWide() )
+			y = math.Clamp( y, 0, ScrH() - self:GetTall() )
+
+		end
+
+		self:SetPos( x, y )
+
+	end
+
+	if ( self.Sizing ) then
+
+		local x = mousex - self.Sizing[1]
+		local y = mousey - self.Sizing[2]
+		local px, py = self:GetPos()
+
+		if ( x < self.m_iMinWidth ) then x = self.m_iMinWidth elseif ( x > ScrW() - px && self:GetScreenLock() ) then x = ScrW() - px end
+		if ( y < self.m_iMinHeight ) then y = self.m_iMinHeight elseif ( y > ScrH() - py && self:GetScreenLock() ) then y = ScrH() - py end
+
+		self:SetSize( x, y )
+		self:SetCursor( "sizenwse" )
+		return
+
+	end
+
+	local screenX, screenY = self:LocalToScreen( 0, 0 )
+
+	if ( self.Hovered && self.m_bSizable && mousex > ( screenX + self:GetWide() - 20 ) && mousey > ( screenY + self:GetTall() - 20 ) ) then
+
+		self:SetCursor( "sizenwse" )
+		return
+
+	end
+
+	if ( self.Hovered && self:GetDraggable() && mousey < ( screenY + 24 ) ) then
+		self:SetCursor( "sizeall" )
+		return
+	end
+
+	self:SetCursor( "arrow" )
+
+	-- Don't allow the frame to go higher than 0
+	if ( self.y < 0 ) then
+		self:SetPos( self.x, 0 )
+	end
+
+end
+
+function PANEL:Paint( w, h )
+
+	if ( self.m_bBackgroundBlur ) then
+		Derma_DrawBackgroundBlur( self, self.m_fCreateTime )
+	end
+
+	derma.SkinHook( "Paint", "Frame", self, w, h )
+	return true
+
+end
+
+function PANEL:OnMousePressed()
+
+	local screenX, screenY = self:LocalToScreen( 0, 0 )
+
+	if ( self.m_bSizable && gui.MouseX() > ( screenX + self:GetWide() - 20 ) && gui.MouseY() > ( screenY + self:GetTall() - 20 ) ) then
+		self.Sizing = { gui.MouseX() - self:GetWide(), gui.MouseY() - self:GetTall() }
 		self:MouseCapture( true )
 		return
 	end
 
-	if ( self:IsDraggable() ) then
-		if ( y < TITLEBAR_TALL and not self:IsCloseButtonPoint( x, y ) ) then
-			self.m_bDragMoving = true
-			self.m_nDragOffX = x
-			self.m_nDragOffY = y
-			self:MouseCapture( true )
-		end
-	end
-end
-
-function PANEL:IsCloseButtonPoint( x, y )
-	local w = self:GetWide()
-	return x >= w - TITLEBAR_TALL and y < TITLEBAR_TALL
-end
-
-function PANEL:OnCursorMoved( x, y )
-	if ( self.m_bResizing ) then
-		local w = math.max( self:GetMinWidth() or 0, self.m_nResizeW + ( x - self.m_nResizeX ) )
-		local h = math.max( self:GetMinHeight() or 0, self.m_nResizeH + ( y - self.m_nResizeY ) )
-
-		self:SetSize( w, h )
+	if ( self:GetDraggable() && gui.MouseY() < ( screenY + 24 ) ) then
+		self.Dragging = { gui.MouseX() - self.x, gui.MouseY() - self.y }
+		self:MouseCapture( true )
 		return
 	end
 
-	-- show the diagonal resize cursor while hovering the grip, like GMod does
-	if ( self.SetCursor ) then
-		local want = self:IsSizeGripPoint( x, y ) and "sizenwse" or "arrow"
-		if ( self.m_strCursor ~= want ) then
-			self:SetCursor( want )
-			self.m_strCursor = want
-		end
-	end
-
-	if ( not self.m_bDragMoving ) then return end
-
-	-- CursorPos is panel-relative; the window moves so that the point the drag
-	-- started at stays under the cursor.
-	local px, py = self:GetPos()
-	self:SetPos( px + ( x - self.m_nDragOffX ), py + ( y - self.m_nDragOffY ) )
 end
 
-function PANEL:OnMouseReleased( code )
-	if ( self.m_bResizing ) then
-		self.m_bResizing = false
-		self:MouseCapture( false )
-	end
+function PANEL:OnMouseReleased()
 
-	if ( self.m_bDragMoving ) then
-		self.m_bDragMoving = false
-		self:MouseCapture( false )
-	end
+	self.Dragging = nil
+	self.Sizing = nil
+	self:MouseCapture( false )
+
 end
 
 function PANEL:PerformLayout( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
 
-	local btnW, btnH = TITLEBAR_TALL, TITLEBAR_TALL - 4
-	local bx = w - TITLEBAR_TALL
+	local titlePush = 0
 
-	-- right to left: close, maximize, minimize - only the visible ones take space
-	self.m_pCloseButton:SetSize( btnW, btnH )
-	self.m_pCloseButton:SetPos( bx, 2 )
+	if ( IsValid( self.imgIcon ) ) then
 
-	if ( self:IsMaximizeButtonVisible() ) then
-		bx = bx - TITLEBAR_TALL
-		self.m_pMaximizeButton:SetSize( btnW, btnH )
-		self.m_pMaximizeButton:SetPos( bx, 2 )
+		self.imgIcon:SetPos( 5, 5 )
+		self.imgIcon:SetSize( 16, 16 )
+		titlePush = 16
+
 	end
 
-	if ( self:IsMinimizeButtonVisible() ) then
-		bx = bx - TITLEBAR_TALL
-		self.m_pMinimizeButton:SetSize( btnW, btnH )
-		self.m_pMinimizeButton:SetPos( bx, 2 )
-	end
+	self.btnClose:SetPos( w - 31 - 4, 0 )
+	self.btnClose:SetSize( 31, 24 )
 
-	self.m_pBody:SetPos( 0, TITLEBAR_TALL )
-	self.m_pBody:SetSize( w, math.max( 0, h - TITLEBAR_TALL ) )
+	self.btnMaxim:SetPos( w - 31 * 2 - 4, 0 )
+	self.btnMaxim:SetSize( 31, 24 )
+
+	self.btnMinim:SetPos( w - 31 * 3 - 4, 0 )
+	self.btnMinim:SetSize( 31, 24 )
+
+	self.lblTitle:SetPos( 8 + titlePush, 2 )
+	self.lblTitle:SetSize( w - 25 - titlePush, 20 )
+
 end
 
---- GMod: DFrame:SetBackgroundBlur( b ) / GetBackgroundBlur -- "Should the screen
---- behind the frame be blurred while the frame is visible" (gmod/vgui/dframe.lua:14).
---- This engine has no blur path; the frame's Paint draws the dim instead, through
---- the same Derma_DrawBackgroundBlur GMod's dialogs call from Paint.
-function PANEL:SetBackgroundBlur( b )
-	self.m_bBackgroundBlur = b and true or false
-end
-
-function PANEL:GetBackgroundBlur()
-	return self.m_bBackgroundBlur == true
-end
-
-function PANEL:Paint( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
-
-	if ( self.m_bBackgroundBlur and Derma_DrawBackgroundBlur ~= nil ) then
-		Derma_DrawBackgroundBlur( self, SysTime() )
-	end
-
-	derma.SkinHook( "Paint", "Frame", self, w, h )
-	derma.SkinHook( "Paint", "FrameTitle", self, w, TITLEBAR_TALL )
-
-	-- title text
-	local font = "DermaDefaultBold"
-	local tw, th = derma.GetTextSize( font, self.m_strTitle )
-	local ty = math.floor( ( TITLEBAR_TALL - th ) / 2 )
-	derma.DrawText( font, 8, ty, self.m_strTitle, Color( 235, 235, 235, 255 ) )
-end
-
-derma.DefineControl( "DFrame", "HL2SB window", PANEL, "DPanel" )
+derma.DefineControl( "DFrame", "A simple window", PANEL, "EditablePanel" )

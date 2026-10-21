@@ -66,7 +66,7 @@ function get( strClassname )
   local sBase = tEntity.Base
   if ( type( sBase ) ~= "string" or sBase == "" or sBase == strClassname ) then
     sBase = tEntity.__base
-  elseif ( GMOD_BASE_ALIASES[ sBase ] ) then
+  elseif ( GMOD_BASE_ALIASES[ sBase ] and not tEntities[ sBase ] ) then
     -- GMod's engine-level base names (base_anim and friends) -> this fork's
     -- scripted entity base, so the entity inherits a real Lua table instead of
     -- coming back bare with a warning.

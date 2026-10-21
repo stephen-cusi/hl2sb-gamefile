@@ -5,6 +5,7 @@ game_sounds_manifest
 	"precache_file"		"scripts/game_sounds_player.txt"
 
 	// Weapon sounds
+	"precache_file"		"scripts/sounds/lua.txt"
 	"precache_file"		"scripts/game_sounds_weapons.txt"
 	"precache_file"		"scripts/game_sounds_weapons_cstrike.txt"
 	"precache_file"		"scripts/game_sounds_weapons_ep2.txt"

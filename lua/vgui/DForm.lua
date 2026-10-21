@@ -1,34 +1,11 @@
---[[ DForm -- the "quick form" panel (GMod port).
-
-	Wiki: https://wiki.facepunch.com/gmod/DForm
-	  "A panel with quick methods to create basic user inputs."  Parent:
-	  DCollapsibleCategory.  One method per input type - TextEntry, ComboBox,
-	  NumberWang, NumSlider, CheckBox, Button, PropSelect, PanelSelect, ListBox,
-	  Help, ControlHelp - plus Clear, AddItem, SetName, Rebuild, and the Items /
-	  Padding / Spacing members.
-
-	Ported from GMod's lua/vgui/dform.lua (312 lines) onto this fork's
-	DCollapsibleCategory, DSizeToContents, DPanelList, DComboBox, DNumberWang,
-	DNumSlider, DCheckBoxLabel and PropSelect - every one of which now exists.
-
-	Notes for this fork:
-	  * `SetConsoleCommand` on a DButton (used by DForm:Button) is not a GMod
-	    method either; the button gets a DoClick that runs the command, which is
-	    what GMod's does (see DForm:Button).
-	  * `SetAutoStretchVertical` on a label is now real in DLabel (word wrap), which
-	    is what Help/ControlHelp rely on.
-	  * DForm:ListBox creates a "DListBox", which this fork does not have (it is not
-	    on the wiki's control list either); the method returns a DListView-based
-	    list instead and says so.
---]]
 
 local PANEL = {}
 
 DEFINE_BASECLASS( "DCollapsibleCategory" )
 
-AccessorFunc( PANEL, "m_bSizeToContents", "AutoSize", FORCE_BOOL )
-AccessorFunc( PANEL, "m_iSpacing", "Spacing" )
-AccessorFunc( PANEL, "m_Padding", "Padding" )
+AccessorFunc( PANEL, "m_bSizeToContents",	"AutoSize", FORCE_BOOL )
+AccessorFunc( PANEL, "m_iSpacing",			"Spacing" )
+AccessorFunc( PANEL, "m_Padding",			"Padding" )
 
 function PANEL:Init()
 
@@ -37,7 +14,7 @@ function PANEL:Init()
 	self:SetSpacing( 4 )
 	self:SetPadding( 10 )
 
-	if ( self.SetPaintBackground ) then self:SetPaintBackground( true ) end
+	self:SetPaintBackground( true )
 
 	self:SetMouseInputEnabled( true )
 	self:SetKeyboardInputEnabled( true )
@@ -46,7 +23,7 @@ end
 
 function PANEL:SetName( name )
 
-	if ( self.SetLabel ) then self:SetLabel( name ) end
+	self:SetLabel( name )
 
 end
 
@@ -67,10 +44,9 @@ function PANEL:AddItem( left, right )
 	self:InvalidateLayout()
 
 	local Panel = vgui.Create( "DSizeToContents", self )
+	--Panel.Paint = function( panel, w, h ) derma.SkinHook( "Paint", "CategoryButton", panel, w, h ) end
 	Panel:SetSizeX( false )
-
-	if ( Panel.Dock ) then Panel:Dock( TOP ) end
-
+	Panel:Dock( TOP )
 	Panel:DockPadding( 10, 10, 10, 0 )
 	Panel:InvalidateLayout()
 
@@ -149,12 +125,7 @@ function PANEL:PropSelect( label, convar, models, height )
 
 	props:InvalidateLayout( true )
 
-	-- GMod calls self:AddPanel( props ) here, but its own DCollapsibleCategory
-	-- (gmod/vgui/dcategorycollapse.lua) defines no AddPanel - only DMenu,
-	-- DHorizontalScroller, DPanelSelect and DTree_Node do - so that call could only
-	-- throw.  The form's own row adder is used instead, which is how every other
-	-- DForm control is added.
-	self:AddItem( props, nil )
+	self:AddPanel( props )
 
 	return props
 
@@ -210,13 +181,13 @@ function PANEL:NumSlider( strLabel, strConVar, numMin, numMax, numDecimals )
 	if ( numDecimals != nil ) then left:SetDecimals( numDecimals ) end
 
 	left:SetConVar( strConVar )
-	if ( left.SizeToContents ) then left:SizeToContents() end
+	left:SizeToContents()
 
 	if ( strConVar ) then
 		local cvar = GetConVar( strConVar )
 		if ( cvar ) then
 			local defaultValue = tonumber( cvar:GetDefault() )
-			if ( defaultValue && left.SetDefaultValue ) then left:SetDefaultValue( defaultValue ) end
+			if ( defaultValue ) then left:SetDefaultValue( defaultValue ) end
 		end
 	end
 
@@ -275,11 +246,7 @@ function PANEL:ControlHelp( strHelp )
 	left:SetAutoStretchVertical( true )
 	left:DockMargin( 32, 0, 32, 8 )
 	left:Dock( TOP )
-
-	local skin = self:GetSkin()
-	if ( skin and skin.Colours and skin.Colours.Tree ) then
-		left:SetTextColor( skin.Colours.Tree.Hover )
-	end
+	left:SetTextColor( self:GetSkin().Colours.Tree.Hover )
 
 	table.insert( self.Items, Panel )
 
@@ -297,17 +264,7 @@ function PANEL:Button( strName, strConCommand, ... --[[ console command args!! -
 	local left = vgui.Create( "DButton", self )
 
 	if ( strConCommand ) then
-		local args = { ... }
-
-		if ( left.SetConsoleCommand ) then
-			left:SetConsoleCommand( strConCommand, ... )
-		else
-			-- GMod's SetConsoleCommand binds the click to the command (and the
-			-- arguments); this is the same behaviour without the method.
-			left.DoClick = function()
-				RunConsoleCommand( strConCommand, unpack( args ) )
-			end
-		end
+		left:SetConsoleCommand( strConCommand, ... )
 	end
 
 	left:SetText( strName )
@@ -335,10 +292,8 @@ function PANEL:ListBox( strLabel )
 		left:SetDark( true )
 	end
 
-	-- GMod creates a "DListBox" here; this fork has no such control (it is not on
-	-- the wiki's VGUI element list either), so the closest equivalent - a
-	-- DListView - is used so the method still returns something usable.
-	local right = vgui.Create( "DListView", self )
+	local right = vgui.Create( "DListBox", self )
+	--right:SetConVar( strConVar )
 	right.Stretch = true
 
 	self:AddItem( right )

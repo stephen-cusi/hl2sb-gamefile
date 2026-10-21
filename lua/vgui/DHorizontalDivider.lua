@@ -1,283 +1,194 @@
---[[ DHorizontalDivider -- a draggable vertical divider between two panels (original).
-
-	Wiki: https://wiki.facepunch.com/gmod/DHorizontalDivider
-	  "Creates an invisible vertical divider between two GUI elements."
-	  Parent: DPanel.
-
-	  SetLeft / GetLeft / SetRight / GetRight / SetMiddle / GetMiddle
-	  SetLeftWidth / GetLeftWidth          -- the left side's current width
-	  SetLeftMin / GetLeftMin              -- minimum width of the left side
-	  SetRightMin / GetRightMin            -- minimum width of the right side
-	  SetDividerWidth / GetDividerWidth    -- width of the bar (default 8)
-	  SetDragging / GetDragging / SetHoldPos / GetHoldPos / StartGrab   (internal)
-
-	Layout (GMod's vgui/dhorizontaldivider.lua): the left panel is
-	`leftWidth x h` at (0,0), the right panel is everything after the bar, and the
-	optional middle panel sits ON TOP of the bar - which is why the middle is the place
-	to put a grip/grip texture.
-
-	NOTE: This fork has no `OnMouseDragged` panel dispatch (checked: the scripted LPanel
-	dispatches OnCursorMoved / OnMousePressed / OnMouseReleased / OnMouseWheeled only),
-	so the drag is driven by OnCursorMoved plus a per-frame OnThink while the bar is
-	held.  `OnMouseDragged` is still defined - addons override it the GMod way and it
-	runs - it just is not the thing that moves the divider.
---]]
 
 local PANEL = {}
 
 function PANEL:Init()
-	self.m_iDividerWidth = 8
-	self.m_iLeftWidth = 0
-	self.m_iLeftMin = 0
-	self.m_iRightMin = 0
 
-	self.m_bDragging = false
-	self.m_iHoldPos = 0
+	self:SetCursor( "sizewe" )
+	self:SetPaintBackground( false )
 
-	-- the whole area takes the mouse so the bar can be grabbed anywhere along it
-	self:SetMouseInputEnabled( true )
-
-	-- GMod puts the drag handle in its own child (dhorizontaldivider.lua:2-19): the
-	-- bar takes the press (a child is hit-tested before its parent) and calls
-	-- StartGrab here.  This fork's own OnMousePressed/IsOverBar path below stays as
-	-- the fallback for a grab that starts outside the bar.
-	self.m_pBar = vgui.Create( "DHorizontalDividerBar", self )
-
-	if ( self.SetDrawBackground ) then self:SetDrawBackground( false ) end
 end
 
--------------------------------------------------------------------------------
--- content panels
--------------------------------------------------------------------------------
-local function Adopt( self, key, pnl )
-	local old = self[ key ]
+function PANEL:OnMousePressed( mcode )
 
-	if ( IsValid( old ) and old ~= pnl ) then old:SetVisible( false ) end
-
-	self[ key ] = pnl
-
-	if ( IsValid( pnl ) ) then
-		pnl:SetParent( self )
-		pnl:SetVisible( true )
+	if ( mcode == MOUSE_LEFT ) then
+		self:GetParent():StartGrab()
 	end
 
-	self:InvalidateLayout( true )
 end
 
-function PANEL:SetLeft( pnl )	Adopt( self, "m_pLeft", pnl ) end
-function PANEL:SetRight( pnl )	Adopt( self, "m_pRight", pnl ) end
-function PANEL:SetMiddle( pnl )	Adopt( self, "m_pMiddle", pnl ) end
+derma.DefineControl( "DHorizontalDividerBar", "", PANEL, "DPanel" )
 
-function PANEL:GetLeft()	return self.m_pLeft end
-function PANEL:GetRight()	return self.m_pRight end
-function PANEL:GetMiddle()	return self.m_pMiddle end
+local PANEL = {}
 
--------------------------------------------------------------------------------
--- metrics
--------------------------------------------------------------------------------
-function PANEL:SetDividerWidth( w )
-	w = math.floor( tonumber( w ) or 0 )
-	if ( w < 0 ) then w = 0 end
+AccessorFunc( PANEL, "m_pLeft",				"Left" )
+AccessorFunc( PANEL, "m_pRight",			"Right" )
+AccessorFunc( PANEL, "m_pMiddle",			"Middle" )
+AccessorFunc( PANEL, "m_iDividerWidth",		"DividerWidth" )
+AccessorFunc( PANEL, "m_iLeftWidth",		"LeftWidth" )
+AccessorFunc( PANEL, "m_bDragging",			"Dragging", FORCE_BOOL )
 
-	self.m_iDividerWidth = w
-	self:InvalidateLayout( true )
+AccessorFunc( PANEL, "m_iLeftWidthMin",		"LeftMin" )
+AccessorFunc( PANEL, "m_iRightWidthMin",	"RightMin" )
+
+AccessorFunc( PANEL, "m_iHoldPos",			"HoldPos" )
+
+function PANEL:Init()
+
+	self:SetDividerWidth( 8 )
+	self:SetLeftWidth( 100 )
+
+	self:SetLeftMin( 50 )
+	self:SetRightMin( 50 )
+
+	self:SetPaintBackground( false )
+
+	self.m_DragBar = vgui.Create( "DHorizontalDividerBar", self )
+
 end
 
-function PANEL:GetDividerWidth()
-	return self.m_iDividerWidth
-end
 
-function PANEL:SetLeftMin( w )
-	self.m_iLeftMin = math.max( 0, math.floor( tonumber( w ) or 0 ) )
-	self:InvalidateLayout( true )
-end
+function PANEL:LoadCookies()
 
-function PANEL:GetLeftMin()
-	return self.m_iLeftMin
-end
-
-function PANEL:SetRightMin( w )
-	self.m_iRightMin = math.max( 0, math.floor( tonumber( w ) or 0 ) )
-	self:InvalidateLayout( true )
-end
-
-function PANEL:GetRightMin()
-	return self.m_iRightMin
-end
-
-function PANEL:SetLeftWidth( w )
-	self.m_iLeftWidth = math.floor( tonumber( w ) or 0 )
-	self:InvalidateLayout( true )
-end
-
-function PANEL:GetLeftWidth()
-	return self.m_iLeftWidth
-end
-
-function PANEL:SetDragging( b )	self.m_bDragging = b and true or false end
-function PANEL:GetDragging()	return self.m_bDragging end
-
-function PANEL:SetHoldPos( x )	self.m_iHoldPos = x end
-function PANEL:GetHoldPos()	return self.m_iHoldPos end
-
--------------------------------------------------------------------------------
--- layout
--------------------------------------------------------------------------------
---- Clamp the requested left width against both minimums.  Returns leftW, rightW.
----
---- NOTE: `m_iLeftWidth` is the REQUEST and must never receive the clamped result back:
---- while the panel is being docked it is laid out with a bogus width (0, or a few
---- pixels), and at w = 8 the right side alone exceeds the whole divider, so the clamp
---- drives leftW to 0 and a write-back would destroy the caller's request for good.
---- That is exactly what happened in game (2026-09-17): the player model editor asks for
---- half/half - `SetLeftWidth( window:GetWide() / 2 )` right after `Dock( FILL )` - and
---- got a 150px preview column, with the model squashed into a 7-degree FOV sliver.
---- Only a real drag (PANEL:ApplyDrag) writes m_iLeftWidth.
-function PANEL:GetClampedWidths()
-	local w = self:GetWide()
-
-	local leftW = self.m_iLeftWidth
-	local divW = self.m_iDividerWidth
-
-	if ( w <= divW ) then
-		-- no usable width yet: report the request unchanged, the next layout settles it
-		return leftW, math.max( 0, w - divW - leftW )
+	if ( self:GetCookieNumber( "LeftWidthPct" ) ) then
+		self._iLeftWidthPct = self:GetCookieNumber( "LeftWidthPct" )
+		self:SetLeftWidth( math.floor( self._iLeftWidthPct * self:GetWide() ) )
+		self._iLastWidth = self:GetWide()
+		self._OldCookiePct = self:GetCookieNumber( "LeftWidthPct" )
+	else
+		-- Legacy stored value
+		self:SetLeftWidth( self:GetCookieNumber( "LeftWidth", self:GetLeftWidth() ) )
 	end
 
-	local rightW = w - divW - leftW
+end
 
-	if ( leftW < self.m_iLeftMin ) then
-		leftW = self.m_iLeftMin
-		rightW = w - divW - leftW
+function PANEL:SetLeft( pnl )
+
+	self.m_pLeft = pnl
+
+	if ( IsValid( self.m_pLeft ) ) then
+		self.m_pLeft:SetParent( self )
 	end
 
-	if ( rightW < self.m_iRightMin ) then
-		rightW = self.m_iRightMin
-		leftW = w - divW - rightW
+end
+
+function PANEL:SetMiddle( Middle )
+
+	self.m_pMiddle = Middle
+
+	if ( IsValid( self.m_pMiddle ) ) then
+		self.m_pMiddle:SetParent( self.m_DragBar )
 	end
 
-	-- a divider narrower than the two minimums cannot satisfy both: the left side wins
-	if ( leftW < 0 ) then leftW = 0 end
-	if ( rightW < 0 ) then rightW = 0 end
+end
 
-	return leftW, rightW
+function PANEL:SetRight( pnl )
+
+	self.m_pRight = pnl
+
+	if ( IsValid( self.m_pRight ) ) then
+		self.m_pRight:SetParent( self )
+	end
+
 end
 
 function PANEL:PerformLayout( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
 
-	local leftW, rightW = self:GetClampedWidths()
-	local divW = self.m_iDividerWidth
-
-	if ( IsValid( self.m_pLeft ) ) then
-		self.m_pLeft:SetPos( 0, 0 )
-		self.m_pLeft:SetSize( leftW, h )
+	-- On resize, use the percent to set the left width, so that it re-scales with the size of the panel
+	if ( self._iLeftWidthPct && self._iLastWidth && self._iLastWidth != w ) then
+		self:SetLeftWidth( math.floor( self._iLeftWidthPct * w ) )
 	end
 
+	self._iLastWidth = self:GetWide()
+
+	-- Clamp the size to minimums
+	self:SetLeftWidth( math.Clamp( self:GetLeftWidth(), self:GetLeftMin(), math.max( w - self:GetRightMin() - self:GetDividerWidth(), self:GetLeftMin() ) ), true )
+
+	if ( IsValid( self.m_pLeft ) ) then
+
+		self.m_pLeft:StretchToParent( 0, 0, nil, 0 )
+		self.m_pLeft:SetWide( self:GetLeftWidth() )
+		self.m_pLeft:InvalidateLayout()
+
+	end
+
+	self.m_DragBar:SetPos( self:GetLeftWidth(), 0 )
+	self.m_DragBar:SetSize( self:GetDividerWidth(), self:GetTall() )
+	self.m_DragBar:SetZPos( -1 )
+
 	if ( IsValid( self.m_pRight ) ) then
-		self.m_pRight:SetPos( leftW + divW, 0 )
-		self.m_pRight:SetSize( rightW, h )
+
+		self.m_pRight:StretchToParent( self:GetLeftWidth() + self.m_DragBar:GetWide(), 0, 0, 0 )
+		self.m_pRight:InvalidateLayout()
+
 	end
 
 	if ( IsValid( self.m_pMiddle ) ) then
-		self.m_pMiddle:SetPos( leftW, 0 )
-		self.m_pMiddle:SetSize( divW, h )
+
+		self.m_pMiddle:StretchToParent( 0, 0, 0, 0 )
+		self.m_pMiddle:InvalidateLayout()
+
 	end
 
-	if ( IsValid( self.m_pBar ) ) then
-		self.m_pBar:SetPos( leftW, 0 )
-		self.m_pBar:SetSize( divW, h )
-	end
-end
-
--------------------------------------------------------------------------------
--- dragging
--------------------------------------------------------------------------------
---- local x of the cursor
-function PANEL:LocalMouseX()
-	local x = self:ScreenToLocal( gui.MouseX(), gui.MouseY() )
-	return x or 0
-end
-
-function PANEL:IsOverBar( x )
-	return x >= self.m_iLeftWidth and x <= self.m_iLeftWidth + self.m_iDividerWidth
-end
-
---- Wiki: "Causes the user to start dragging the divider."
-function PANEL:StartGrab()
-	self.m_bDragging = true
-	self.m_iHoldPos = self:LocalMouseX() - self.m_iLeftWidth
-	self:MouseCapture( true )
-end
-
-function PANEL:StopGrab()
-	self.m_bDragging = false
-	self:MouseCapture( false )
-end
-
---- GMod's drag callback.  Kept because addons hook it; the movement itself is
---- applied by ApplyDrag() below (this fork has no OnMouseDragged dispatch).
-function PANEL:OnMouseDragged()
-end
-
-function PANEL:ApplyDrag()
-	if ( not self.m_bDragging ) then return end
-
-	local w = self:GetWide()
-	local x = self:LocalMouseX()
-
-	local leftW = x - self.m_iHoldPos
-
-	-- constraints, same rule as the layout so the bar cannot be dragged past a minimum
-	local maxLeft = w - self.m_iDividerWidth - self.m_iRightMin
-	if ( leftW < self.m_iLeftMin ) then leftW = self.m_iLeftMin end
-	if ( leftW > maxLeft ) then leftW = maxLeft end
-
-	if ( leftW ~= self.m_iLeftWidth ) then
-		self.m_iLeftWidth = leftW
-		self:InvalidateLayout( true )
-	end
-end
-
-function PANEL:OnMousePressed( code )
-	if ( code ~= MOUSE_LEFT ) then return end
-	if ( not self:IsOverBar( self:LocalMouseX() ) ) then return end
-
-	self:StartGrab()
-end
-
-function PANEL:OnMouseReleased( code )
-	if ( self.m_bDragging ) then self:StopGrab() end
-end
-
-function PANEL:OnMouseCaptureLost()
-	self.m_bDragging = false
 end
 
 function PANEL:OnCursorMoved( x, y )
-	-- cursor feedback for the bar (GMod does this too)
-	if ( self.m_bDragging ) then
-		self:ApplyDrag()
-		self:OnMouseDragged()
-	elseif ( self:IsOverBar( self:LocalMouseX() ) ) then
-		self:SetCursor( "sizewe" )
-	else
-		self:SetCursor( "arrow" )
+
+	if ( !self:GetDragging() ) then return end
+
+	local oldLeftWidth = self:GetLeftWidth()
+
+	x = math.Clamp( x - self:GetHoldPos(), self:GetLeftMin(), self:GetWide() - self:GetRightMin() - self:GetDividerWidth() )
+
+	self:SetLeftWidth( x )
+	self._iLeftWidthPct = x / self:GetWide()
+	if ( oldLeftWidth != x ) then self:InvalidateLayout() end
+
+end
+
+function PANEL:Think()
+
+	-- If 2 or more panels use the same cookie name, make every panel resize automatically to the same size
+	if ( self._OldCookiePct && self._OldCookiePct != self:GetCookieNumber( "LeftWidthPct", self._OldCookiePct ) && !self:GetDragging() ) then
+		self:LoadCookies()
+		self:InvalidateLayout()
 	end
+
 end
 
-function PANEL:OnCursorExited()
-	if ( not self.m_bDragging ) then self:SetCursor( "arrow" ) end
+function PANEL:StartGrab()
+
+	self:SetCursor( "sizewe" )
+
+	local x, y = self.m_DragBar:CursorPos()
+	self:SetHoldPos( x )
+
+	self:SetDragging( true )
+	self:MouseCapture( true )
+
 end
 
-function PANEL:OnThink()
-	-- OnCursorMoved stops arriving when the engine routes the cursor elsewhere while
-	-- the button is held; while capturing, this keeps the bar under the cursor.
-	if ( self.m_bDragging ) then
-		self:ApplyDrag()
-		self:OnMouseDragged()
+function PANEL:OnMouseReleased( mcode )
+
+	if ( mcode == MOUSE_LEFT ) then
+		self:SetCursor( "none" )
+		self:SetDragging( false )
+		self:MouseCapture( false )
+
+		-- Store left width as percentage, this helps when resizing panels, and with screen resolution changes
+		self:SetCookie( "LeftWidthPct", self._iLeftWidthPct )
 	end
+
 end
 
-derma.DefineControl( "DHorizontalDivider", "A draggable vertical divider", PANEL, "DPanel" )
+function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
+
+	local ctrl = vgui.Create( ClassName )
+	ctrl:SetSize( 256, 256 )
+	ctrl:SetLeft( vgui.Create( "DButton" ) )
+	ctrl:SetRight( vgui.Create( "DButton" ) )
+
+	PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )
+
+end
+
+derma.DefineControl( "DHorizontalDivider", "", PANEL, "DPanel" )

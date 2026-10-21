@@ -1,3 +1,4 @@
+if (spawnmenu && spawnmenu.GetTools) then return spawnmenu end
 
 local spawnmenu_engine = spawnmenu
 

@@ -1,25 +1,3 @@
---[[ DNumSlider -- GMod's labelled numeric slider, ported from its
-	lua/vgui/dnumslider.lua (324 lines) essentially line for line.
-
-	The value lives in the DNumberScratch ("Scratch", docked inside the label
-	area); the DSlider is a view over it (TranslateValues ->
-	TranslateSliderValues -> SetValue), the text entry edits it, and every
-	change refreshes the other two plus the bound convars.  The slider is
-	Dock( FILL ) / 16px tall with TrapInside, so the whole row area between
-	label and text entry is a drag target - that, plus the Knob, is what makes
-	GMod's rows feel grabbable.  The previous in-tree rewrite gave the slider
-	a 12px strip in a 50px row with no knob, which is the usable-width half of
-	issue 37.
-
-	Fork notes (deltas from the GMod file):
-	  * The convar plumbing lua/derma/init.lua used to install onto this class
-	    is removed from its list - this file carries GMod's own SetConVar path
-	    (Scratch + TextArea) instead.
-	  * TextArea:SetValue is a shim added to DTextEntry.lua (GMod's TextEntry
-	    engine method; this fork's engine lacks that name).
-	  * SetDark exists in GMod's file; it is what our player-model selector
-	    and DForm already call.
---]]
 
 local PANEL = {}
 
@@ -212,26 +190,7 @@ end
 
 function PANEL:PerformLayout()
 
-	-- GMod's original body is just the SetWide below: the three children are
-	-- Dock( LEFT / FILL / RIGHT ) and the engine dock pass places them from
-	-- that width.  GMod's engine re-docks when a child's bounds change (its
-	-- per-panel bounds-changed flag); this fork's dock rectangles settled one
-	-- layout pass later, which left the slider running under the label on any
-	-- row that stopped being re-laid-out.  Place all three children explicitly
-	-- - pixel-identical to GMod's settled dock geometry (label at w/2.4, entry
-	-- 45px on the right, slider filling the middle) and independent of the
-	-- dock pump's convergence timing.
-	local w = self:GetWide()
-	local h = self:GetTall()
-	local labelW = math.floor( w / 2.4 )
-
-	self.Label:SetWide( labelW )
-
-	self.TextArea:SetPos( w - 45, 0 )
-	self.TextArea:SetSize( 45, h )
-
-	self.Slider:SetPos( labelW, 0 )
-	self.Slider:SetSize( math.max( 0, w - labelW - 45 ), h )
+	self.Label:SetWide( self:GetWide() / 2.4 )
 
 end
 

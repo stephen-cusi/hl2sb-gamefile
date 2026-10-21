@@ -1,56 +1,9 @@
---[[ DListView column controls -- DListViewHeaderLabel, DListView_DraggerBar,
-	DListView_Column and DListView_ColumnPlain (GMod port, one GMod file).
-
-	Wiki: https://wiki.facepunch.com/gmod/DListView_Column
-	  A column is a Panel holding a header button (the caption + click to sort) and a
-	  DListView_DraggerBar on its right edge (drag to resize).  [Right-click on a
-	  header offers a column list in GMod; DoRightClick here is the override point.]
-
-	Ported from GMod's lua/vgui/dlistview_column.lua (160 lines, all four controls).
-
-	Notes for this fork:
-	  * Three of these controls route Paint / ApplySchemeSettings / PerformLayout
-	    straight into the skin (Derma_Hook "ListViewColumn" / "ListViewHeaderLabel"),
-	    which is where GMod's skin both draws the header and lays the child buttons
-	    out.  This fork's skin has none of those hooks, so each one asks the hook
-	    first and then does the same work itself (otherwise the header caption would
-	    never be drawn or positioned).
-	  * `self.Depressed` on the dragger bar is GMod's field; this fork's DButton keeps
-	    the same state in m_bDepressed and answers IsDown(), so both are accepted.
-	  * Two guards GMod does not need: the column asks its parent for the header
-	    height and for SortByColumn, and a column can now be created (and painted)
-	    on its own, which the offline harness does for every control.
---]]
 
 local PANEL = {}
 
---- GMod: Derma_Hook( PANEL, "Paint", "Paint", "ListViewHeaderLabel" ) etc.
-function PANEL:Paint( w, h )
-	if ( derma.SkinHook( "Paint", "ListViewHeaderLabel", self, w, h ) ) then return true end
-
-	-- fallback: the caption (+ the sort arrow when the column above told us)
-	w = w or self:GetWide()
-	h = h or self:GetTall()
-
-	local text = self:GetText() or ""
-	if ( text == "" ) then return true end
-
-	local font = self:GetFont() or "DermaDefault"
-	local tw, th = derma.GetTextSize( font, text )
-
-	derma.DrawText( font, math.floor( ( w - tw ) * 0.5 ), math.floor( ( h - th ) * 0.5 ),
-		text, Color( 228, 228, 228, 255 ) )
-
-	return true
-end
-
-function PANEL:ApplySchemeSettings()
-	derma.SkinHook( "Scheme", "ListViewHeaderLabel", self )
-end
-
-function PANEL:PerformLayout( w, h )
-	derma.SkinHook( "Layout", "ListViewHeaderLabel", self )
-end
+Derma_Hook( PANEL, "Paint", "Paint", "ListViewHeaderLabel" )
+Derma_Hook( PANEL, "ApplySchemeSettings", "Scheme", "ListViewHeaderLabel" )
+Derma_Hook( PANEL, "PerformLayout", "Layout", "ListViewHeaderLabel" )
 
 function PANEL:Init()
 end
@@ -81,10 +34,7 @@ end
 
 function PANEL:OnCursorMoved()
 
-	-- GMod: if ( self.Depressed ) then ... ; this fork's DButton answers IsDown()
-	local bDown = self.Depressed == true or ( self.IsDown ~= nil and self:IsDown() == true )
-
-	if ( bDown ) then
+	if ( self.Depressed ) then
 
 		local x, y = self:GetParent():CursorPos()
 
@@ -114,6 +64,10 @@ AccessorFunc( PANEL, "m_bFixedWidth", "FixedWidth" )
 AccessorFunc( PANEL, "m_bDesc", "Descending" )
 AccessorFunc( PANEL, "m_iColumnID", "ColumnID" )
 
+Derma_Hook( PANEL, "Paint", "Paint", "ListViewColumn" )
+Derma_Hook( PANEL, "ApplySchemeSettings", "Scheme", "ListViewColumn" )
+Derma_Hook( PANEL, "PerformLayout", "Layout", "ListViewColumn" )
+
 function PANEL:Init()
 
 	self.Header = vgui.Create( "DButton", self )
@@ -137,13 +91,7 @@ end
 
 function PANEL:DoClick()
 
-	-- guard: a column can be created on its own (see the header)
-	local parent = self:GetParent()
-
-	if ( IsValid( parent ) and parent.SortByColumn ) then
-		parent:SortByColumn( self:GetColumnID(), self:GetDescending() )
-	end
-
+	self:GetParent():SortByColumn( self:GetColumnID(), self:GetDescending() )
 	self:SetDescending( !self:GetDescending() )
 
 end
@@ -159,44 +107,27 @@ function PANEL:SetName( strName )
 end
 
 function PANEL:Paint()
-	if ( derma.SkinHook( "Paint", "ListViewColumn", self, self:GetWide(), self:GetTall() ) ) then return true end
-
-	-- fallback: nothing to draw - the header button and the dragger paint themselves
 	return true
 end
 
-function PANEL:ApplySchemeSettings()
-	derma.SkinHook( "Scheme", "ListViewColumn", self )
-end
-
---- GMod routes this through the skin too ("Layout" / ListViewColumn); the same work
---- happens here when the skin does not handle it.
 function PANEL:PerformLayout()
-
-	if ( derma.SkinHook( "Layout", "ListViewColumn", self ) ) then return end
 
 	if ( self:GetTextAlign() ) then
 		self.Header:SetContentAlignment( self:GetTextAlign() )
 	end
 
-	local parent = self:GetParent()
-	local headerH = ( IsValid( parent ) and parent.GetHeaderHeight ) and parent:GetHeaderHeight() or ( self:GetTall() or 0 )
-
 	self.Header:SetPos( 0, 0 )
-	self.Header:SetSize( self:GetWide(), headerH )
+	self.Header:SetSize( self:GetWide(), self:GetParent():GetHeaderHeight() )
 
-	self.DraggerBar:SetPos( math.max( 0, self:GetWide() - 4 ), 0 )
-	self.DraggerBar:SetSize( 4, headerH )
+	self.DraggerBar:SetWide( 4 )
+	self.DraggerBar:StretchToParent( nil, 0, nil, 0 )
+	self.DraggerBar:AlignRight()
 
 end
 
 function PANEL:ResizeColumn( iSize )
 
-	local parent = self:GetParent()
-
-	if ( IsValid( parent ) and parent.OnRequestResize ) then
-		parent:OnRequestResize( self, iSize )
-	end
+	self:GetParent():OnRequestResize( self, iSize )
 
 end
 
@@ -207,11 +138,7 @@ function PANEL:SetWidth( iSize )
 
 	-- If the column changes size we need to lay the data out too
 	if ( iSize != math.ceil( self:GetWide() ) ) then
-		local parent = self:GetParent()
-
-		if ( IsValid( parent ) and parent.SetDirty ) then
-			parent:SetDirty( true )
-		end
+		self:GetParent():SetDirty( true )
 	end
 
 	self:SetWide( iSize )

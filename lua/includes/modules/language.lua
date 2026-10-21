@@ -36,6 +36,14 @@ function Add( key, value )
 	else
 		Phrases[ key ] = { en = tostring( value ) }
 	end
+
+	if ( CLIENT and Localizations and Localizations.AddString ) then
+		local entry = Phrases[ key ]
+		local cvar = GetConVar and GetConVar( "cl_language" )
+		local code = cvar and cvar:GetString() or "english"
+		local phrase = entry[ code ] or entry.en or select( 2, next( entry ) )
+		if ( isstring( phrase ) ) then Localizations.AddString( key, phrase ) end
+	end
 end
 
 -------------------------------------------------------------------------------
@@ -57,7 +65,9 @@ function GetPhrase( key )
 	if ( type( key ) ~= "string" ) then return "" end
 
 	local entry = Phrases[ StripHash( key ) ]
-	if ( entry == nil ) then return key end
+	if ( entry == nil ) then
+		return Localizations and Localizations.Find and Localizations.Find( key ) or key
+	end
 
 	-- Prefer the map language, then English, then whatever exists.
 	--
@@ -85,7 +95,7 @@ function GetPhrase( key )
 		return entry[ lang ]
 	end
 
-	return entry.en or next( entry ) or key
+	return entry.en or select( 2, next( entry ) ) or key
 end
 
 -------------------------------------------------------------------------------
@@ -386,6 +396,9 @@ local function LoadPropertiesFile( path, code )
 				end
 				entry[ code ] = value
 				Phrases[ key ] = entry
+				if ( CLIENT and Localizations and Localizations.AddString ) then
+					Localizations.AddString( key, value )
+				end
 			end
 		end
 	end

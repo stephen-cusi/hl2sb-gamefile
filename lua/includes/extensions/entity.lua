@@ -82,6 +82,45 @@ end
 local meta = FindMetaTable( "Entity" )
 if ( !meta ) then return end
 
+if ( SERVER ) then
+
+	function meta:SetCreator( ply --[[= NULL]] )
+		if ( ply == nil ) then
+			ply = NULL
+		elseif ( !isentity( ply ) ) then
+			error( "bad argument #1 to 'SetCreator' (Entity expected, got " .. type( ply ) .. ")", 2 )
+		end
+
+		self.m_PlayerCreator = ply
+	end
+
+	function meta:GetCreator()
+		return self.m_PlayerCreator or NULL
+	end
+
+end
+
+function meta:IsConstrained()
+
+	if ( CLIENT ) then return self:GetNWBool( "IsConstrained" ) end
+
+	local c = self:GetTable().Constraints
+	local bIsConstrained = false
+
+	if ( c ) then
+
+		for k, v in pairs( c ) do
+			if ( IsValid( v ) ) then bIsConstrained = true break end
+			c[ k ] = nil
+		end
+
+	end
+
+	self:SetNWBool( "IsConstrained", bIsConstrained )
+	return bIsConstrained
+
+end
+
 function meta:GetUnFreezable()
 	return self.m_bUnFreezable or false
 end

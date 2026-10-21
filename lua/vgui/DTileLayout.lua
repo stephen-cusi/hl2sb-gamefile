@@ -1,32 +1,14 @@
---[[ DTileLayout -- packs children into a tile grid (GMod port).
-
-	Wiki: https://wiki.facepunch.com/gmod/DTileLayout
-	  "Arranges its children in a tile layout, similar to a grid."  Parent:
-	  DDragBase.  The wiki lists AddPanel, SetSpaceX/SetSpaceY, SetBorder,
-	  SetBaseSize, ClearTiles, FindFreeTile, FitsInTile, ConsumeTiles, Layout,
-	  LayoutTiles, Copy, CopyContents, OnModified and the Space/Border/Base/Border
-	  accessors - all of them are here.
-
-	Ported from GMod's lua/vgui/dtilelayout.lua (276 lines).  Tiles are tracked as
-	a sparse [y][x] table; a child is placed on the first free run of tiles wide
-	enough for it, which is what makes the spawnmenu's little tile pages pack
-	tightly instead of leaving holes.
-
-	Deliberate deviations from GMod:
-	  * GMod's Copy() calls SetSortable/GetSortable, which exists on neither
-	    DListLayout nor DDragBase upstream (GMod's own call would error) - both
-	    calls here are guarded, so Copy() works.
---]]
 
 local PANEL = {}
 
-AccessorFunc( PANEL, "m_iSpaceX", "SpaceX" )
-AccessorFunc( PANEL, "m_iSpaceY", "SpaceY" )
-AccessorFunc( PANEL, "m_iBorder", "Border" )
-AccessorFunc( PANEL, "m_iBaseSize", "BaseSize" )
-AccessorFunc( PANEL, "m_iMinHeight", "MinHeight" )
+AccessorFunc( PANEL, "m_iSpaceX",		"SpaceX" )
+AccessorFunc( PANEL, "m_iSpaceY",		"SpaceY" )
+AccessorFunc( PANEL, "m_iBorder",		"Border" )
+AccessorFunc( PANEL, "m_iBaseSize",		"BaseSize" )
+AccessorFunc( PANEL, "m_iMinHeight",	"MinHeight" )
 
 function PANEL:Init()
+
 	self:SetDropPos( "46" )
 	self:SetMinHeight( 1 )
 
@@ -39,27 +21,35 @@ function PANEL:Init()
 	self.LastH = 0
 
 	self.Tiles = {}
+
 end
 
 function PANEL:Layout()
+
 	self.LastW = 0
 	self.LastH = 0
 	self:InvalidateLayout()
+
 end
 
 function PANEL:FitsInTile( x, y, w, h )
+
 	for a = x, x + ( w - 1 ) do
 		for b = y, y + ( h - 1 ) do
+
 			if ( self:GetTile( a, b ) == 1 ) then
 				return false
 			end
+
 		end
 	end
 
 	return true
+
 end
 
 function PANEL:FindFreeTile( x, y, w, h )
+
 	x = x or 1
 	y = y or 1
 
@@ -67,8 +57,10 @@ function PANEL:FindFreeTile( x, y, w, h )
 	if ( span < 1 ) then span = 1 end
 
 	for i = 1, span do
+
 		-- Too long to fit on this line
 		if ( ( i + ( w - 1 ) ) > span ) then
+
 			-- If we're on the first part
 			-- and the line is empty
 			-- add it. It might be too long to fit on anyway
@@ -82,40 +74,51 @@ function PANEL:FindFreeTile( x, y, w, h )
 		if ( self:FitsInTile( i, y, w, h ) ) then
 			return i, y
 		end
+
 	end
 
 	return self:FindFreeTile( 1, y + 1, w, h )
+
 end
 
 function PANEL:ClearTiles()
+
 	self.Tiles = {}
+
 end
 
 function PANEL:GetTile( x, y )
+
 	if ( !self.Tiles[y] ) then
 		return nil
 	end
 
 	return self.Tiles[y][x]
+
 end
 
 function PANEL:SetTile( x, y, val )
+
 	if ( !self.Tiles[y] ) then
 		self.Tiles[y] = {}
 	end
 
 	self.Tiles[y][x] = val
+
 end
 
 function PANEL:ConsumeTiles( x, y, w, h )
+
 	for a = x, x + ( w - 1 ) do
 		for b = y, y + ( h - 1 ) do
 			self:SetTile( a, b, 1 )
 		end
 	end
+
 end
 
 function PANEL:LayoutTiles()
+
 	local StartLine = 1
 	local tilesize = self:GetBaseSize()
 	local MaxWidth = math.floor( ( self:GetWide() - self:GetBorder() * 2 + self:GetSpaceX() ) / ( tilesize + self:GetSpaceX() ) )
@@ -123,6 +126,7 @@ function PANEL:LayoutTiles()
 	self:ClearTiles()
 
 	for k, v in ipairs( self:GetChildren() ) do
+
 		if ( !v:IsVisible() ) then continue end
 
 		local w = math.ceil( v:GetWide() / ( tilesize + self:GetSpaceX() ) )
@@ -142,12 +146,14 @@ function PANEL:LayoutTiles()
 			StartLine = y + 1
 		end
 
-		-- GMod writes a stray global here; kept so the port stays comparable.
 		LastX = x
+
 	end
+
 end
 
 function PANEL:PerformLayout()
+
 	local ShouldLayout = false
 
 	if ( self.LastW != self:GetWide() ) then ShouldLayout = true end
@@ -164,22 +170,28 @@ function PANEL:PerformLayout()
 	h = math.max( h + self:GetBorder(), self:GetMinHeight() )
 
 	self:SetHeight( h )
+
 end
 
 function PANEL:OnModified()
+
 	-- Override me
+
 end
 
 function PANEL:OnChildRemoved()
+
 	-- A panel got removed, we gotta recompress z positions
 	for k, v in pairs( self:GetChildren() ) do
 		v:SetZPos( k )
 	end
 
 	self:Layout()
+
 end
 
 function PANEL:OnChildAdded( child )
+
 	-- Set the Z position for child ordering. Without this self:GetChildren() might return unpredictable results
 	child:SetZPos( self:ChildCount() )
 
@@ -193,16 +205,14 @@ function PANEL:OnChildAdded( child )
 	end
 
 	self:Layout()
+
 end
 
 function PANEL:Copy()
+
 	local copy = vgui.Create( "DTileLayout", self:GetParent() )
 	copy:CopyBase( self )
-	-- GMod: copy:SetSortable( self:GetSortable() ) - neither SetSortable nor
-	-- GetSortable exists here (or upstream), so both are guarded.
-	if ( copy.SetSortable and self.GetSortable ) then
-		copy:SetSortable( self:GetSortable() )
-	end
+	copy:SetSortable( self:GetSortable() )
 	copy:SetDnD( self:GetDnD() )
 	copy:SetSpaceX( self:GetSpaceX() )
 	copy:SetSpaceY( self:GetSpaceY() )
@@ -213,15 +223,21 @@ function PANEL:Copy()
 	copy:CopyContents( self )
 
 	return copy
+
 end
 
 function PANEL:CopyContents( from )
+
 	for k, v in ipairs( from:GetChildren() ) do
+
 		v:Copy():SetParent( self )
+
 	end
+
 end
 
 function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
+
 	local pnl = vgui.Create( ClassName )
 	pnl:MakeDroppable( "ExampleDraggable", false )
 	pnl:SetWide( 196 )
@@ -233,9 +249,11 @@ function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
 	pnl:SetBaseSize( 32 )
 
 	for i = 1, 10 do
+
 		local btn = pnl:Add( "DButton" )
 		btn:SetSize( 32, 32 )
 		btn:SetText( i )
+
 	end
 
 	local btn_br = pnl:Add( "DButton" )
@@ -244,12 +262,15 @@ function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
 	btn_br.OwnLine = true
 
 	for i = 1, 10 do
+
 		local btn = pnl:Add( "DButton" )
 		btn:SetSize( 32, 32 )
 		btn:SetText( 10 + i )
+
 	end
 
 	PropertySheet:AddSheet( ClassName, pnl, nil, true, true )
+
 end
 
-derma.DefineControl( "DTileLayout", "Arranges its children in a tile layout", PANEL, "DDragBase" )
+derma.DefineControl( "DTileLayout", "", PANEL, "DDragBase" )

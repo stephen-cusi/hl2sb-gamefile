@@ -1,64 +1,16 @@
---[[ PropSelect -- a grid of model thumbnails that sets a convar (GMod port).
-
-	Wiki: https://wiki.facepunch.com/gmod/PropSelect
-	  Parent: ContextBase.  AddModel( model, conVars ), AddModelEx( value, model,
-	  skin ), Clear, FindModelByValue, SelectModel, FindAndSelectButton,
-	  TestForChanges, OnSelect / OnRightClick (overrides), ControlValues( kv ),
-	  and the List / Controls / Height members.
-
-	Ported from GMod's lua/vgui/propselect.lua (231 lines).  It is what DForm's
-	PropSelect row and the spawnmenu's model panels build, and its base -
-	ContextBase - was ported two rounds ago.
-
-	Substitutions this fork needs:
-	  * The hover highlight is GMod's `GWEN.CreateTextureBorder` over
-	    materials/gui/ps_hover.png; there is no GWEN here, so the same white frame
-	    is drawn with surface.* (the SpawnIcon port documents the same swap).
-	  * `LocalPlayer():ConCommand( ... )` (the Player method) does not exist in this
-	    fork; RunConsoleCommand does the same job for the local player, so it is
-	    used when ConCommand is missing.
---]]
 
 local PANEL = {}
 
 local border = 0
 local border_w = 8
 local matHover = Material( "gui/ps_hover.png", "nocull" )
-
--- GMod: GWEN.CreateTextureBorder( ... ).  No GWEN in this fork - see the header.
-local boxHover = nil
-
-if ( GWEN and GWEN.CreateTextureBorder and matHover ) then
-	boxHover = GWEN.CreateTextureBorder( border, border, 64 - border * 2, 64 - border * 2,
-		border_w, border_w, border_w, border_w, matHover )
-end
+local boxHover = GWEN.CreateTextureBorder( border, border, 64 - border * 2, 64 - border * 2, border_w, border_w, border_w, border_w, matHover )
 
 -- This function is used as the paint function for selected buttons.
 local function HighlightedButtonPaint( self, w, h )
 
-	if ( boxHover ) then
-		boxHover( 0, 0, w, h, color_white )
-		return
-	end
+	boxHover( 0, 0, w, h, color_white )
 
-	surface.SetDrawColor( 255, 255, 255, 255 )
-
-	for i = 0, border_w - 1 do
-		surface.DrawOutlinedRect( i, i, w - i, h - i )
-	end
-
-end
-
---- GMod: LocalPlayer():ConCommand( str ) -- absent here, RunConsoleCommand is the
---- local player's console.
-local function RunCommand( strCmd )
-	local ply = LocalPlayer()
-
-	if ( IsValid( ply ) and ply.ConCommand ) then
-		ply:ConCommand( strCmd )
-	else
-		RunConsoleCommand( string.Trim( strCmd ) )
-	end
 end
 
 function PANEL:Init()
@@ -101,11 +53,11 @@ function PANEL:AddModel( model, ConVars )
 		self:OnSelect( pnl.Model, pnl )
 
 		for k, v in pairs( pnl.ConVars ) do
-			RunCommand( string.format( "%s \"%s\"\n", k, v ) )
+			LocalPlayer():ConCommand( Format( "%s \"%s\"\n", k, v ) )
 		end
 
 		-- Note: We run this command after all the optional stuff
-		if ( ConVarName ) then RunCommand( string.format( "%s \"%s\"\n", ConVarName, model ) ) end
+		if ( ConVarName ) then LocalPlayer():ConCommand( Format( "%s \"%s\"\n", ConVarName, model ) ) end
 	end
 	Icon.OpenMenu = function( button )
 		self:OnRightClick( button )
@@ -135,7 +87,7 @@ function PANEL:AddModelEx( value, model, skin )
 
 		self:OnSelect( pnl.Model, pnl )
 
-		if ( ConVarName ) then RunCommand( string.format( "%s \"%s\"\n", ConVarName, icon.Value ) ) end
+		if ( ConVarName ) then LocalPlayer():ConCommand( Format( "%s \"%s\"\n", ConVarName, icon.Value ) ) end
 	end
 	icon.OpenMenu = function( button )
 		self:OnRightClick( button )
@@ -276,4 +228,4 @@ function PANEL:OnRightClick( button )
 
 end
 
-derma.DefineControl( "PropSelect", "A grid of model thumbnails that sets a convar", PANEL, "ContextBase" )
+vgui.Register( "PropSelect", PANEL, "ContextBase" )

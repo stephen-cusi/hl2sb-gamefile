@@ -1,29 +1,3 @@
---[[ MatSelect -- a grid of material thumbnails (GMod port).
-
-	Wiki: https://wiki.facepunch.com/gmod/MatSelect
-	  Parent: ContextBase.  AddMaterial( label, value ), AddMaterialEx( label,
-	  material, value, convars ), SelectMaterial( mat ), FindMaterialByValue,
-	  FindAndSelectMaterial, Clear, SetItemSize, SetItemWidth / SetItemHeight,
-	  NumRows (the `Height` field), AutoHeight, OnSelect / OnRightClick overrides.
-
-	Ported from GMod's lua/vgui/matselect.lua (274 lines).  It is the material
-	picker of the Material/Lamp/Colour tools: a DPanelList of DImageButtons, with the
-	selected one wearing a hover-frame PaintOver.
-
-	Notes for this fork:
-	  * GWEN is absent here, so the `GWEN.CreateTextureBorder` hover frame is guarded
-	    exactly like lua/vgui/PropSelect.lua:33-50 does it - ask GWEN first, otherwise
-	    draw the same frame with surface.DrawOutlinedRect.
-	  * GMod reads `self.List.VBar.Enabled` as a boolean field (its DVScrollBar keeps
-	    one); this fork's DScrollBar answers Enabled() as a method, so VBarVisible()
-	    below takes both.
-	  * GMod registers this control with vgui.Register (no derma metadata, and no
-	    global); this fork's derma.DefineControl is used instead so MatSelect lands in
-	    the same registry as every other control (and gets published as a global like
-	    the rest - see AGENTS.md 5.0.8).
-	  * `self.BaseClass.ControlValues( self, kv )` is the framework's parent-class
-	    proxy, the same call PropSelect makes.
---]]
 
 local PANEL = {}
 
@@ -35,40 +9,13 @@ AccessorFunc( PANEL, "m_bSizeToContent", "AutoHeight", FORCE_BOOL )
 local border = 0
 local border_w = 8
 local matHover = Material( "gui/ps_hover.png", "nocull" )
-
--- GMod: GWEN.CreateTextureBorder( ... ).  No GWEN in this fork - see the header.
-local boxHover = nil
-
-if ( GWEN and GWEN.CreateTextureBorder and matHover ) then
-	boxHover = GWEN.CreateTextureBorder( border, border, 64 - border * 2, 64 - border * 2,
-		border_w, border_w, border_w, border_w, matHover )
-end
-
---- this fork's DScrollBar answers Enabled() as a method, GMod's DVScrollBar has the
---- field (see the header)
-local function VBarVisible( list )
-	local bar = list and list.VBar
-
-	if ( !IsValid( bar ) ) then return false end
-	if ( isfunction( bar.Enabled ) ) then return bar:Enabled() and true or false end
-
-	return bar.Enabled == true
-end
+local boxHover = GWEN.CreateTextureBorder( border, border, 64 - border * 2, 64 - border * 2, border_w, border_w, border_w, border_w, matHover )
 
 -- This function is used as the paint function for selected buttons
 function PANEL:SelectedItemPaintOver( w, h )
 
 	-- self in this context would be the selected item!
-	if ( boxHover ) then
-		boxHover( 0, 0, w, h, color_white )
-		return
-	end
-
-	surface.DrawSetColor( 255, 255, 255, 255 )
-
-	for i = 0, border_w - 1 do
-		surface.DrawOutlinedRect( i, i, w - i, h - i )
-	end
+	boxHover( 0, 0, w, h, color_white )
 
 end
 
@@ -207,7 +154,7 @@ end
 function PANEL:SetItemSize( pnl )
 
 	local maxW = self:GetWide()
-	if ( VBarVisible( self.List ) ) then maxW = maxW - self.List.VBar:GetWide() end
+	if ( self.List.VBar && self.List.VBar.Enabled ) then maxW = maxW - self.List.VBar:GetWide() end
 
 	local w = self.ItemWidth
 	if ( w < 1 ) then
@@ -270,7 +217,7 @@ function PANEL:PerformLayout()
 	self.List:InvalidateLayout( true ) -- Rebuild
 
 	local maxW = self:GetWide()
-	if ( VBarVisible( self.List ) ) then maxW = maxW - self.List.VBar:GetWide() end
+	if ( self.List.VBar && self.List.VBar.Enabled ) then maxW = maxW - self.List.VBar:GetWide() end
 
 	local h = self.ItemHeight
 	if ( h < 1 ) then
@@ -323,7 +270,5 @@ function PANEL:OnRightClick( button )
 
 end
 
--- GMod registers this control through vgui.Register (no derma metadata, and no
--- global); this fork's derma.DefineControl is used instead so MatSelect lands in the
--- same registry as every other control.  See the header note.
-derma.DefineControl( "MatSelect", "A grid of material thumbnails", PANEL, "ContextBase" )
+
+vgui.Register( "MatSelect", PANEL, "ContextBase" )

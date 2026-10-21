@@ -1,24 +1,3 @@
---[[ DListBoxItem / DListBox -- a multi-selectable list (GMod port).
-
-	Wiki: https://wiki.facepunch.com/gmod/DListBox
-	  Parent: DPanelList.  AddItem( label ), SelectItem( item, onlyme ),
-	  SelectByName( name ), GetSelectedValues(), SelectedItems, Multiple,
-	  SetMultiple( b ).  Its rows are DListBoxItem (a DLabel with a Mother back
-	  pointer, https://wiki.facepunch.com/gmod/DListBoxItem).
-
-	Ported from GMod's lua/vgui/dlistbox.lua (195 lines, both controls - GMod keeps
-	them in one file, this fork has one control per file normally, but the item is
-	only ever created by the box, so they stay together).
-
-	Notes for this fork:
-	  * The list itself uses this fork's DPanelList field names through the GMod
-	    aliases added with this port (`Items`, `Padding`, `Spacing`).
-	  * `SelectItem` calls `self:OnSelect( item )` only when the control defines it
-	    (GMod's `if ( self.OnSelect )`), and the row's `DoClick` is the documented
-	    override point.
-	  * DListBoxItem's hover highlight needs `self.Hovered`; this fork's DLabel does
-	    not maintain it, so lua/vgui/DLabel.lua now sets it in its two cursor hooks.
---]]
 
 local PANEL = {}
 
@@ -40,7 +19,6 @@ function PANEL:OnMousePressed( mcode )
 	end
 
 	self:SetTextColor( color_black )
-
 end
 
 function PANEL:Paint( w, h )

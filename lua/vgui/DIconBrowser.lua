@@ -1,27 +1,3 @@
---[[ DIconBrowser -- a grid of every Silkicon, with a filter (GMod port).
-
-	Wiki: https://wiki.facepunch.com/gmod/DIconBrowser
-	  Parent: DScrollPanel.  Fill(), SelectIcon( name ), ScrollToSelected(),
-	  FilterByText( text ), Add( name ), Clear(), SetManual( b ), GetSelectedIcon(),
-	  and the OnChange override the spawn menu's icon picker uses.
-
-	Ported from GMod's lua/vgui/diconbrowser.lua (159 lines).  It fills itself from
-	the icon folders with file.Find the first time it paints, one DImageButton per
-	icon, added a millisecond apart so the texture loads are spread over frames.
-
-	Notes for this fork:
-	  * `file.Find( "materials/icon16/*.png", "MOD" )` is GMod's Silkicon list.  The
-	    fork's own icons live under materials/ (the same folders GMod's spawn menu
-	    uses), so the same call works here - an empty answer just leaves the browser
-	    empty, which is why Fill is still guarded.
-	  * DImageButton:SetOnViewMaterial / GetImage did not exist here; they were added
-	    to lua/vgui/DImageButton.lua with this port (its DImage has the same call).
-	  * The selected icon's highlight is `derma.SkinHook( "Paint", "Selection" )` in
-	    GMod, and this fork's skin has no PaintSelection, so the fallback below draws
-	    a border instead of leaving the selection invisible.
-	  * DScrollPanel:ScrollToChild was added with this port (ScrollToSelected and
-	    OnChange's caller use it).
---]]
 
 local PANEL = {}
 
@@ -114,12 +90,7 @@ function PANEL:Fill()
 
 				if ( self.m_pSelectedIcon != pnl ) then return end
 
-				-- GMod: derma.SkinHook( "Paint", "Selection", pnl, w, h ) -- its skin
-				-- draws the highlight.  No PaintSelection here, so draw a bright frame.
-				if ( derma.SkinHook( "Paint", "Selection", pnl, w, h ) ) then return end
-
-				surface.DrawSetColor( 255, 200, 0, 220 )
-				surface.DrawOutlinedRect( 0, 0, w, h )
+				derma.SkinHook( "Paint", "Selection", pnl, w, h )
 
 			end
 

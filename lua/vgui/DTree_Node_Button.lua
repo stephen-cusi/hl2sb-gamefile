@@ -1,16 +1,3 @@
---[[ DTree_Node_Button -- the clickable caption row of a tree node (GMod port).
-
-	Wiki: https://wiki.facepunch.com/gmod/DTree_Node_Button
-	  Parent: DButton.  It is the label half of DTree_Node: a left inset makes room
-	  for the node's icon and expander, and UpdateColours picks the tree's
-	  Selected / Hover / Normal text colour.
-
-	Ported from GMod's lua/vgui/dtree_node_button.lua (37 lines).
-
-	Note for this fork: `SetTextInset` / `SetContentAlignment` are now real on
-	DButton, and DButton:ApplySchemeSettings calls UpdateColours (added with this
-	port) - before that the colour override here was never reached.
---]]
 
 local PANEL = {}
 

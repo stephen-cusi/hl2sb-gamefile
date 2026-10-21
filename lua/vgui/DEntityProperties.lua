@@ -1,20 +1,3 @@
---[[ DEntityProperties -- the entity's own property sheet (GMod port).
-
-	Wiki: https://wiki.facepunch.com/gmod/DEntityProperties
-	  Parent: DProperties.  SetEntity( ent ), RebuildControls(), EditVariable(
-	  varname, editdata ), EntityLost() / OnEntityLost(), AllowAutoRefresh and
-	  Pre/PostAutoRefresh.
-
-	Ported from GMod's lua/vgui/dentityproperties.lua (128 lines).  Each entry in
-	`entity:GetEditingData()` becomes a row whose type string names the editor
-	("Float", "Boolean", "String", "Vector", ...), the value is read back with
-	GetNetworkKeyValue and written with EditValue -- so the whole property system
-	ported in the last round is driven from here.
-
-	Note for this fork: the rows are ordered with GMod's
-	SortedPairsByMemberValue, which was missing here and has now been added to
-	lua/includes/extensions/table.lua.
---]]
 
 local PANEL = {}
 
@@ -142,4 +125,4 @@ function PANEL:PostAutoRefresh()
 
 end
 
-derma.DefineControl( "DEntityProperties", "The entity's own property sheet", PANEL, "DProperties" )
+derma.DefineControl( "DEntityProperties", "", PANEL, "DProperties" )

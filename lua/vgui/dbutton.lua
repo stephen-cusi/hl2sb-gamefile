@@ -1,297 +1,42 @@
---[[ DButton -- a push button (original implementation).
-
-	The engine's C Button (vgui.Button) fires DoClick in C++ and never consults
-	a Lua DoClick field, so GMod's `button.DoClick = function() end` idiom does
-	not work on it.  This control lives on the scripted Panel instead, whose
-	OnMousePressed / OnMouseReleased are dispatched to Lua by
-	scripted_controls/lPanel.cpp, and DoClick is raised right there -- exactly
-	what GMod code expects. --]]
 
 local PANEL = {}
 
--- The engine's own enable/disable, kept before the class override below hides
--- the name; the scripted Panel metatable is where it lives.
-local PanelMeta = FindMetaTable( "Panel" )
-local EngineSetEnabled = PanelMeta and PanelMeta.SetEnabled
+AccessorFunc( PANEL, "m_bBorder", "DrawBorder", FORCE_BOOL )
 
 function PANEL:Init()
-	self:SetText( "" )
-	self:SetContentAlignment( 5 )		-- GMod's dbutton.lua:8 (centred captions)
+
+	self:SetContentAlignment( 5 )
+
+	--
+	-- These are Lua side commands
+	-- Defined above using AccessorFunc
+	--
+	self:SetDrawBorder( true )
+	self:SetPaintBackground( true )
+
+	self:SetTall( 22 )
 	self:SetMouseInputEnabled( true )
-	self:SetKeyBoardInputEnabled( false )
-	self:SetDrawBackground( false )
-	self.m_strFont = "DermaDefault"
-	self.m_bDepressed = false
-	self.m_bHover = false
-	self.m_bEnabled = true
+	self:SetKeyboardInputEnabled( true )
+
+	self:SetCursor( "hand" )
+	self:SetFont( "DermaDefault" )
+
 end
 
-function PANEL:SetText( strText )
-	self.m_strText = tostring( strText or "" )
-end
-
-function PANEL:GetText()
-	return self.m_strText or ""
-end
-
-function PANEL:SetFont( strFont )
-	self.m_strFont = strFont
-end
-
-function PANEL:GetFont()
-	return self.m_strFont
-end
-
---- GMod: DLabel:SetTextStyleColor( clr ) -- the colour of the caption, set by a
---- control's UpdateColours.  This fork stores the label colour in m_colText, so
---- the two names point at the same value.
-function PANEL:SetTextStyleColor( clr )
-	self.m_colText = clr or self.m_colText
-end
-
-function PANEL:GetTextStyleColor()
-	return self.m_colText
-end
-
---- GMod: DButton's scheme pass asks the skin for its colours and then lets the
---- control override them (`UpdateColours`, which DTree_Node_Button and several
---- other ported controls define).  Nothing dispatched it before, so those
---- overrides were dead code.
-function PANEL:ApplySchemeSettings()
-	if ( isfunction( self.UpdateColours ) and self.GetSkin ) then
-		local skin = self:GetSkin()
-		if ( skin ) then self:UpdateColours( skin ) end
-	end
-end
-
-function PANEL:SetEnabled( b )
-	self.m_bEnabled = b
-	if ( EngineSetEnabled ) then EngineSetEnabled( self, b ) end
-end
-
-function PANEL:IsEnabled()
-	return self.m_bEnabled
-end
-
---- GMod: DButton:IsDown() -- "Returns whether the button is currently held down."
---- (GMod's own dbutton.lua:26 reads its `Depressed` field; see SetDepressedState
---- below - ported GMod controls read the field directly, DSlider's knob logic
---- being the reason it exists.)
 function PANEL:IsDown()
-	return self.Depressed == true
+
+	return self.Depressed
+
 end
-
---- GMod's engine writes the `Depressed` field on the panel's Lua table on
---- press/release; this fork keeps the state in m_bDepressed, so both are set
---- together (verbatim GMod code reads .Depressed - dslider.lua's IsEditing
---- and the skin's PaintSliderKnob states).
-function PANEL:SetDepressedState( b )
-	self.m_bDepressed = b and true or false
-	self.Depressed = self.m_bDepressed
-end
-
---- GMod: DButton derives from DLabel, so GetContentSize / SizeToContents come along
---- with it; this fork's DButton derives from DPanel and neither existed, which
---- DTab (lua/vgui/DTab.lua) needs to size itself from its caption
---- ("local w, h = self:GetContentSize(); self:SetSize( w + 10, h )").
---- The text inset counts, like vgui2's `Label::GetContentSize`
---- (`wide = (tx1 - tx0) + _textInset[0]`, vgui2/vgui_controls/Label.cpp): DTab insets
---- its caption by `10 + icon width` first, so without it the tab is too narrow and the
---- caption is clipped.
-function PANEL:GetContentSize()
-	local w, h = derma.GetTextSize( self.m_strFont or "DermaDefault", self.m_strText or "" )
-
-	w = w + ( self.m_iTextInsetX or 0 )
-
-	if ( IsValid( self.m_Image ) ) then
-		w = w + self.m_Image:GetWide()
-	end
-
-	return w, h
-end
-
-function PANEL:SizeToContents()
-	local w, h = self:GetContentSize()
-	self:SetSize( w + 8, h + 6 )
-end
-
-function PANEL:OnMousePressed( code )
-	-- GMod fires DoMiddleClick on PRESS (dlabel.lua:259-261); right-click is
-	-- fired on RELEASE below, gated by IsEnabled like GMod's dlabel.lua:250-252
-	-- (the old press-time right-click here fired even on disabled buttons).
-	if ( code == MOUSE_MIDDLE ) then
-		self:DoMiddleClick()
-		return
-	end
-
-	if ( not self.m_bEnabled ) then return end
-
-	self:SetDepressedState( true )
-	self.m_bHover = true
-
-	-- Without the capture, releasing the button outside the panel never reaches
-	-- us and m_bDepressed sticks; with it, OnMouseReleased decides below
-	-- whether the cursor is still over the button (GMod's cancel behaviour).
-	self:MouseCapture( true )
-
-	-- Drag & drop: only does anything on a panel made droppable with
-	-- Panel:Droppable( name ) (dragdrop.lua:425 returns immediately otherwise).
-	-- GMod gets this from DLabel (GMod's DButton derives from DLabel); this fork's
-	-- DButton derives from DPanel, which carries the same two calls.
-	self:DragMousePress( code )
-end
-
-function PANEL:OnCursorEntered()
-	if ( self.m_bEnabled ) then
-		self.m_bHover = true
-		-- GMod's DLabel keeps the same state under this name, and ported controls
-		-- read it (DTree_Node_Button:UpdateColours checks self.Hovered).
-		self.Hovered = true
-	end
-end
-
-function PANEL:OnCursorExited()
-	self.m_bHover = false
-	self.Hovered = false
-end
-
-function PANEL:OnMouseReleased( code )
-	local wasDepressed = self.m_bDepressed
-	self:SetDepressedState( false )
-	self:MouseCapture( false )
-
-	-- The drag has to be resolved FIRST: while dragging, the cursor is normally no
-	-- longer over this button (m_bHover false), so the hover test below would skip
-	-- the drop and the drag would never land.  GMod's DLabel does the same
-	-- (`if ( self:DragMouseRelease( mousecode ) ) then return end` before its click
-	-- handling); for a plain button DragMouseRelease returns false and the click
-	-- below runs exactly as before.
-	if ( self:DragMouseRelease( code ) ) then
-		return
-	end
-
-	if ( code == MOUSE_RIGHT ) then
-		if ( self.m_bEnabled and wasDepressed and self.m_bHover ~= false ) then
-			self:DoRightClick()
-		end
-		return
-	end
-
-	if ( not self.m_bEnabled ) then return end
-	if ( not wasDepressed ) then return end
-	if ( self.m_bHover == false ) then return end
-
-	self:DoClickInternal()
-	self:DoClick()
-end
-
-function PANEL:OnMouseCaptureLost()
-	self:SetDepressedState( false )
-end
-
---- GMod's default click does nothing; scripts overwrite this field.
-function PANEL:DoClick()
-end
-
---- GMod's engine fires DoClickInternal BEFORE DoClick on every button
---- (dmenuoption's checkable toggle rides on it); this stage is where the
---- SetActionFunction / SetConsoleCommand callbacks run so a script assigning
---- btn.DoClick does not strand them.
-function PANEL:DoClickInternal()
-	if ( self.m_fnAction ) then
-		local ok, err = pcall( self.m_fnAction, self )
-		if ( not ok ) then Warning( "DButton action failed: " .. tostring( err ) .. "\n" ) end
-	end
-
-	if ( self.m_strConCommand ~= nil and self.m_strConCommand ~= "" ) then
-		if ( RunConsoleCommand ~= nil ) then
-			RunConsoleCommand( self.m_strConCommand, self.m_strConArgs )
-		end
-	end
-end
-
---- GMod's right-click hook.
-function PANEL:DoRightClick()
-end
-
---- GMod's middle-click hook (dlabel.lua:259-261); DBinder's reset relies on it.
-function PANEL:DoMiddleClick()
-end
-
---- GMod: DButton:SetConsoleCommand( command, args ) -- click runs the command
---- (gmod wiki); DForm guards its absence, addons don't.
-function PANEL:SetConsoleCommand( strCommand, strArgs )
-	self.m_strConCommand = tostring( strCommand or "" )
-	self.m_strConArgs = strArgs and tostring( strArgs ) or ""
-end
-
---- GMod: DButton:SetActionFunction( fn ) / SetConsoleCommand's Lua twin -- kept as
---- a stored callback fired from DoClick for the "Button" compat control below.
-function PANEL:SetActionFunction( fn )
-	self.m_fnAction = fn
-end
-
---- GMod: Panel:SetContentAlignment( align ) / SetTextInset( x, y ).
----
---- GMod's numbering is a numpad grid - its own derma_gwen.lua:216-218 maps
---- Right/Center/Left to 6/5/4, dbutton.lua:8 centres with 5:
----
----     7 8 9    northwest  north     northeast
----     4 5 6    west       center    east
----     1 2 3    southwest  south     southeast
----
---- (Stock vgui2's Label enum is 0-based: a_west=3, a_center=4 - shifted by one
---- against GMod.  The previous fork implementation used that 0-based table,
---- so GMod-ported callers passing 4 for "left" rendered centred text - the
---- player-model menu rows being the report that found it.)
-function PANEL:SetContentAlignment( align )
-	self.m_iContentAlignment = align
-end
-
-function PANEL:GetContentAlignment()
-	return self.m_iContentAlignment or 5
-end
-
-function PANEL:SetTextInset( x, y )
-	self.m_iTextInsetX = x or 0
-	self.m_iTextInsetY = y or 0
-end
-
-function PANEL:GetTextInset()
-	return self.m_iTextInsetX or 0, self.m_iTextInsetY or 0
-end
-
---- GMod: DButton:SetToggle( b ) / GetToggle() -- a toggled button stays visually
---- "held" (DColumnSheet's tabs drive this through SetActiveButton; DNumPad's
---- sticky keys use SetSelected instead).  GMod draws it from its skin; this
---- fork's skin has no such state, so Paint tints it below.
-function PANEL:SetToggle( b )
-	self.m_bToggle = b and true or false
-end
-
-function PANEL:GetToggle()
-	return self.m_bToggle == true
-end
-
--- NOTE: SetSelected / IsSelected are deliberately NOT overridden here.  The
--- Panel metatable owns them (includes/extensions/client/panel/selections.lua:47
--- sets self.m_bSelected and ApplySchemeSettings, with IsSelected gated on
--- IsSelectable), and DNumPad's sticky keys / DColumnSheet's tabs both go through
--- that path.  Paint below reads the same m_bSelected field.
-
---[[ GMod's DButton keeps an icon in a child DImage (its dbutton.lua:32-52, with
-	`PANEL.SetIcon = PANEL.SetImage`); DColumnSheet's tabs, DProperty_Entity and
-	MatSelect all call it.  This fork paints its own caption, so PerformLayout parks
-	the image on the left and Paint starts the text after it. ]]
 
 function PANEL:SetImage( img )
+
 	if ( !img ) then
+
 		if ( IsValid( self.m_Image ) ) then
 			self.m_Image:Remove()
-			self.m_Image = nil
 		end
 
-		self:InvalidateLayout()
 		return
 	end
 
@@ -300,21 +45,20 @@ function PANEL:SetImage( img )
 	end
 
 	self.m_Image:SetImage( img )
-	self.m_Image:SetMouseInputEnabled( false )
-
-	if ( self.m_Image.SizeToContents ) then
-		self.m_Image:SizeToContents()
-	end
-
+	self.m_Image:SizeToContents()
 	self:InvalidateLayout()
-end
 
+end
 PANEL.SetIcon = PANEL.SetImage
 
---- GMod: DButton:SetMaterial( mat ) -- the same slot, given an IMaterial.
 function PANEL:SetMaterial( mat )
+
 	if ( !mat ) then
-		self:SetImage( nil )
+
+		if ( IsValid( self.m_Image ) ) then
+			self.m_Image:Remove()
+		end
+
 		return
 	end
 
@@ -322,87 +66,128 @@ function PANEL:SetMaterial( mat )
 		self.m_Image = vgui.Create( "DImage", self )
 	end
 
-	if ( self.m_Image.SetMaterial ) then
-		self.m_Image:SetMaterial( mat )
-	end
-
-	self.m_Image:SetMouseInputEnabled( false )
+	self.m_Image:SetMaterial( mat )
+	self.m_Image:SizeToContents()
 	self:InvalidateLayout()
+
 end
 
-function PANEL:GetImage()
-	if ( IsValid( self.m_Image ) and self.m_Image.GetImage ) then
-		return self.m_Image:GetImage()
+function PANEL:Paint( w, h )
+
+	derma.SkinHook( "Paint", "Button", self, w, h )
+
+	--
+	-- Draw the button text
+	--
+	return false
+
+end
+
+function PANEL:UpdateColours( skin )
+
+	if ( !self:IsEnabled() )					then return self:SetTextStyleColor( skin.Colours.Button.Disabled ) end
+	if ( self:IsDown() || self.m_bSelected )	then return self:SetTextStyleColor( skin.Colours.Button.Down ) end
+	if ( self.Hovered )							then return self:SetTextStyleColor( skin.Colours.Button.Hover ) end
+
+	return self:SetTextStyleColor( skin.Colours.Button.Normal )
+
+end
+
+function PANEL:PerformLayoutImage()
+	--
+	-- If we have an image we have to place the image on the left
+	-- and make the text align to the left, then set the inset
+	-- so the text will be to the right of the icon.
+	--
+	if ( IsValid( self.m_Image ) ) then
+
+		local targetSize = math.min( self:GetWide() - 4, self:GetTall() - 4 )
+
+		local imgW, imgH = self.m_Image.ActualWidth, self.m_Image.ActualHeight
+		local zoom = math.min( targetSize / imgW, targetSize / imgH, 1 )
+		local newSizeX = math.ceil( imgW * zoom )
+		local newSizeY = math.ceil( imgH * zoom )
+
+		self.m_Image:SetWide( newSizeX )
+		self.m_Image:SetTall( newSizeY )
+
+		if ( self:GetWide() < self:GetTall() ) then
+			self.m_Image:SetPos( 4, ( self:GetTall() - self.m_Image:GetTall() ) * 0.5 )
+		else
+			self.m_Image:SetPos( 2 + ( targetSize - self.m_Image:GetWide() ) * 0.5, ( self:GetTall() - self.m_Image:GetTall() ) * 0.5 )
+		end
+
+		-- For center alignments, reduce the inset of the image, so the text appears more centered visually
+		local alignment = self:GetContentAlignment()
+		if ( alignment == 8 || alignment == 5 || alignment == 2 ) then
+			self:SetTextInset( self.m_Image:GetWide() + 4, 0 )
+		else
+			self:SetTextInset( self.m_Image:GetWide() + 8, 0 )
+		end
+
 	end
 end
 
 function PANEL:PerformLayout( w, h )
-	if ( !IsValid( self.m_Image ) ) then return end
 
-	w = w or self:GetWide()
-	h = h or self:GetTall()
+	self:PerformLayoutImage()
 
-	local iw, ih = self.m_Image:GetSize()
-	self.m_Image:SetPos( 3, math.floor( ( h - ih ) / 2 ) )
+	DLabel.PerformLayout( self, w, h )
+
 end
 
-function PANEL:Paint( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
+function PANEL:SetConsoleCommand( strName, strArg, ... )
 
-	derma.SkinHook( "Paint", "Button", self, w, h )
-
-	-- a toggled / selected button keeps a visible marker on top of the skin
-	if ( self.m_bToggle or self.m_bSelected ) then
-		surface.DrawSetColor( 52, 108, 190, 90 )
-		surface.DrawFilledRect( 0, 0, w, h )
-	end
-
-	local text = self.m_strText or ""
-	if ( text == "" ) then return end
-
-	local tw, th = derma.GetTextSize( self.m_strFont, text )
-
-	-- GMod's numpad numbering (see SetContentAlignment above): shift to
-	-- 0-based columns/rows - ax 0 left / 1 centre / 2 right, ay 0 top /
-	-- 1 middle / 2 bottom.  0 sits outside the grid and reads as northwest,
-	-- like vgui2's a_northwest default.
-	local align = self.m_iContentAlignment or 5
-	local a = align - 1
-	if ( a < 0 ) then a = 6 end
-
-	local ax = a % 3
-	local ay = math.floor( a / 3 )
-
-	local x = 0
-	if ( ax == 1 ) then x = math.floor( ( w - tw ) / 2 )
-	elseif ( ax == 2 ) then x = w - tw end
-
-	-- an icon (SetImage, above) sits on the left: keep the caption clear of it
-	if ( IsValid( self.m_Image ) ) then
-		local iw = self.m_Image:GetWide()
-
-		if ( ax == 1 ) then
-			x = math.max( x, 3 + iw )
-		else
-			x = x + 3 + iw
+	if ( select( "#", ... ) > 0 ) then
+		local extraArgs = { ... }
+		self.DoClick = function( slf, val )
+			RunConsoleCommand( strName, strArg, unpack( extraArgs ) )
 		end
+		return
 	end
 
-	local y = 0
-	if ( ay == 1 ) then y = math.floor( ( h - th ) / 2 )
-	elseif ( ay == 2 ) then y = h - th end
+	self.DoClick = function( slf, val )
+		RunConsoleCommand( strName, strArg )
+	end
 
-	local clr = self.m_colText or ( self.m_bEnabled and Color( 228, 228, 228, 255 ) or Color( 120, 120, 120, 255 ) )
-	derma.DrawText( self.m_strFont, x + ( self.m_iTextInsetX or 0 ), y + ( self.m_iTextInsetY or 0 ), text, clr )
 end
 
-derma.DefineControl( "DButton", "HL2SB push button", PANEL, "DPanel" )
+function PANEL:SizeToContents()
+	self:PerformLayoutImage() -- Set the text inset first.
+	local w, h = self:GetContentSize()
 
---[[ GMod's lua/vgui/dbutton.lua:179-193 registers a separate "Button" control for
-	backwards compatibility (SetActionFunction-based).  Nothing here means that a
-	`vgui.Create( "Button" )` built the engine's C Button -- which, per the header
-	note at the top of this file, never consults a Lua DoClick, so addon buttons
-	were silently unclickable.  Register the same table under GMod's name. ]]
+	self:SetSize( w + 8, h + 4 )
+end
 
-derma.DefineControl( "Button", "GMod backwards-compatibility button", PANEL, "DPanel" )
+function PANEL:SizeToContentsX( addVal )
+	self:PerformLayoutImage() -- Set the text inset first.
+	local w, h = self:GetContentSize()
+
+	self:SetWide( w + 8 + ( addVal or 0 ) )
+end
+
+function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
+
+	local ctrl = vgui.Create( ClassName )
+	ctrl:SetText( "Example Button" )
+	ctrl:SetWide( 200 )
+
+	PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )
+
+end
+
+local PANEL = derma.DefineControl( "DButton", "A standard Button", PANEL, "DLabel" )
+
+PANEL = table.Copy( PANEL )
+
+function PANEL:SetActionFunction( func )
+
+	self.DoClick = function( slf, val ) func( slf, "Command", 0, 0 ) end
+
+end
+
+-- No example for this control. Should we remove this completely?
+function PANEL:GenerateExample( class, tabs, w, h )
+end
+
+derma.DefineControl( "Button", "Backwards Compatibility", PANEL, "DLabel" )

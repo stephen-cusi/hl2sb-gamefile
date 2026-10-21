@@ -1,114 +1,188 @@
---[[ DListView_Line -- one selectable row inside a DListView (original). --]]
 
 local PANEL = {}
 
 function PANEL:Init()
+
+	self:SetTextInset( 5, 0 )
+
+end
+
+function PANEL:UpdateColours( skin )
+
+	if ( self:GetParent():IsLineSelected() ) then return self:SetTextStyleColor( skin.Colours.Label.Bright ) end
+
+	return self:SetTextStyleColor( skin.Colours.Label.Dark )
+
+end
+
+function PANEL:GenerateExample()
+
+	-- Do nothing!
+
+end
+
+derma.DefineControl( "DListViewLabel", "", PANEL, "DLabel" )
+
+--[[---------------------------------------------------------
+	DListView_Line
+-----------------------------------------------------------]]
+
+local PANEL = {}
+
+Derma_Hook( PANEL, "Paint", "Paint", "ListViewLine" )
+Derma_Hook( PANEL, "ApplySchemeSettings", "Scheme", "ListViewLine" )
+Derma_Hook( PANEL, "PerformLayout", "Layout", "ListViewLine" )
+
+AccessorFunc( PANEL, "m_iID", "ID" )
+AccessorFunc( PANEL, "m_pListView", "ListView" )
+AccessorFunc( PANEL, "m_bAlt", "AltLine" )
+
+function PANEL:Init()
+
+	self:SetSelectable( true )
 	self:SetMouseInputEnabled( true )
-	self:SetDrawBackground( false )
-	self.m_tColumns = {}
-	self.m_iRow = 0
-	self.m_bSelected = false
-	self.m_pList = nil
+
+	self.Columns = {}
+	self.Data = {}
+
 end
 
-function PANEL:SetList( pnlList )
-	self.m_pList = pnlList
+function PANEL:OnSelect()
+
+	-- For override
+
 end
 
-function PANEL:SetColumnWidths( tWidths )
-	self.m_tWidths = tWidths
+function PANEL:OnRightClick()
+
+	-- For override
+
 end
 
-function PANEL:SetColumnCount( i )
-	self.m_iColumnCount = i
+function PANEL:OnMousePressed( mcode )
+
+	if ( mcode == MOUSE_RIGHT ) then
+
+		-- This is probably the expected behaviour..
+		if ( !self:IsLineSelected() ) then
+
+			self:GetListView():OnClickLine( self, true )
+			self:OnSelect()
+
+		end
+
+		self:GetListView():OnRowRightClick( self:GetID(), self )
+		self:OnRightClick()
+
+		return
+
+	end
+
+	self:GetListView():OnClickLine( self, true )
+	self:OnSelect()
+
 end
 
-function PANEL:SetColumnText( iCol, strText )
-	self.m_tColumns[ iCol ] = tostring( strText or "" )
-end
+function PANEL:OnCursorMoved()
 
-function PANEL:GetColumnText( iCol )
-	return self.m_tColumns[ iCol ] or ""
-end
+	if ( input.IsMouseDown( MOUSE_LEFT ) ) then
+		self:GetListView():OnClickLine( self )
+	end
 
---- GMod: DListViewLine:GetID() -- the 1-based row index.  The minecraft SWEP
---- reads it right after AddLine (cl_init.lua:82).
-function PANEL:GetID()
-	return self.m_iIndex or self.m_iRow or 0
 end
 
 function PANEL:SetSelected( b )
+
 	self.m_bSelected = b
+
+	-- Update colors of the lines
+	for id, column in pairs( self.Columns ) do
+		column:ApplySchemeSettings()
+	end
+
 end
 
-function PANEL:IsSelected()
-	return self.m_bSelected
-end
-
---- GMod: DListViewLine:IsLineSelected() (its own spelling, used by the ported
---- GMod code and by DListViewLabel's UpdateColours).  Same state as IsSelected().
 function PANEL:IsLineSelected()
+
 	return self.m_bSelected
+
 end
 
---- GMod: DListViewLine:SetSortValue( i, data ) / GetSortValue( i ) -- what
---- DListView:SortByColumn sorts by when the caption is not the right key.
-function PANEL:SetSortValue( iCol, data )
-	self.m_tSortValues = self.m_tSortValues or {}
-	self.m_tSortValues[ iCol ] = data
-end
+function PANEL:SetColumnText( i, strText )
 
-function PANEL:GetSortValue( iCol )
-	return self.m_tSortValues and self.m_tSortValues[ iCol ]
-end
+	if ( type( strText ) == "Panel" ) then
 
-function PANEL:DoClick()
-	if ( self.m_pList ) then
-		self.m_pList:OnClickLine( self )
+		if ( IsValid( self.Columns[ i ] ) ) then self.Columns[ i ]:Remove() end
+
+		strText:SetParent( self )
+		self.Columns[ i ] = strText
+		self.Columns[ i ].Value = strText
+		return
+
 	end
-end
 
-function PANEL:DoRightClick()
-	if ( self.m_pList ) then
-		self.m_pList:OnClickLine( self, true )
+	if ( !IsValid( self.Columns[ i ] ) ) then
 
-		-- GMod: DListViewLine:OnMousePressed calls
-		-- self:GetListView():OnRowRightClick( self:GetID(), self )
-		if ( self.m_pList.OnRowRightClick ) then
-			self.m_pList:OnRowRightClick( self.m_iIndex, self )
-		end
+		self.Columns[ i ] = vgui.Create( "DListViewLabel", self )
+		self.Columns[ i ]:SetMouseInputEnabled( false )
+
+		-- Disable autostretch behavior since we are not using it anyway, it gets expensive fast
+		self.Columns[ i ].Think = nil
+
 	end
+
+	self.Columns[ i ]:SetText( tostring( strText ) )
+	self.Columns[ i ].Value = strText
+	return self.Columns[ i ]
+
+end
+PANEL.SetValue = PANEL.SetColumnText
+
+function PANEL:GetColumnText( i )
+
+	if ( !self.Columns[ i ] ) then return "" end
+
+	return self.Columns[ i ].Value
+
 end
 
---- GMod's list view answers DoDoubleClick( id, line ); DFileBrowser overrides it to
---- open a file.  The engine dispatches OnMouseDoublePressed for a panel (see DLabel),
---- and GMod's own call is `self:DoDoubleClick( Line:GetID(), Line )` - i.e. with the
---- method syntax, so the override sees ( self, id, line ).
-function PANEL:OnMouseDoublePressed( mousecode )
-	if ( self.m_pList and self.m_pList.DoDoubleClick ) then
-		self.m_pList:DoDoubleClick( self.m_iIndex, self )
+PANEL.GetValue = PANEL.GetColumnText
+
+--[[---------------------------------------------------------
+	Allows you to store data per column
+
+	Used in the SortByColumn function for incase you want to
+	sort with something else than the text
+-----------------------------------------------------------]]
+function PANEL:SetSortValue( i, data )
+
+	self.Data[ i ] = data
+
+end
+
+function PANEL:GetSortValue( i )
+
+	return self.Data[ i ]
+
+end
+
+function PANEL:DataLayout( ListView )
+
+	self:ApplySchemeSettings()
+
+	local height = self:GetTall()
+
+	local x = 0
+	for k, Column in pairs( self.Columns ) do
+
+		local w = ListView:ColumnWidth( k )
+		Column:SetPos( x, 0 )
+		Column:SetSize( w, height )
+		x = x + w
+
 	end
+
 end
 
-function PANEL:PerformLayout( w, h )
-	w = w or self:GetWide()
-end
-
-function PANEL:Paint( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
-
-	derma.SkinHook( "Paint", "ListViewLine", self, w, h )
-
-	local x = 4
-	for iCol, strText in ipairs( self.m_tColumns ) do
-		local colW = ( self.m_tWidths and self.m_tWidths[ iCol ] ) or 80
-		if ( strText ~= "" ) then
-			derma.DrawText( "DermaDefault", x, math.floor( ( h - 13 ) / 2 ), strText,
-				self.m_bSelected and Color( 255, 255, 255, 255 ) or Color( 210, 210, 210, 255 ) )
-		end
-		x = x + colW
-	end
-end
-
-derma.DefineControl( "DListView_Line", "HL2SB list row", PANEL, "DPanel" )
+derma.DefineControl( "DListViewLine", "A line from the List View", PANEL, "Panel" ) -- Legacy
+derma.DefineControl( "DListView_Line", "A line from the List View", PANEL, "Panel" )

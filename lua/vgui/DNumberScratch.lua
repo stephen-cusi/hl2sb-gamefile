@@ -1,59 +1,7 @@
---[[ DNumberScratch -- a scratch-to-adjust number field (GMod port).
-
-	Wiki: https://wiki.facepunch.com/gmod/DNumberScratch
-	  Parent: DImageButton.  GetMin / SetMin, GetMax / SetMax, GetZoom / SetZoom,
-	  GetFloatValue / SetFloatValue, GetDecimals / SetDecimals, SetValue / GetValue,
-	  SetFraction / GetFraction, IsEditing, and OnValueChanged (override).
-
-	Ported from GMod's lua/vgui/dnumberscratch.lua (373 lines).  Holding the left
-	mouse button opens a scratch window and moving the cursor scrubs the value;
-	the right mouse button scrubs without the window.  It is the control GMod's
-	spawn menu uses for any loose number.
-
-	Notes for this fork:
-	  * Material(): there are no Lua IMaterial panels here, so the two scratch
-	    window textures are loaded through surface.CreateNewTextureID +
-	    DrawSetTextureFile - the same path lua/vgui/DImage.lua uses - and drawn with
-	    DrawSetTexture / DrawTexturedRect in place of SetMaterial / DrawTexturedRect.
-	  * Text: surface.GetTextSize is the two-argument engine binding here
-	    (lua/game/client/font.lua redefines the one-argument GMod form), so both the
-	    notch labels and the big value go through derma.GetTextSize / derma.DrawText
-	    with the font named, exactly like DLabel does.
-	  * render.SetScissorRect is the engine binding's GMod name; this fork binds it
-	    as render.SetScissorRectangle (public/lua/lrender.cpp:475), so that is what
-	    the window uses.
-	  * GMod draws the scratch window from a "DrawOverlay" hook.  This fork has no
-	    such hook (its overlay entry points are the HUD ones), but it does dispatch
-	    PaintOver now (AGENTS.md 5.0.4), and DrawScreen already disables clipping -
-	    so the window is painted from PaintOver instead.
-	  * Think -> OnThink (AGENTS.md 5.0.3).
-	  * ConVarNumberThink / UpdateConVar: ConVarChanged is redefined with GMod's
-	    one-argument contract (see DNumPad.lua / DBinder.lua).
---]]
 
 DEFINE_BASECLASS( "DImageButton" )
 
 local g_Active = nil
-
--- one texture id per material NAME, shared (there is no Lua IMaterial here)
-local ScratchTex = {}
-
-local function ScratchTexture( path )
-	local id = ScratchTex[ path ]
-
-	if ( id == nil ) then
-		if ( surface.CreateNewTextureID ) then
-			id = surface.CreateNewTextureID()
-			surface.DrawSetTextureFile( id, path, 1, true )
-		else
-			id = false
-		end
-
-		ScratchTex[ path ] = id
-	end
-
-	return id or nil
-end
 
 local PANEL = {}
 
@@ -67,14 +15,6 @@ AccessorFunc( PANEL, "m_bDrawScreen",	"ShouldDrawScreen" )
 
 Derma_Install_Convar_Functions( PANEL )
 
---- GMod: Panel:ConVarChanged( strNewValue ).  See the header.
-function PANEL:ConVarChanged( a, b, c )
-	if ( b ~= nil or c ~= nil ) then return end
-	if ( !self.m_strConVar or #self.m_strConVar < 2 ) then return end
-
-	RunConsoleCommand( self.m_strConVar, tostring( a ) )
-end
-
 function PANEL:Init()
 
 	self:SetMin( 0 )
@@ -86,8 +26,8 @@ function PANEL:Init()
 
 	self.MouseX = 0
 	self.MouseY = 0
-	self.m_strUnderTexture = "gui/numberscratch_under.png"
-	self.m_strCoverTexture = "gui/numberscratch_cover.png"
+	self.UnderMaterial = Material( "gui/numberscratch_under.png" )
+	self.CoverMaterial = Material( "gui/numberscratch_cover.png" )
 
 	self:SetImage( "icon16/scratchnumber.png" )
 	self:SetStretchToFit( false )
@@ -99,7 +39,7 @@ end
 
 function PANEL:SetValue( val )
 
-	val = tonumber( val )
+	local val = tonumber( val )
 	if ( val == nil ) then return end
 	if ( val == self:GetFloatValue() ) then return end
 
@@ -194,10 +134,7 @@ function PANEL:OnCursorMoved( x, y )
 	local maxzoom = 10 ^ ( 1 + self:GetDecimals() )
 
 	zoom = math.Clamp( zoom + ( ( y * -0.6 ) / ControlScale ), 0.01, maxzoom )
-	-- GMod's enum is KEY_LSHIFT; this engine publishes the same key as
-	-- KEY_SHIFT_LEFT (public/lenumerations_shared.cpp:798) -- with GMod's name
-	-- this read nil and the first drag threw "bad argument #1 to 'IsKeyDown'".
-	if ( !input.IsKeyDown( KEY_LSHIFT or KEY_SHIFT_LEFT ) ) then self:SetZoom( zoom ) end
+	if ( !input.IsKeyDown( KEY_LSHIFT ) ) then self:SetZoom( zoom ) end
 
 	local oldValue = self:GetFloatValue()
 	local value = self:GetFloatValue()
@@ -250,8 +187,10 @@ function PANEL:DrawNotches( level, x, y, w, h, range, value, min, max )
 	local frame_width = math.ceil( range * self:GetZoom() )
 	local targetW = math.min( w - math.max( 0, frame_min - x ), frame_width - math.max( 0, x - frame_min ) )
 
-	surface.DrawSetColor( 0, 0, 0, alpha )
+	surface.SetDrawColor( 0, 0, 0, alpha )
 	surface.DrawRect( math.max( x, frame_min ), y + top, targetW, 2 )
+
+	surface.SetFont( "DermaDefault" )
 
 	for n = -span, span, 1 do
 
@@ -266,19 +205,20 @@ function PANEL:DrawNotches( level, x, y, w, h, range, value, min, max )
 		if ( val <= min + 0.001 ) then continue end
 		if ( val >= max - 0.001 ) then continue end
 
-		surface.DrawSetColor( 0, 0, 0, alpha * dist )
+		surface.SetDrawColor( 0, 0, 0, alpha * dist )
+		surface.SetTextColor( 0, 0, 0, alpha * dist )
 
 		surface.DrawRect( nx, y + top, 2, nh )
 
-		local str = tostring( val )
-		local tw, th = derma.GetTextSize( "DermaDefault", str )
+		local tw, th = surface.GetTextSize( val )
 
-		derma.DrawText( "DermaDefault", math.floor( nx - ( tw * 0.5 ) ), math.floor( y + top - th ),
-			str, Color( 0, 0, 0, alpha * dist ) )
+		surface.SetTextPos( nx - ( tw * 0.5 ), y + top - th )
+		surface.DrawText( val )
 
 	end
 
-	surface.DrawSetColor( 0, 0, 0, alpha )
+	surface.SetDrawColor( 0, 0, 0, alpha )
+	surface.SetTextColor( 0, 0, 0, alpha )
 
 	--
 	-- Draw the last one.
@@ -287,31 +227,30 @@ function PANEL:DrawNotches( level, x, y, w, h, range, value, min, max )
 	if ( nx < x + w ) then
 		surface.DrawRect( nx, y + top, 2, nh )
 
-		local str = tostring( max )
-		local tw, th = derma.GetTextSize( "DermaDefault", str )
+		local val = max
+		local tw, th = surface.GetTextSize( val )
 
-		derma.DrawText( "DermaDefault", math.floor( nx - ( tw * 0.5 ) ), math.floor( y + top - th ),
-			str, Color( 0, 0, 0, alpha ) )
+		surface.SetTextPos( nx - ( tw * 0.5 ), y + top - th )
+		surface.DrawText( val )
 	end
 
 	--
 	-- Draw the first
 	--
-	nx = realmid + min * self:GetZoom()
+	local nx = realmid + min * self:GetZoom()
 	if ( nx > x ) then
 		surface.DrawRect( nx, y + top, 2, nh )
 
-		local str = tostring( min )
-		local tw, th = derma.GetTextSize( "DermaDefault", str )
+		local val = min
+		local tw, th = surface.GetTextSize( val )
 
-		derma.DrawText( "DermaDefault", math.floor( nx - ( tw * 0.5 ) ), math.floor( y + top - th ),
-			str, Color( 0, 0, 0, alpha ) )
+		surface.SetTextPos( nx - ( tw * 0.5 ), y + top - th )
+		surface.DrawText( val )
 	end
 
 end
 
---- GMod's Think; this engine dispatches OnThink (AGENTS.md 5.0.3).
-function PANEL:OnThink()
+function PANEL:Think()
 
 	if ( !self:GetActive() ) then
 		self:ConVarNumberThink()
@@ -319,24 +258,8 @@ function PANEL:OnThink()
 
 end
 
-function PANEL:Think()
-	self:OnThink()
-end
-
 function PANEL:IsEditing()
 	return self:GetActive()
-end
-
---- GMod: the two Material()'d scratch textures.  See the header note.
-local function DrawScratchTexture( self, strPath, x, y, w, h )
-	local id = ScratchTexture( strPath )
-
-	surface.DrawSetColor( 255, 255, 255, 255 )
-
-	if ( id ) then
-		surface.DrawSetTexture( id )
-		surface.DrawTexturedRect( math.floor( x ), math.floor( y ), math.floor( w ), math.floor( h ) )
-	end
 end
 
 function PANEL:DrawScreen( x, y, w, h )
@@ -348,7 +271,9 @@ function PANEL:DrawScreen( x, y, w, h )
 	--
 	-- Background
 	--
-	DrawScratchTexture( self, self.m_strUnderTexture, x, y, w, h )
+	surface.SetMaterial( self.UnderMaterial )
+	surface.SetDrawColor( 255, 255, 255, 255 )
+	surface.DrawTexturedRect( x, y, w, h )
 
 	local min = self:GetMin()
 	local max = self:GetMax()
@@ -358,7 +283,7 @@ function PANEL:DrawScreen( x, y, w, h )
 	--
 	-- Background colour block
 	--
-	surface.DrawSetColor( 255, 250, 180, 100 )
+	surface.SetDrawColor( 255, 250, 180, 100 )
 	local targetX = x + w * 0.5 - ( ( value - min ) * self:GetZoom() )
 	local targetW = range * self:GetZoom()
 	targetW = targetW - math.max( 0, x - targetX )
@@ -376,19 +301,23 @@ function PANEL:DrawScreen( x, y, w, h )
 	--
 	-- Cover
 	--
-	DrawScratchTexture( self, self.m_strCoverTexture, x, y, w, h )
+	surface.SetMaterial( self.CoverMaterial )
+	surface.SetDrawColor( 255, 255, 255, 255 )
+	surface.DrawTexturedRect( x, y, w, h )
 
 	--
 	-- Text Value
 	--
+	surface.SetFont( "DermaLarge" )
 	local str = self:GetTextValue()
 	str = string.Comma( str )
-	local tw, th = derma.GetTextSize( "DermaLarge", str )
+	local tw, th = surface.GetTextSize( str )
 
 	draw.RoundedBoxEx( 8, x + w * 0.5 - tw / 2 - 10, y + h - 43, tw + 20, 39, Color( 0, 186, 255, 255 ), true, true, false, false )
 
-	derma.DrawText( "DermaLarge", math.floor( x + w * 0.5 - tw * 0.5 ), math.floor( y + h - th - 6 ),
-		str, Color( 255, 255, 255, 255 ) )
+	surface.SetTextColor( 255, 255, 255, 255 )
+	surface.SetTextPos( x + w * 0.5 - tw * 0.5, y + h - th - 6 )
+	surface.DrawText( str )
 
 	DisableClipping( wasEnabled )
 
@@ -411,20 +340,9 @@ function PANEL:PaintScratchWindow()
 	if ( x < 32 ) then x = 32 end
 	if ( y < 32 ) then y = 32 end
 
-	if ( render and render.SetScissorRectangle ) then render.SetScissorRectangle( x, y, x + w, y + h, true ) end
+	if ( render ) then render.SetScissorRect( x, y, x + w, y + h, true ) end
 		self:DrawScreen( x, y, w, h )
-	if ( render and render.SetScissorRectangle ) then render.SetScissorRectangle( 0, 0, 0, 0, false ) end
-
-end
-
---- GMod draws this from its "DrawOverlay" hook, which this fork does not have; it
---- does dispatch PaintOver (AGENTS.md 5.0.4), and DrawScreen disables clipping, so
---- the window is painted from there instead.
-function PANEL:PaintOver( w, h )
-
-	if ( IsValid( g_Active ) and g_Active == self ) then
-		self:PaintScratchWindow()
-	end
+	if ( render ) then render.SetScissorRect( x, y, w, h, false ) end
 
 end
 
@@ -444,4 +362,12 @@ function PANEL:GenerateExample()
 
 end
 
-derma.DefineControl( "DNumberScratch", "A number field you can scratch", PANEL, "DImageButton" )
+derma.DefineControl( "DNumberScratch", "", PANEL, "DImageButton" )
+
+hook.Add( "DrawOverlay", "DrawNumberScratch", function()
+
+	if ( !IsValid( g_Active ) ) then return end
+
+	g_Active:PaintScratchWindow()
+
+end )

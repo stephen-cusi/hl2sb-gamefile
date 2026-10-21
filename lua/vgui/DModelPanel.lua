@@ -1,73 +1,18 @@
---[[ DModelPanel -- a 3D model projected onto a 2D panel (original implementation).
-
-	Wiki: https://wiki.facepunch.com/gmod/DModelPanel
-	  "DModelPanel is a VGUI element that projects a 3D model onto a 2D plane."
-	  Parent: DButton.
-	  Events: LayoutEntity( ent ) / PreDrawModel( ent ) -> bool / PostDrawModel( ent )
-	  Methods: SetModel / GetModel / SetEntity / GetEntity / DrawModel / RunAnimation /
-	           SetCamPos / GetCamPos / SetLookAt / GetLookAt / SetLookAng / GetLookAng /
-	           SetFOV / GetFOV / SetAnimated / GetAnimated / SetAnimSpeed / GetAnimSpeed /
-	           SetAmbientLight / GetAmbientLight / SetDirectionalLight / SetColor /
-	           GetColor / StartScene
-
-	This is GMod's implementation with the four calls this engine does not have swapped
-	for the ones it does (all verified in the tree, sources in brackets):
-
-	    cam.Start3D( pos, ang, fov, x, y, w, h, zNear, zFar )
-	        -> render.PushView3D( ... )                     [game/client/lua/lrender.cpp:180]
-	    cam.End3D()           -> render.PopView3D()         [lrender.cpp:211]
-	    render.ResetModelLighting( r, g, b )
-	        -> render.ResetAmbientLightCube( r, g, b )      [lrender.cpp:356]
-	    render.SetModelLighting( i, r, g, b )
-	        -> render.SetLight( r, g, b, 255, dir, i )      [lrender.cpp:401] (directional)
-	    render.ClearDepth()   -> render.ClearBuffers( false, true, false )  [lrender.cpp:450]
-	    surface.GetScissorRect() + render.SetScissorRect
-	        -> render.SetScissorRectangle( l, t, r, b, on ) [lrender.cpp:475], with the rect
-	           taken from the panel itself (LocalToScreen + size) since no getter exists.
-	    Entity:SetIK( false ) -> skipped when the binding is absent.
-
-	`ClientsideModel` is the fork's shim for Entities.CreateClientEntity
-	(lua/includes/modules/gmod_compatibility/sh_init.lua:243 ->
-	game/shared/lua/lbaseflex_shared.cpp:206), and `SetNoDraw` is the ENTITY_META shim
-	that maps onto EF_NODRAW (sh_init.lua:772).
---]]
 
 local PANEL = {}
 
-AccessorFunc( PANEL, "m_fAnimSpeed", "AnimSpeed" )
-AccessorFunc( PANEL, "Entity", "Entity" )
-AccessorFunc( PANEL, "vCamPos", "CamPos" )
-AccessorFunc( PANEL, "fFOV", "FOV" )
-AccessorFunc( PANEL, "vLookatPos", "LookAt" )
-AccessorFunc( PANEL, "aLookAngle", "LookAng" )
-AccessorFunc( PANEL, "colAmbientLight", "AmbientLight" )
-AccessorFunc( PANEL, "colColor", "Color" )
-AccessorFunc( PANEL, "bAnimated", "Animated" )
-
---- GMod's BOX_* face -> a direction for render.SetLight.  The numbers are the ones the
---- engine publishes (sh_enumerations.lua: BOX_FRONT = 0 ... BOX_TOP = 4), read at call
---- time so a missing enum cannot break the file's load.
-local function FaceDirection( iDirection )
-	local front = BOX_FRONT or 0
-	local top = BOX_TOP or 4
-
-	if ( iDirection == front ) then return Vector( 0, 1, 0 ) end
-
-	local bottom = ( BOX_BOTTOM ~= nil ) and BOX_BOTTOM or 5
-	local left = ( BOX_LEFT ~= nil ) and BOX_LEFT or 3
-	local right = ( BOX_RIGHT ~= nil ) and BOX_RIGHT or 1
-	local back = ( BOX_BACK ~= nil ) and BOX_BACK or 2
-
-	if ( iDirection == top ) then return Vector( 0, 0, -1 ) end
-	if ( iDirection == bottom ) then return Vector( 0, 0, 1 ) end
-	if ( iDirection == left ) then return Vector( -1, 0, 0 ) end
-	if ( iDirection == right ) then return Vector( 1, 0, 0 ) end
-	if ( iDirection == back ) then return Vector( 0, -1, 0 ) end
-
-	return Vector( 0, 1, 0 )
-end
+AccessorFunc( PANEL, "m_fAnimSpeed",	"AnimSpeed" )
+AccessorFunc( PANEL, "Entity",			"Entity" )
+AccessorFunc( PANEL, "vCamPos",			"CamPos" )
+AccessorFunc( PANEL, "fFOV",			"FOV" )
+AccessorFunc( PANEL, "vLookatPos",		"LookAt" )
+AccessorFunc( PANEL, "aLookAngle",		"LookAng" )
+AccessorFunc( PANEL, "colAmbientLight",	"AmbientLight" )
+AccessorFunc( PANEL, "colColor",		"Color" )
+AccessorFunc( PANEL, "bAnimated",		"Animated" )
 
 function PANEL:Init()
+
 	self.Entity = nil
 	self.LastPaint = 0
 	self.DirectionalLight = {}
@@ -83,84 +28,69 @@ function PANEL:Init()
 
 	self:SetAmbientLight( Color( 50, 50, 50 ) )
 
-	self:SetDirectionalLight( BOX_TOP or 4, Color( 255, 255, 255 ) )
-	self:SetDirectionalLight( BOX_FRONT or 0, Color( 255, 255, 255 ) )
+	self:SetDirectionalLight( BOX_TOP, Color( 255, 255, 255 ) )
+	self:SetDirectionalLight( BOX_FRONT, Color( 255, 255, 255 ) )
 
 	self:SetColor( color_white )
+
 end
 
 function PANEL:SetDirectionalLight( iDirection, color )
 	self.DirectionalLight[ iDirection ] = color
 end
 
---- Create the clientside model this panel draws.  GMod: `ClientsideModel( model,
---- RENDERGROUP_OTHER )`.
 function PANEL:SetModel( strModelName )
+
+	-- Note - there's no real need to delete the old
+	-- entity, it will get garbage collected, but this is nicer.
 	if ( IsValid( self.Entity ) ) then
 		self.Entity:Remove()
 		self.Entity = nil
 	end
 
-	if ( not strModelName or strModelName == "" ) then return end
+	-- Note: Not in menu dll
+	if ( !ClientsideModel ) then return end
 
-	local create = _G.ClientsideModel
-		or ( _G.ents and _G.ents.CreateClientEntity )
+	self.Entity = ClientsideModel( strModelName, RENDERGROUP_OTHER )
+	if ( !IsValid( self.Entity ) ) then return end
 
-	if ( not create ) then
-		if ( not self.m_bNoModelReported ) then
-			self.m_bNoModelReported = true
-			Warning( "DModelPanel: no ClientsideModel/ents.CreateClientEntity in this realm\n" )
-		end
-
-		return
-	end
-
-	local ok, ent = pcall( create, strModelName, RENDERGROUP_OTHER or 0 )
-
-	if ( not ok or not IsValid( ent ) ) then
-		if ( not self.m_bBadModelReported ) then
-			self.m_bBadModelReported = true
-			Warning( "DModelPanel: could not create a clientside model for '" ..
-				tostring( strModelName ) .. "'\n" )
-		end
-
-		return
-	end
-
-	self.Entity = ent
 	self.Entity:SetNoDraw( true )
+	self.Entity:SetIK( false )
 
-	-- the IK binding does not exist in this fork (checked); GMod turns IK off so the
-	-- sequence is not fighting the foot placement
-	if ( self.Entity.SetIK ) then self.Entity:SetIK( false ) end
-
-	-- Try to find a nice sequence to play (GMod's three candidates, in order)
+	-- Try to find a nice sequence to play
 	local iSeq = self.Entity:LookupSequence( "walk_all" )
-	if ( ( not iSeq or iSeq <= 0 ) and self.Entity.LookupSequence ) then
-		iSeq = self.Entity:LookupSequence( "WalkUnarmed_all" )
-	end
-	if ( ( not iSeq or iSeq <= 0 ) and self.Entity.LookupSequence ) then
-		iSeq = self.Entity:LookupSequence( "walk_all_moderate" )
-	end
+	if ( iSeq <= 0 ) then iSeq = self.Entity:LookupSequence( "WalkUnarmed_all" ) end
+	if ( iSeq <= 0 ) then iSeq = self.Entity:LookupSequence( "walk_all_moderate" ) end
 
-	if ( iSeq and iSeq > 0 ) then self.Entity:ResetSequence( iSeq ) end
+	if ( iSeq > 0 ) then self.Entity:ResetSequence( iSeq ) end
+
 end
 
 function PANEL:GetModel()
-	if ( not IsValid( self.Entity ) ) then return end
+
+	if ( !IsValid( self.Entity ) ) then return end
 
 	return self.Entity:GetModel()
+
 end
 
---- Wiki: "Used by the DModelPanel's paint hook to draw the model and background."
 function PANEL:DrawModel()
-	-- GMod: render.ClearDepth( false ) + the panel's scissor rect around the draw
-	render.ClearBuffers( false, true, false )
 
-	if ( self:PreDrawModel( self.Entity ) ~= false ) then
+	-- Get the panel's scissor rect, and apply it to model render
+	local enabled, leftx, topy, rightx, bottomy = surface.GetScissorRect()
+
+	render.ClearDepth( false )
+
+	render.SetScissorRect( leftx, topy, rightx, bottomy, enabled )
+
+	local ret = self:PreDrawModel( self.Entity )
+	if ( ret != false ) then
 		self.Entity:DrawModel()
 		self:PostDrawModel( self.Entity )
 	end
+
+	render.SetScissorRect( 0, 0, 0, 0, false )
+
 end
 
 function PANEL:PreDrawModel( ent )
@@ -168,220 +98,89 @@ function PANEL:PreDrawModel( ent )
 end
 
 function PANEL:PostDrawModel( ent )
+
 end
 
 function PANEL:Paint( w, h )
-	-- HL2SB (perf): SpawnIcon sets this when the cell is scrolled off the
-	-- screen -- the live 3D render is the one expensive thing a thumbnail
-	-- does per frame, so an off-screen cell skips it entirely.
-	if ( self.m_bCulled ) then return end
 
-	w = w or self:GetWide()
-	h = h or self:GetTall()
-
-	if ( not IsValid( self.Entity ) ) then return end
-	if ( not ( render and render.PushView3D ) ) then return end
+	if ( !IsValid( self.Entity ) ) then return end
 
 	local x, y = self:LocalToScreen( 0, 0 )
 
 	self:LayoutEntity( self.Entity )
 
 	local ang = self.aLookAngle
-	if ( not ang ) then
-		local delta = self.vLookatPos - self.vCamPos
-
-		-- a camera exactly at its target has no direction: nudge it so Angle() is defined
-		if ( delta:LengthSqr() < 1e-6 ) then delta = Vector( 0, 1, 0 ) end
-
-		ang = delta:Angle()
+	if ( !ang ) then
+		ang = ( self.vLookatPos - self.vCamPos ):Angle()
 	end
 
-	-- clip the 3D view to the panel (this replaces GMod's
-	-- surface.GetScissorRect -> render.SetScissorRect dance)
-	if ( render.SetScissorRectangle ) then
-		render.SetScissorRectangle( x, y, x + w, y + h, true )
-	end
+	cam.Start3D( self.vCamPos, ang, self.fFOV, x, y, w, h, 5, self.FarZ )
 
-	render.PushView3D( self.vCamPos, ang, self.fFOV, x, y, w, h, 5, self.FarZ )
-
-	-- HL2SB: the hand-rolled light rig (ambient 50 + two white directionals via
-	-- render.SetLight) produced near-black thumbnails for most models -- the
-	-- SetLight direction mapping does not match what this engine expects.  The
-	-- map's own lighting does: place the lighting origin at the model and let
-	-- the engine light it, which is also what the world will look like.
+	render.SuppressEngineLighting( true )
 	render.SetLightingOrigin( self.Entity:GetPos() )
+	render.ResetModelLighting( self.colAmbientLight.r / 255, self.colAmbientLight.g / 255, self.colAmbientLight.b / 255 )
+	render.SetColorModulation( self.colColor.r / 255, self.colColor.g / 255, self.colColor.b / 255 )
+	render.SetBlend( ( self:GetAlpha() / 255 ) * ( self.colColor.a / 255 ) ) -- * surface.GetAlphaMultiplier()
 
-	local col = self.colColor or color_white
-	render.SetColorModulation( col.r / 255, col.g / 255, col.b / 255 )
-	render.SetBlend( ( self:GetAlpha() / 255 ) * ( col.a / 255 ) )
+	for i = 0, 6 do
+		local col = self.DirectionalLight[ i ]
+		if ( col ) then
+			render.SetModelLighting( i, col.r / 255, col.g / 255, col.b / 255 )
+		end
+	end
 
 	self:DrawModel()
 
-	-- A control's PreDrawModel can install studio LOCAL LIGHTS
-	-- (render.SetLocalModelLights - the player model selector does exactly that for its
-	-- three coloured point lights).  Those are GLOBAL render state that survives this
-	-- draw: leaving them on lights every model and brush in the world with the preview's
-	-- lamps, which is the same class of leak as the one documented in
-	-- game/client/hl2sb_contextmenu.cpp:405-432 ("purple ERROR material / NaN dither
-	-- noise after the overlay closes").  Calling it with no arguments disables them all
-	-- (wiki: render.SetLocalModelLights).
-	if ( render.SetLocalModelLights ) then render.SetLocalModelLights() end
-
-	-- The same is true of the local cubemap a PreDrawModel bound (the player model
-	-- selector binds editor/cubemap so the preview does not inherit the map's
-	-- reflections): no argument clears it again.
-	if ( render.BindLocalCubemap ) then render.BindLocalCubemap() end
-
-		render.PopView3D()
-
-	if ( render.SetScissorRectangle ) then
-		render.SetScissorRectangle( 0, 0, 0, 0, false )
-	end
+	render.SuppressEngineLighting( false )
+	cam.End3D()
 
 	self.LastPaint = RealTime()
-end
 
---- HL2SB (2026-09-27): render the current model ONCE into a render target and
---- return a texture PATH ("spawnicon/hl2sb_icon_...") that surface.GetTextureID
---- can bind -- the .vmt that path resolves to simply points $basetexture at the
---- render target, so Paint draws a textured rect instead of re-rendering the
---- model every frame (~60 live player-model thumbnails per frame was what made
---- the model list unusable).  Returns nil when a required binding is missing;
---- callers fall back to the live render.  The camera used is whatever the
---- panel's vCamPos / vLookatPos / fFOV are at call time.
----
---- HL2SB (2026-10-07): session cache.  The .vmt lands in materials/spawnicon/
---- and SURVIVES a map change / game restart, but the render target behind it is
---- a materialsystem object that comes back empty after a restart -- a cell that
---- trusted the on-disk .vmt alone drew nothing.  Each session therefore
---- re-renders every snapshot ONCE (per model), then serves the rest of the
---- session from the file.  Menu rebuilds within one map load, and every load
---- after that, hit the cheap path.
-
-local g_SnapshotSession = {}		-- rt name -> rendered this session
-
-function PANEL:Snapshot( wide, tall )
-	if ( not IsValid( self.Entity ) ) then return end
-
-	if ( not ( render and render.PushRenderTarget and render.PopRenderTarget
-		and render.PushView3D and render.PopView3D and render.CreateNamedRenderTarget
-		and file and file.Write ) ) then return end
-
-	local mdl = tostring( self.Entity:GetModel() or "" )
-	if ( mdl == "" ) then return end
-
-	local base = "hl2sb_icon_" .. string.gsub( string.lower( mdl ), "[^%w]", "_" )
-	local rtname = "_rt_" .. base
-	local texpath = "spawnicon/" .. base
-
-	if ( g_SnapshotSession[ rtname ] and file.Exists( "materials/" .. texpath .. ".vmt", "GAME" ) ) then
-		return texpath
-	end
-
-	local rt = render.CreateNamedRenderTarget( rtname, wide, tall )
-	if ( not rt ) then return end
-
-	render.PushRenderTarget( rt, 0, 0, wide, tall )
-
-	render.ClearBuffers( true, true, false )
-
-	local delta = self.vLookatPos - self.vCamPos
-	if ( delta:LengthSqr() < 1e-6 ) then delta = Vector( 0, 1, 0 ) end
-	local ang = delta:Angle()
-
-	render.PushView3D( self.vCamPos, ang, self.fFOV, 0, 0, wide, tall, 5, self.FarZ or 4096 )
-
-	if ( render.SetLightingOrigin ) then render.SetLightingOrigin( self.Entity:GetPos() ) end
-	render.SetColorModulation( 1, 1, 1 )
-	render.SetBlend( 1 )
-
-	self.Entity:DrawModel()
-
-	-- Local lights / cubemap are GLOBAL render state (see Paint); clear them so
-	-- the world pass cannot inherit them from the snapshot.
-	if ( render.SetLocalModelLights ) then render.SetLocalModelLights() end
-	if ( render.BindLocalCubemap ) then render.BindLocalCubemap() end
-
-	render.PopView3D()
-	render.PopRenderTarget()
-
-	-- A one-line material pointing $basetexture at the render target.  Written
-	-- AFTER the target exists so the texture name resolves.
-	--
-	-- HL2SB (2026-10-07): the write MUST go to "GAME".  file.Write defaults to
-	-- DATA (the mod's data/ folder), so every snapshot vmt landed in
-	-- data/materials/spawnicon/ where the material system never looks -- the
-	-- cell bound a nonexistent material and drew the error checkerboard
-	-- ("Missing Vgui material spawnicon/hl2sb_icon_...").  The snapshot
-	-- pipeline had never actually delivered a texture; every icon that looked
-	-- right was the live-render fallback.  If the write still fails to land,
-	-- return nil so the caller stays on the live render instead of a broken
-	-- texture.
-	file.Write( "materials/" .. texpath .. ".vmt", "\"UnlitGeneric\"\n" ..
-		"{\n" ..
-		"\t\"$basetexture\" \"" .. rtname .. "\"\n" ..
-		"\t\"$vertexcolor\" \"1\"\n" ..
-		"\t\"$vertexalpha\" \"1\"\n" ..
-		"\t\"$nofog\" \"1\"\n" ..
-		"}\n", "GAME" )
-
-	if ( not file.Exists( "materials/" .. texpath .. ".vmt", "GAME" ) ) then
-		return nil
-	end
-
-	g_SnapshotSession[ rtname ] = true
-
-	return texpath
 end
 
 function PANEL:RunAnimation()
-	if ( IsValid( self.Entity ) and self.Entity.FrameAdvance ) then
-		self.Entity:FrameAdvance()
-	end
+	self.Entity:FrameAdvance( --[[( RealTime() - self.LastPaint ) * self.m_fAnimSpeed]] )
 end
 
---- Wiki: "Runs a ClientsideScene on the panel's entity."
 function PANEL:StartScene( name )
-	if ( not _G.ClientsideScene ) then return end
 
-	if ( IsValid( self.Scene ) ) then self.Scene:Remove() end
+	if ( IsValid( self.Scene ) ) then
+		self.Scene:Remove()
+	end
 
 	self.Scene = ClientsideScene( name, self.Entity )
+
 end
 
---- Wiki: "By default, this function slowly rotates and animates the entity being
---- rendered.  If you want to change this behavior, you should override it."
-function PANEL:LayoutEntity( ent )
+function PANEL:LayoutEntity( Entity )
+
+	--
+	-- This function is to be overriden
+	--
+
 	if ( self.bAnimated ) then
 		self:RunAnimation()
 	end
 
-	ent:SetAngles( Angle( 0, ( RealTime() * 10 ) % 360, 0 ) )
+	Entity:SetAngles( Angle( 0, RealTime() * 10 % 360, 0 ) )
+
 end
 
 function PANEL:OnRemove()
 	if ( IsValid( self.Entity ) ) then
 		self.Entity:Remove()
-		self.Entity = nil
 	end
 end
 
---- GMod's own property-sheet example (a crate, skin 2).
 function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
-	local ctrl = vgui.Create( ClassName )
 
+	local ctrl = vgui.Create( ClassName )
 	ctrl:SetSize( 300, 300 )
 	ctrl:SetModel( "models/props_junk/PlasticCrate01a.mdl" )
+	ctrl:GetEntity():SetSkin( 2 )
 
-	if ( IsValid( ctrl:GetEntity() ) ) then
-		ctrl:GetEntity():SetSkin( 2 )
-	end
+	PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )
 
-	if ( PropertySheet and PropertySheet.AddSheet ) then
-		PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )
-	end
-
-	return ctrl
 end
 
 derma.DefineControl( "DModelPanel", "A panel containing a model", PANEL, "DButton" )

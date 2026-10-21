@@ -1,42 +1,5 @@
---[[ DFileBrowser -- a tree + list file browser (GMod port).
-
-	Wiki: https://wiki.facepunch.com/gmod/DFileBrowser
-	  Parent: DPanel.  SetName / SetPath / SetBaseFolder / SetCurrentFolder /
-	  SetSearch / SetFileTypes / SetModels / SetOpen, Setup, ShowFolder, SortFiles,
-	  Clear, LoadCookies, and the OnSelect / OnDoubleClick / OnRightClick overrides.
-
-	Ported from GMod's lua/vgui/dfilebrowser.lua (327 lines).  A DHorizontalDivider
-	holds a DTree of folders on the left and either a DListView of file names or a
-	DIconBrowser of model thumbnails on the right; everything is built on the first
-	paint (PANEL:Paint) once a base folder has been set.
-
-	Notes for this fork:
-	  * The list half needs GMod's DListView spelling - `AddColumn(...).Header`,
-	    `AddLine(...)`, `SortByColumn( col, desc )`, `SetMultiSelect`,
-	    `SetManual`, `SetDirty`, `GetHeaderHeight` - and the row needs
-	    `GetColumnText` + `SetSortValue`.  Those were added to
-	    lua/vgui/DListView.lua and lua/vgui/DListView_Line.lua with this port
-	    (this fork's own list view keeps working exactly as before).
-	  * `DPanel.Clear( self )` in GMod's Clear() resolves to the inherited Panel:Clear
-	    (GMod's DPanel does not define one).  This fork's global DPanel table has no
-	    Clear either, so the base is captured from the Panel metatable instead.
-	  * `string.StartsWith` is `string.StartWith` in this fork (same helper, different
-	    spelling); the file accepts either.
-	  * `self.Files:SetModels( true )` uses DIconBrowser, which fills its icons from
-	    file.Find - the same call GMod's spawn menu makes.
---]]
 
 local PANEL = {}
-
---- includes/extensions/client/panel.lua:624 (GMod's DPanel inherits Panel:Clear - see
---- the header note)
-local BaseClear = FindMetaTable( "Panel" ).Clear
-
-local function StartsWith( str, prefix )
-	if ( string.StartsWith ) then return string.StartsWith( str, prefix ) end
-
-	return string.StartWith( str, prefix )
-end
 
 AccessorFunc( PANEL, "m_strName",			"Name" )
 AccessorFunc( PANEL, "m_strPath",			"Path" )
@@ -143,7 +106,7 @@ function PANEL:SetCurrentFolder( strDir )
 	strDir = tostring( strDir )
 	strDir = string.Trim( strDir, "/" )
 
-	if ( self.m_strBaseFolder && !StartsWith( strDir, self.m_strBaseFolder ) ) then
+	if ( self.m_strBaseFolder && !string.StartsWith( strDir, self.m_strBaseFolder ) ) then
 		strDir = string.Trim( self.m_strBaseFolder, "/" ) .. "/" .. string.Trim( strDir, "/" )
 	end
 
@@ -188,9 +151,6 @@ function PANEL:SetupTree()
 	end
 
 	self.FolderNode = self.Tree.RootNode:AddFolder( name, self.m_strBaseFolder, self.m_strPath, false, self.m_strSearch )
-
-	-- GMod: DTree_Node.ChildExpanded( node, bExpand ) -- the control table is a global
-	-- in this fork too (AGENTS.md 5.0.8)
 	self.Tree.RootNode.ChildExpanded = function( node, bExpand )
 		DTree_Node.ChildExpanded( node, bExpand )
 		self.m_bOpen = tobool( self.FolderNode.m_bExpanded )
@@ -312,9 +272,7 @@ end
 
 function PANEL:Clear()
 
-	-- GMod: DPanel.Clear( self ) -- the inherited Panel:Clear; this fork's global
-	-- DPanel table does not carry it, so the captured base is called instead
-	if ( BaseClear ) then BaseClear( self ) end
+	DPanel.Clear( self )
 
 	self.m_strBaseFolder, self.m_strCurrentFolder, self.m_strFilter, self.m_strName, self.m_strSearch, self.Divider.m_pRight = nil, nil, nil, nil, nil, nil
 	self.m_bOpen, self.m_bModels, self.m_strPath = false, false, "GAME"

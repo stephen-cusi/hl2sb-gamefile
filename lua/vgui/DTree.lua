@@ -1,18 +1,3 @@
---[[ DTree -- a tree view (GMod port).
-
-	Wiki: https://wiki.facepunch.com/gmod/DTree
-	  Parent: DScrollPanel.  AddNode( strName, strIcon ), Root(), Clear(),
-	  SetSelectedItem / GetSelectedItem, OnNodeSelected / DoClick / DoRightClick
-	  (overrides), ChildExpanded, ShowIcons, LayoutTree, MoveChildTo, and the
-	  ShowIcons / IndentSize / LineHeight / ClickOnDragHover accessors.
-
-	Ported from GMod's lua/vgui/dtree.lua (143 lines).  The tree is a DScrollPanel
-	whose canvas holds one root DTree_Node; every node below it is a DTree_Node with
-	its own DListLayout of children (lua/vgui/DTree_Node.lua, ported alongside).
-
-	Note for this fork: `self:GetCanvas():Add( "DTree_Node" )` goes through
-	DScrollPanel:Add, which now accepts a class name like GMod's Panel:Add does.
---]]
 
 local PANEL = {}
 

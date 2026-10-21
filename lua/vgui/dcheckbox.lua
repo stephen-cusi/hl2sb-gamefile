@@ -1,143 +1,195 @@
---[[ DCheckBox -- GMod-style check box (original implementation).
-
-	NOT the engine's vgui::CheckButton.  GMod's DCheckBox/DCheckBoxLabel is a
-	plain panel whose box is painted by the Derma skin (the wiki says
-	DCheckBoxLabel "derives from DPanel"), and it has to be that here too:
-
-	  * vgui::CheckButton draws a scheme-font check glyph through its CheckImage
-	    child (26px in this scheme) and paints its caption in the panel's scheme
-	    font -- so it always looks like a big Source checkbox and ignores the
-	    Derma skin completely.  That is exactly what the first version of this
-	    control produced: twice GMod's size, with a big official-looking tick.
-	  * the fork's skin ALREADY has SKIN:PaintCheck (lua/skins/hl2sb_default.lua)
-	    doing the GMod look -- 16px box, thin tick, caption in DermaDefault --
-	    and nothing was calling it.
-
-	So this is a DPanel: the skin paints it, Lua handles the click, and the
-	geometry below is the single source of truth for both the skin and
-	SizeToContents (they cannot drift apart).
-
-	Mouse/click: LPanel's Lua dispatch delivers OnMousePressed to this class, so
-	the toggle is ours -- there is no engine CheckButton underneath to do it.
---]]
 
 local PANEL = {}
 
--- Geometry (read by SKIN:PaintCheck as pnl.m_iBoxX / pnl.m_iBoxSize / ...).
-PANEL.m_iBoxX    = 2			-- box origin inside the panel
-PANEL.m_iBoxSize = 16			-- GMod's checkbox is 16x16
-PANEL.m_iTextGap = 6			-- gap between box and caption
+AccessorFunc( PANEL, "m_bChecked", "Checked", FORCE_BOOL )
+
+Derma_Hook( PANEL, "Paint", "Paint", "CheckBox" )
+Derma_Hook( PANEL, "ApplySchemeSettings", "Scheme", "CheckBox" )
+Derma_Hook( PANEL, "PerformLayout", "Layout", "CheckBox" )
+
+Derma_Install_Convar_Functions( PANEL )
 
 function PANEL:Init()
-	self.m_bChecked = false
-	self.m_bHover   = false
 
-	self:SetMouseInputEnabled( true )
-	self:SetKeyBoardInputEnabled( false )
+	self:SetSize( 15, 15 )
+	self:SetText( "" )
 
-	if ( self.SetCursor ) then self:SetCursor( "hand" ) end
 end
 
--------------------------------------------------------------------------------
--- Caption.  Painted by the skin from m_strText -- deliberately NOT a child
--- DLabel: a second caption on top of the skin's is exactly the double-paint
--- bug this control went through.
--------------------------------------------------------------------------------
-function PANEL:SetText( strText )
-	self.m_strText = tostring( strText or "" )
-	self:InvalidateLayout( true )
-end
-
-function PANEL:GetText()
-	return self.m_strText or ""
-end
-
-function PANEL:GetCaptionX()
-	return ( self.m_iBoxX or 2 ) + ( self.m_iBoxSize or 16 ) + ( self.m_iTextGap or 6 ) + ( self:GetIndent() or 0 )
-end
-
--------------------------------------------------------------------------------
--- State.  SetChecked notifies (see derma/init.lua's convar wiring: it wraps
--- OnCheckButtonChecked, which is what writes the convar back).
--------------------------------------------------------------------------------
-function PANEL:SetChecked( b )
-	b = b and true or false
-	if ( self.m_bChecked == b ) then return end
-
-	self.m_bChecked = b
-	self:OnCheckButtonChecked()
-end
-
-function PANEL:GetChecked()
-	return self.m_bChecked and true or false
-end
-
-function PANEL:IsChecked()
-	return self:GetChecked()
-end
-
---- GMod: DCheckBox:IsEditing() -- "Returns whether the check box is being held
---- down" (its own lua/vgui/dcheckbox.lua:19 returns self.Depressed).  The row
---- painter in DProperties uses it to highlight the field while it is clicked.
 function PANEL:IsEditing()
-	return self.m_bDepressed == true or self.Depressed == true
+	return self.Depressed
 end
 
-function PANEL:SetValue( b )
-	self:SetChecked( b )
-end
+function PANEL:SetValue( val )
 
-function PANEL:Toggle()
-	self:SetChecked( not self:GetChecked() )
-end
+	if ( tonumber( val ) == 0 ) then val = 0 end -- Tobool bugs out with "0.00"
+	val = tobool( val )
 
---- The hook the convar wiring hangs off (hl2sb derma/init.lua
---- InstallConVar( "DCheckBox", { name = "OnCheckButtonChecked", ... } )).
-function PANEL:OnCheckButtonChecked()
-	if ( self.OnChange ) then
-		local ok, err = pcall( self.OnChange, self, self:GetChecked() )
-		if ( not ok ) then Warning( "DCheckBox:OnChange failed: " .. tostring( err ) .. "\n" ) end
-	end
-end
+	self:SetChecked( val )
+	self.m_bValue = val
 
--------------------------------------------------------------------------------
--- Input
--------------------------------------------------------------------------------
-function PANEL:OnMousePressed( iMouseCode )
-	-- MOUSE_LEFT is 107 (Source's BUTTON_CODE); if the global is missing, accept
-	-- any button rather than making the box dead.
-	if ( MOUSE_LEFT ~= nil and iMouseCode ~= MOUSE_LEFT ) then return end
-	if ( self.IsEnabled and not self:IsEnabled() ) then return end
+	self:OnChange( val )
 
-	-- GMod toggles on DoClick (release) with Depressed marking the held state;
-	-- DProperties highlights IsEditing rows off that flag.
-	self.m_bDepressed = true
-end
+	if ( val ) then val = "1" else val = "0" end
+	self:ConVarChanged( val )
+	self:SetCookie( "checked", val )
 
-function PANEL:OnMouseReleased( iMouseCode )
-	local wasHeld = self.m_bDepressed == true
-	self.m_bDepressed = false
-
-	if ( not wasHeld ) then return end
-	-- the box maintains m_bHover (OnCursorEntered/Exited): dragging off cancels
-	if ( self.m_bHover == false ) then return end
-
-	self:DoClick()
 end
 
 function PANEL:DoClick()
+
 	self:Toggle()
+
 end
 
-function PANEL:OnCursorEntered() self.m_bHover = true end
-function PANEL:OnCursorExited() self.m_bHover = false end
+function PANEL:Toggle()
 
--------------------------------------------------------------------------------
--- Paint: the skin owns the look (GMod's split, and this fork's skin has the
--- implementation already).
--------------------------------------------------------------------------------
-function PANEL:Paint( w, h )
-	derma.SkinHook( "Paint", "Check", self, w or self:GetWide(), h or self:GetTall() )
+	self:SetValue( !self:GetChecked() )
+
 end
 
-derma.DefineControl( "DCheckBox", "HL2SB check box", PANEL, "DPanel" )
+function PANEL:OnChange( bVal )
+
+	-- For override
+
+end
+
+function PANEL:Think()
+
+	self:ConVarStringThink()
+
+end
+
+function PANEL:LoadCookies()
+
+	self:SetValue( self:GetCookie( "checked" ) )
+
+end
+
+-- No example for this control
+function PANEL:GenerateExample( class, tabs, w, h )
+end
+
+derma.DefineControl( "DCheckBox", "Simple Checkbox", PANEL, "DButton" )
+
+--[[---------------------------------------------------------
+	DCheckBoxLabel
+-----------------------------------------------------------]]
+
+local PANEL = {}
+
+AccessorFunc( PANEL, "m_iIndent", "Indent" )
+
+function PANEL:Init()
+	self:SetTall( 16 )
+
+	self.Button = vgui.Create( "DCheckBox", self )
+	self.Button.OnChange = function( _, val ) self:OnChange( val ) end
+
+	self.Label = vgui.Create( "DLabel", self )
+	self.Label:SetMouseInputEnabled( true )
+	self.Label.DoClick = function() self:Toggle() end
+end
+
+function PANEL:SetDark( b )
+	self.Label:SetDark( b )
+end
+
+function PANEL:SetBright( b )
+	self.Label:SetBright( b )
+end
+
+function PANEL:SetConVar( cvar )
+	self.Button:SetConVar( cvar )
+end
+
+function PANEL:SetValue( val )
+	self.Button:SetValue( val )
+end
+
+function PANEL:SetChecked( val )
+	self.Button:SetChecked( val )
+end
+
+function PANEL:GetChecked()
+	return self.Button:GetChecked()
+end
+
+function PANEL:Toggle()
+	self.Button:Toggle()
+end
+
+function PANEL:PerformLayout()
+
+	local x = self.m_iIndent || 0
+
+	self.Button:SetSize( 15, 15 )
+	self.Button:SetPos( x, math.floor( ( self:GetTall() - self.Button:GetTall() ) / 2 ) )
+
+	self.Label:SizeToContents()
+	self.Label:SetPos( x + self.Button:GetWide() + 9, math.floor( ( self:GetTall() - self.Label:GetTall() ) / 2 ) )
+
+end
+
+function PANEL:SetTextColor( color )
+
+	self.Label:SetTextColor( color )
+
+end
+
+function PANEL:SizeToContents()
+
+	self:InvalidateLayout( true ) -- Update the size of the DLabel and the X offset
+	self:SetWide( self.Label.x + self.Label:GetWide() )
+	self:SetTall( math.max( self.Button:GetTall(), self.Label:GetTall() ) )
+	self:InvalidateLayout() -- Update the positions of all children
+
+end
+
+function PANEL:SetText( text )
+
+	self.Label:SetText( text )
+	self:SizeToContents()
+
+end
+
+function PANEL:SetFont( font )
+
+	self.Label:SetFont( font )
+	self:SizeToContents()
+
+end
+
+function PANEL:GetText()
+
+	return self.Label:GetText()
+
+end
+
+-- Just pass this to the checkbox itself.
+function PANEL:SetCookieName( str )
+
+	self.Button:SetCookieName( str )
+
+end
+
+function PANEL:Paint()
+end
+
+function PANEL:OnChange( bVal )
+
+	-- For override
+
+end
+
+function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
+
+	local ctrl = vgui.Create( ClassName )
+	ctrl:SetText( "CheckBox" )
+	ctrl:SetWide( 200 )
+
+	PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )
+
+end
+
+derma.DefineControl( "DCheckBoxLabel", "Simple Checkbox", PANEL, "DPanel" )

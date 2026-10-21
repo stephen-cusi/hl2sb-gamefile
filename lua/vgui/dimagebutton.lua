@@ -1,189 +1,158 @@
---[[ DImageButton -- icon + caption button (original implementation).
-
-	The engine's texture path is surface.CreateNewTextureID() +
-	DrawSetTextureFile( id, path, linear, load ); this fork's png fallback in
-	CTextureManager means a plain .png path works, no .vmt needed.  The id is
-	created once per image and cached on the panel. --]]
 
 local PANEL = {}
+AccessorFunc( PANEL, "m_bStretchToFit", "StretchToFit" )
+AccessorFunc( PANEL, "m_bDepressImage", "DepressImage" )
 
 function PANEL:Init()
-	self:SetDrawBackground( false )
-	self:SetCursor( "hand" )		-- GMod's dimagebutton.lua:9
-	self.m_strImage = ""
-	self.m_iImageSize = 32
-	self.m_iTexture = nil
+
+	self:SetPaintBackground( false )
+	self:SetDrawBorder( false )
+	self:SetStretchToFit( true )
+	self:SetDepressImage( true )
+
+	self:SetCursor( "hand" )
+	self.m_Image = vgui.Create( "DImage", self )
+
+	self:SetText( "" )
+
+	self:SetColor( color_white )
+
 end
 
-function PANEL:SetImage( strPath, strBackup )
-	strPath = strPath or ""
-	if ( strPath == self.m_strImage ) then return end
+--
+-- SetImageVisible
+-- Hide the button's image
+--
+function PANEL:SetImageVisible( bBool )
 
-	self.m_strImage = strPath
-	self.m_strBackup = strBackup or self.m_strBackup
-	self.m_iTexture = nil
+	self.m_Image:SetVisible( bBool )
 
-	if ( strPath ~= "" and surface.CreateNewTextureID ) then
-		-- the true flag creates a PROCEDURAL texture id - the immediate RGBA
-		-- upload route below only lands on those (AvatarImage same pattern);
-		-- a plain id silently produces a blank icon.
-		local id = surface.CreateNewTextureID( true )
-		-- Image files go through the immediate decode-and-upload binding: the
-		-- texture-manager route behind DrawSetTextureFile resolves the name as
-		-- a MATERIAL (its file bind caches the texture size before the async
-		-- png download lands), which left scoreboard-sized icons blank.  The
-		-- immediate upload also survives level transitions, where the texture
-		-- manager drops its file entries.  Non-image names (vmt-backed paths)
-		-- fall through to the material route.
-		local uploaded = false
-		if ( surface.DrawSetTexturePNG ) then
-			-- the upload binding takes a filesystem path under GAME while the
-			-- material routes root names at materials/, so try both spellings
-			uploaded = surface.DrawSetTexturePNG( id, "materials/" .. strPath )
-			if ( !uploaded ) then
-				uploaded = surface.DrawSetTexturePNG( id, strPath )
-			end
-		end
-		if ( !uploaded ) then
-			-- binding: DrawSetTextureFile( id, path, linear<int>, load<bool> )
-			surface.DrawSetTextureFile( id, strPath, 1, true )
-		end
-		self.m_iTexture = id
-	end
 end
 
---- GMod: DImageButton:GetImage() -- "Returns the image path" (its dimagebutton.lua
---- delegates to the DImage it owns).  DIconBrowser identifies its buttons by this.
-function PANEL:GetImage()
-	return self.m_strImage or ""
-end
+function PANEL:SetImage( strImage, strBackup )
 
---- GMod: DImageButton:SetOnViewMaterial( MatName, Backup ) (dimagebutton.lua:142)
---- and the DImage half (dimage.lua:25).  Same path-based image here; ImageName is
---- the field GMod's DImage keeps for it.
-function PANEL:SetOnViewMaterial( MatName, Backup )
-	self:SetImage( MatName, Backup )
-	self.ImageName = MatName
-end
+	self.m_Image:SetImage( strImage, strBackup )
 
-function PANEL:SetImageSize( iSize )
-	self.m_iImageSize = iSize
 end
+PANEL.SetIcon = PANEL.SetImage
 
---- GMod: DImageButton:SetColor( col ) -- tints the image (its dimagebutton.lua:39).
---- DPropertySheet:SetupCloseButton sets the close button's colour, so DColorCombo's
---- popup needs it.
 function PANEL:SetColor( col )
-	self.m_colImage = col
+
+	self.m_Image:SetImageColor( col )
+	self.ImageColor = col
+
 end
 
-function PANEL:GetColor()
-	return self.m_colImage
+function PANEL:GetImage()
+
+	return self.m_Image:GetImage()
+
 end
 
---- GMod: DImageButton:SetStretchToFit( b ) / SetKeepAspect( b ) (dimagebutton.lua).
---- DNumberScratch turns stretching off (`self:SetStretchToFit( false )`) so the
---- icon keeps its own size inside the 16x16 button.
-function PANEL:SetStretchToFit( b )
-	self.m_bStretchToFit = ( b ~= false )
+function PANEL:SetKeepAspect( bKeep )
+
+	self.m_Image:SetKeepAspect( bKeep )
+
 end
 
-function PANEL:GetStretchToFit()
-	return self.m_bStretchToFit ~= false
+-- SetMaterial should replace SetImage for cached materials
+function PANEL:SetMaterial( Mat )
+
+	self.m_Image:SetMaterial( Mat )
+
 end
 
-function PANEL:SetKeepAspect( b )
-	self.m_bKeepAspect = ( b ~= false )
-end
-
-function PANEL:GetKeepAspect()
-	return self.m_bKeepAspect ~= false
-end
-
-function PANEL:SetMaterial( mat )
-	-- GMod's SetMaterial takes an IMaterial or a path string; store the path.
-	if ( isstring( mat ) ) then return self:SetImage( mat ) end
-	if ( mat and mat.GetName ) then
-		self:SetImage( mat:GetName() )
-	end
-end
-
---- GMod: DImageButton:SetImageVisible( b ) / GetImageVisible() -- show or hide
---- the icon without clearing it (dimagebutton.lua:26-30).
-function PANEL:SetImageVisible( b )
-	self.m_bImageVisible = b and true or false
-end
-
-function PANEL:GetImageVisible()
-	return self.m_bImageVisible ~= false
-end
-
---- GMod: DImageButton:SetDisabled( b ) (dimagebutton.lua:130-140; Panel:SetDisabled
---- does not exist in this engine, so this is the image-button's own flag).
-function PANEL:SetDisabled( b )
-	self.m_bDisabled = b and true or false
-end
-
-function PANEL:GetDisabled()
-	return self.m_bDisabled == true
-end
-
---- GMod: DImageButton:SizeToContents() -- the icon plus its caption.
---- DColumnSheet:UseButtonOnlyStyle() calls it on every tab button.
 function PANEL:SizeToContents()
-	local w = self.m_iImageSize
-	local h = self.m_iImageSize
 
-	local text = self:GetText()
-	if ( text and text ~= "" ) then
-		local tw, th = derma.GetTextSize( "DermaDefault", text )
-		w = math.max( w, tw )
-		h = h + th
-	end
+	self.m_Image:SizeToContents()
+	self:SetSize( self.m_Image:GetWide(), self.m_Image:GetTall() )
 
-	self:SetSize( w + 4, h + 6 )
 end
 
-function PANEL:Paint( w, h )
-	w = w or self:GetWide()
-	h = h or self:GetTall()
+function PANEL:DepressImage()
 
-	-- GMod's DImageButton has NO Paint field at all: derma's automatic skin
-	-- dispatch looks up PaintDImageButton by class name, the default skin does
-	-- not define one, and the control is transparent - its visible content is
-	-- the icon and the caption only (its Init also turns background and border
-	-- off).  This fork used to route through the skin's PaintButton here, which
-	-- painted an opaque plate over the whole control - a DNumberScratch docked
-	-- over a DNumSlider's label area hid the label text behind that plate.
-	-- GMod-faithful: no plate, icon and caption only.
-	if ( self:GetImageVisible() and self.m_iTexture ) then
-		local col = self.m_colImage
-		if ( col ) then
-			surface.DrawSetColor( col.r, col.g, col.b, col.a )
-		else
-			-- vgui multiplies textured draws by the current draw colour; a
-			-- previous panel's SetDrawColor bleeds in here without a reset
-			surface.DrawSetColor( 255, 255, 255, 255 )
-		end
+	if ( !self.m_bDepressImage ) then return end
 
-		surface.DrawSetTexture( self.m_iTexture )
+	self.m_bImageDepressed = true
 
-		if ( self.m_bStretchToFit == false ) then
-			-- GMod's SetStretchToFit( false ): draw the icon at its own size, centred
-			local isz = self.m_iImageSize
-			surface.DrawTexturedRect( math.floor( ( w - isz ) / 2 ),
-				math.max( 2, math.floor( ( h - isz ) / 2 ) - 6 ), isz, isz )
-		else
-			surface.DrawTexturedRect( 2, 2, math.max( 1, w - 4 ), math.max( 1, h - 4 ) )
-		end
+	if ( self.m_bStretchToFit ) then
+
+		self.m_Image:SetPos( 2, 2 )
+		self.m_Image:SetSize( self:GetWide() - 4, self:GetTall() - 4 )
+
+	else
+
+		self.m_Image:SizeToContents()
+		self.m_Image:SetSize( self.m_Image:GetWide() * 0.8, self.m_Image:GetTall() * 0.8 )
+		self.m_Image:Center()
+
 	end
 
-	local text = self:GetText()
-	if ( text ~= "" ) then
-		local tw, th = derma.GetTextSize( "DermaDefault", text )
-		derma.DrawText( "DermaDefault", math.floor( ( w - tw ) / 2 ), h - th - 4,
-			text, Color( 220, 220, 220, 255 ) )
-	end
 end
 
-derma.DefineControl( "DImageButton", "HL2SB icon button", PANEL, "DButton" )
+function PANEL:OnMousePressed( mousecode )
+
+	DButton.OnMousePressed( self, mousecode )
+
+	self:DepressImage()
+
+end
+
+function PANEL:OnMouseReleased( mousecode )
+
+	DButton.OnMouseReleased( self, mousecode )
+
+	self.m_bImageDepressed = nil
+	self:InvalidateLayout()
+
+end
+
+function PANEL:PerformLayout()
+
+	if ( self.m_bDepressImage && self.m_bImageDepressed ) then
+
+		self:DepressImage()
+
+	elseif ( self.m_bStretchToFit ) then
+
+		self.m_Image:SetPos( 0, 0 )
+		self.m_Image:SetSize( self:GetSize() )
+
+	else
+
+		self.m_Image:SizeToContents()
+		self.m_Image:Center()
+
+	end
+
+end
+
+function PANEL:SetDisabled( bDisabled )
+
+	DButton.SetDisabled( self, bDisabled )
+
+	if ( bDisabled ) then
+		self.m_Image:SetAlpha( self.ImageColor.a * 0.4 )
+	else
+		self.m_Image:SetAlpha( self.ImageColor.a )
+	end
+
+end
+
+function PANEL:SetOnViewMaterial( MatName, Backup )
+
+	self.m_Image:SetOnViewMaterial( MatName, Backup )
+
+end
+
+function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
+
+	local ctrl = vgui.Create( ClassName )
+	ctrl:SetImage( "gui/dupe_bg.png" )
+	ctrl:SetSize( 200, 200 )
+
+	PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )
+
+end
+
+derma.DefineControl( "DImageButton", "A button which uses an image instead of text", PANEL, "DButton" )

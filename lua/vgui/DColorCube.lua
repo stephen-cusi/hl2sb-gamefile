@@ -1,17 +1,3 @@
---[[ DColorCube -- 2-D saturation/value picker, ported from GMod's
-	lua/vgui/dcolorcube.lua line for line onto the verbatim DSlider.
-
-	Saturation on X, value on Y (value = 1 - slideY).  The knob is the plain
-	DSlider Knob (a DButton painted by the skin's PaintSliderKnob hook); GMod's
-	old minixhair image path is retired upstream (DSlider:SetImage is an empty
-	stub there too), so nothing depends on that texture.
-
-	Fork notes (deltas from the GMod file):
-	  * Requires the verbatim DSlider (Knob / TranslateValues hook) - the
-	    previous in-tree DSlider had neither, which is why this control used to
-	    hand-draw its own grip.
-	  * DoRightClick needs DermaMenu + SetClipboardText - both exist here.
---]]
 
 local PANEL = {}
 

@@ -1,26 +1,3 @@
---[[ DSlider -- GMod's two-axis slider, ported from its lua/vgui/dslider.lua
-	(280 lines) essentially line for line.
-
-	What "verbatim" keeps: the Knob child DButton (the grip is a real panel with
-	its own Depressed/Hovered press states, middle-click reset and its own
-	cursor forwarding), TrapInside, the TranslateValues hook, per-axis ConVar
-	binding (SetConVarX/SetConVarY with Think polling), the two-argument
-	OnValueChanged( x, y ), SetEnabled propagating to the Knob, and the retired
-	SetImage/SetImageColor stubs (GMod addons call them; the stubs keep them
-	harmless).
-
-	Fork notes (the only deltas from the GMod file):
-	  * The previous in-tree rewrite (a knobless 1-D slider with SetValue /
-	    SetXPos) is replaced wholesale; DNumSlider / DColorCube are ported to
-	    GMod's shapes in their own files, which is what consumes the new API.
-	  * `Depressed` on the Knob is maintained by our DButton (GMod's engine
-	    writes the field C-side; this fork keeps it Lua-side).
-	  * The knob graphic comes from the skin (PaintSliderKnob, added to
-	    lua/skins/hl2sb_default.lua).  derma.SkinHook is a no-op when the skin
-	    lacks the hook, matching GMod.
-	  * GLua spellings (|| and !=) are kept - the fork's Lua dialect supports
-	    them (llex.c).
---]]
 
 local PANEL = {}
 
@@ -44,10 +21,7 @@ function PANEL:Init()
 
 	self.Knob = vgui.Create( "DButton", self )
 	self.Knob:SetText( "" )
-	-- GMod's knob is 15x15; 20x20 on touch screens (same convar as DVScrollBar).
-	CreateClientConVar( "hl2sb_touch_ui", system.IsAndroid() and "1" or "0", true, false )
-	local knobSize = GetConVar( "hl2sb_touch_ui" ):GetInt() == 1 and 20 or 15
-	self.Knob:SetSize( knobSize, knobSize )
+	self.Knob:SetSize( 15, 15 )
 	self.Knob:NoClipping( true )
 	self.Knob.Paint = function( panel, w, h ) derma.SkinHook( "Paint", "SliderKnob", panel, w, h ) end
 	self.Knob.OnCursorMoved = function( panel, x, y )

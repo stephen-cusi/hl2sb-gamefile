@@ -1,23 +1,3 @@
---[[ DTree_Node -- one row of a DTree, with its own children (GMod port).
-
-	Wiki: https://wiki.facepunch.com/gmod/DTree_Node
-	  Parent: DPanel.  AddNode / InsertNode / AddFolder / MakeFolder / AddPanel,
-	  SetExpanded / GetExpanded / ExpandRecurse / ExpandTo, SetIcon / GetIcon,
-	  SetText / GetText, SetSelected, SetDrawLines / SetLastChild,
-	  GetChildNode / GetChildNodes / GetChildNodeCount, Copy / SetupCopy,
-	  MoveToTop / MoveChildTo / Insert / LeaveTree, OnNodeAdded / OnNodeSelected /
-	  OnModified, and the folder-population members.
-
-	Ported from GMod's lua/vgui/dtree_node.lua (706 lines).  Each node owns a
-	DListLayout for its children - which in this fork now derives from DDragBase, so
-	SetDropPos / MakeDroppable / InsertBefore / InsertAfter work as GMod expects.
-
-	Notes for this fork:
-	  * MakeFolder's deferred population uses timer.Simple (present here).
-	  * `CleanList` in GMod walks `self.Items` / `self.pnlCanvas`, neither of which a
-	    tree node has - it can only throw if called, so the walk is over `self.Items
-	    or {}` here while keeping GMod's body.
---]]
 
 local PANEL = {}
 
@@ -577,15 +557,10 @@ function PANEL:SetSelected( b )
 
 end
 
---- GMod's Think; this engine dispatches OnThink (AGENTS.md 5.0.3).
-function PANEL:OnThink()
+function PANEL:Think()
 
 	self.animSlide:Run()
 
-end
-
-function PANEL:Think()
-	self:OnThink()
 end
 
 --
@@ -630,10 +605,7 @@ end
 
 function PANEL:CleanList()
 
-	-- GMod walks self.Items / self.pnlCanvas here (both belong to a DPanelList, not
-	-- to a tree node), so the table can be nil; `or {}` keeps the body identical
-	-- without making the call throw.
-	for k, panel in pairs( self.Items or {} ) do
+	for k, panel in pairs( self.Items ) do
 
 		if ( !IsValid( panel ) || panel:GetParent() != self.pnlCanvas ) then
 			self.Items[k] = nil
