@@ -20,7 +20,7 @@ _BASE_ENTITY_CLASS = "prop_scripted"
 --
 -- Aliasing to prop_scripted is the honest mapping: in GMod these names resolve to
 -- the engine's scripted-entity base, and prop_scripted IS this fork's equivalent.
--- ⚠️ base_nextbot 不在这张别名表里，是有意的：本 fork 自带一份真正的
+-- base_nextbot 不在这张别名表里，是有意的：本 fork 自带一份真正的
 -- lua/entities/base_nextbot（sv_nextbot.lua：BehaveStart/BehaveUpdate/BodyUpdate/
 -- MoveToPos/HandleStuck/FindSpot + 全套 ENT:On* 默认实现），GMod 的 nextbot
 -- 插件必须继承**那一份**。
