@@ -109,7 +109,7 @@ if ( EntityMeta.SetDTFloat == nil ) then
 		if ( d == nil ) then return nil end
 		local ent = DTResolveEntity( owner )
 		if ( ent == nil ) then return nil end
-		return ent[ DTVarTypes[ d.type ].get ]( ent, d.index )
+		return ent[ "GetDT" .. d.type ]( ent, d.index )
 	end
 
 	local function DTProxySet( owner, k, v )
@@ -117,7 +117,7 @@ if ( EntityMeta.SetDTFloat == nil ) then
 		if ( d == nil ) then return nil end
 		local ent = DTResolveEntity( owner )
 		if ( ent == nil ) then return nil end
-		return ent[ DTVarTypes[ d.type ].set ]( ent, d.index, v )
+		return ent[ "SetDT" .. d.type ]( ent, d.index, v )
 	end
 
 	--- The declaration bookkeeping, shared by the entity method and by the table-level entry
@@ -161,7 +161,7 @@ if ( EntityMeta.SetDTFloat == nil ) then
 			else
 				self.dt = proxy
 			end
-			local entRef = rawget( self, "Entity" )
+			local entRef = istable( self ) and rawget( self, "Entity" ) or self
 			if ( entRef ~= nil and entRef ~= self and dtProxies[ entRef ] == nil ) then
 				dtProxies[ entRef ] = proxy
 				entRef.dt = proxy
@@ -265,7 +265,7 @@ if ( EntityMeta.SetDTFloat == nil ) then
 		if ( EngineNWOriginal != nil ) then
 			EngineNWOriginal( tbl, strType, nIndex, strName )
 		end
-		RecordEngineNW( tbl, tostring( strType or "Float" ), math.floor( tonumber( nIndex ) or 0 ), tostring( strName ), options )
+		RecordEngineNW( EngineTable( tbl ), tostring( strType or "Float" ), math.floor( tonumber( nIndex ) or 0 ), tostring( strName ), options )
 	end
 
 	-- self:NetworkVarElement( type, slot, component, name [, options] ):
@@ -278,6 +278,7 @@ if ( EntityMeta.SetDTFloat == nil ) then
 		strType = tostring( strType or "Angle" )
 		iSlot = math.floor( tonumber( iSlot ) or 0 )
 
+		tbl = EngineTable( tbl )
 		local t = ElementOrder[ tbl ]
 		if ( t == nil ) then t = {} ElementOrder[ tbl ] = t end
 		local slotKey = strType .. "_" .. tostring( iSlot )
@@ -301,14 +302,7 @@ if ( EntityMeta.SetDTFloat == nil ) then
 		return Declare( self, strType, nIndex, strName )
 	end
 
-	-- SetupDataTables() runs with the entity's LUA TABLE as self
-	-- (game/shared/lua/basescripted.cpp:249 - "self: the entity's Lua table"), not with the
-	-- entity userdata, so a method that exists only on the entity metatable is invisible
-	-- there.  The engine copies this global onto that table, exactly like it already does for
-	-- NetworkVar / NetworkVarNotify (basescripted.cpp:226-244).  cod_c4's
-	-- ENT:SetupDataTables calls self:DTVar( "Float", 0, ... ) and raised
-	-- "attempt to call a nil value (method 'DTVar')" on every C4 spawn before this existed
-	-- (logged in D:\srceng\hl2sb\ds_debug.log:19986).
+	-- Legacy table callers and entity userdata use the same declaration path.
 	function HL2SB_EntityDTVar( tbl, strType, nIndex, strName )
 		return Declare( tbl, strType, nIndex, strName )
 	end

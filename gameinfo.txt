@@ -66,6 +66,8 @@ FileSystem
 			// no CS:S purchase needed). CS-themed workshop maps (gm_an_untold_story
 			// etc) reference materials/de_*, materials/cs_* and models/props/cs_*|de_*.
 			game				|all_source_engine_paths|sourceengine/content_cstrike_dir.vpk
+			// Additional HL2 and episodic resources used by GMod weapons and entities.
+			game				|all_source_engine_paths|sourceengine/content_hl2_dir.vpk
 			platform			|all_source_engine_paths|platform/platform_misc.vpk
 
 			// GMod's own content: models (9.5k), materials (3.8k - including the

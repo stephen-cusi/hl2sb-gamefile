@@ -189,3 +189,19 @@ function GM:PlayerSpawnedSWEP( ply, ent )
 	ply:AddCount( "sents", ent )
 
 end
+
+function GM:PlayerButtonDown( ply, btn )
+
+	numpad.Activate( ply, btn )
+
+end
+
+--[[---------------------------------------------------------
+	These are buttons that the client is pressing. They're used
+	in Sandbox mode to control things like wheels, thrusters etc.
+-----------------------------------------------------------]]
+function GM:PlayerButtonUp( ply, btn )
+
+	numpad.Deactivate( ply, btn )
+
+end

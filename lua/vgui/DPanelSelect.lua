@@ -85,7 +85,7 @@ function PANEL:FindBestActive()
 
 	end
 
-	if ( BestCandidate && self.SelectedPanel != BestCandidate ) then
+	if ( BestCandidate ) then
 		self:SelectPanel( BestCandidate )
 	end
 
