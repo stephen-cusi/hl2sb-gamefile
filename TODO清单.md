@@ -3,7 +3,23 @@
 hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移植打钩清单。
 图例：`[x]` 完成 / `[ ]` 待做 / `[~]` 部分完成 / `[-]` 刻意不做（含理由）。
 库清单基准：GMod wiki 全部 88 个 Lua 库（经 libgmod 权威绑定表核对，2026-10-10）。
-最近全量复核：2026-10-14（聊天/语音/错误体系/武器钩子批/physenv/SendLua 等项据仓内代码逐条核实后更新）。
+最近全量复核：2026-10-14；2026-10-23 增量核对 Lua 布局、base/sandbox 文件与已有 native 派发点，详见 `docs/lua_layout.md`。原“完成”不等于与当前 GMod 逐字一致或已通过所有实机验证。
+
+## 2026-10-23 Lua 整理与搬运缺口
+
+- [x] 33 个手动诊断脚本归到 `lua/tests/`；原自动加载的字符串测试改为手动运行。
+- [x] 移除未引用的旧 Sandbox BuildMenu 两文件、禁用的 Experiment 总入口及五个休眠辅助文件。
+- [x] 仍在使用的枚举、武器注册桥、字体/面板与通知适配归到 `lua/hl2sb/compat/`；保留 native 启动所需的公共 modules/extensions。
+- [x] 入口 `includes/init.lua` 只保留明确的加载顺序；移除已由 native hover 负责的 `vgui.Create` tooltip 包装。
+- [x] 击杀通知移回 `base/gamemode/cl_deathnotice.lua`；既有重力枪回调拆回 `base/gamemode/gravitygun.lua`，行为保持。
+- [ ] native gamemode 实体加载器支持原版 `gamemodes/<name>/entities` 层级；当前工具/实体在 `content/lua` 或全局 `lua`，已经搬过并在使用，不能直接改目录导致不再注册。
+- [ ] base 缺的原版文件：effects 的 `base.lua`、`dof_node.lua`，entities 的 `prop_effect.lua`、`ragdoll_motion.lua`。
+- [ ] sandbox 缺的原版效果文件：`balloon_pop.lua`、`entity_remove.lua`、`inflator_magic.lua`、`lasertracer.lua`、`phys_unfreeze.lua`、`wheel_indicator.lua`。
+- [ ] sandbox 缺的编辑实体：`base_edit.lua`、`edit_fog.lua`、`edit_sky.lua`、`edit_sun.lua`；示例内容 `nb_example.lua`、`manhack_welder.lua` 也尚无对应文件。
+- [~] `cl_notice.lua` 的 AddNotify 已在 base 适配里；sandbox `save_load.lua` 仍是 base 文件存储适配，原生 `.gms` 存取链未补。
+- [~] base 玩家类 `taunt_camera.lua` 仍是旧适配，gamemode 另有活动相机实现，不能当重复文件直接删除。
+
+文件映射后的 base/sandbox 共 178 个原版 Lua：107 个内容一致、53 个有适配/差异、16 个文件缺失、1 个内联适配、1 个部分适配。这里只是文件及源码检查，不把 native 同名实现、空默认方法和未实测功能误算成已完成。清理前的 Lua/gamemodes 快照及逐文件清单留在 `D:/tmp/hl2sb_lua_cleanup_20261023`。
 
 ## 一、Lua 库（对照 GMod 88 库）
 
@@ -59,8 +75,8 @@ hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移�
 - [x] 拾取 HUD（服务端声明种类 + Lua 折叠 + 弹药袋合并）
 - [x] undo 通知链（单消费者）
 - [x] 创建服务器全屏 UI（gamemode 列表/地图缩略图/设置；gamemode 选择不被打回）
-- [x] spawnmenu v4（Entities/Weapons/NPCs/Vehicles 四注册表、本地化、快照缩略图、触控模式）
-- [x] 玩家模型菜单（扫描 + 插件注册 + 文字列表 + SpawnIcon 快照）
+- [x] spawnmenu（已替换旧 v4，自原版 Sandbox creation/context 菜单移植；外围 native 兼容仍有差异）
+- [x] 玩家模型菜单（已替换旧扫描/文字列表，使用原版 editor_player 与 SpawnIcon/ModelImage）
 - [x] 上下文菜单
 - [x] NPC/载具/座位注册表（base_npcs 移植）
 - [x] 弹药系统（ammo 模块 + 引擎应用 + 全局 maxammo 逃生口 + 无限弹药通道）
@@ -92,9 +108,9 @@ hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移�
   - [ ] `GM:PrePlayerDraw` / `GM:PostPlayerDraw`（client）——**语义已逆向坐实**（答 (实体, drawType 整数)，带重入守卫；参考实现是在玩家层包住绘制，位置在模型渲染之外），但**从模型绘制内部应答会炸**：钩子里脚本再画一次模型（夜视插件就是在钩子里画自己的面片）就撞上正在渲染的场景，整帧坏掉（半屏深红方块）。要落地必须换到"嵌套绘制安全"的位置（参考实现那样在玩家层包绘制，或把应答挪到帧末）
   - [ ] `GM:GetMotionBlurValues`（client）——**语义已逆向坐实**（参考实现是四次各带一个数调用、四个数回写；分叉这边是一次带四个数），同样**不能在后处理里应答**：那也是渲染过程中调脚本。落地要挪到渲染之外
 - [ ] 其余未派发的 gamemode 钩子（2026-10-21 全量比对参考实现的派发表后剩下的）：
-  - 渲染：`PreDrawSkyBox` / `PostDrawSkyBox` / `PostDraw2DSkyBox` / `SetupSkyboxFog` / `SetupWorldFog` / `NeedsDepthPass` / `CaptureVideo` / `DrawMonitors` / `PreventScreenClicks` / `SpawniconGenerated`
+  - 渲染：`PreDrawSkyBox` / `PostDrawSkyBox` / `PostDraw2DSkyBox` / `SetupSkyboxFog` / `SetupWorldFog` / `NeedsDepthPass` / `CaptureVideo` / `DrawMonitors` / `PreventScreenClicks`（`SpawniconGenerated` 已有 native ModelImage 生成后派发，不再列为缺失）
   - 实体网络：`OnEntityWaterLevelChanged` / `OnCrazyPhysics` / `OnNPCDropItem` / `OnAchievementAchieved` / `ClientSignOnStateChanged` / `CreateClientsideRagdoll` / `InputMouseApply`
-  - 玩家：`PlayerSpray`（连带 `game.AddDecal` 贴花管线，与 gmod_tool 的 paint 工具同一条链）/ `PlayerBindPress` / `PlayerButtonDown` / `PlayerButtonUp` / `PlayerCanHearPlayersVoice` / `PlayerClassChanged` / `PlayerHandleAnimEvent` / `PlayerFireAnimationEvent` / `OnChangeActivity` / `OnCloseCaptionEmit` / `OnPauseMenuShow` / `VehicleMove`
+  - 玩家：`PlayerSpray`（连带 `game.AddDecal` 贴花管线，与 gmod_tool 的 paint 工具同一条链）/ `PlayerBindPress` / `PlayerCanHearPlayersVoice` / `PlayerClassChanged` / `PlayerHandleAnimEvent` / `PlayerFireAnimationEvent` / `OnChangeActivity` / `OnCloseCaptionEmit` / `OnPauseMenuShow` / `VehicleMove`（`PlayerButtonDown`/`PlayerButtonUp` 已有 shared native 按键差分派发）
   - `GM:TranslateActivity`（gamemode 级活动翻译钩子；分叉目前只有 `WEAPON:TranslateActivity`）
   - `GM:OnClientLuaError`（分叉已有 `OnLuaError`，缺 client 变体）
 
@@ -156,4 +172,5 @@ hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移�
 - [-] `IsMounted`/`engine.GetGames` 真实现（守卫恒 false 是 GMod 式注册文件依赖的语义）
 - [-] `util.GetModelMeshes`、`PixelVisible`、undo 二进制导出（GMod 本来就没有）。**注意**：`Decal 系`整体不算"GMod 没有"——参考实现的 `game` 库里有 `game.AddDecal`（gmod_tool 的 paint 工具靠它），本仓缺它属于待做项（见上面 P1/P2 的 `PlayerSpray` 一条），别按"刻意不做"处理
 - [-] gamemode 计分放引擎侧（GMod 放 Lua 的就放 Lua，移植期双计债）
-- [-] `SWEP:ShouldDropOnDie`/`CustomAmmoDisplay`/`EquipAmmo`（无引擎路径）
+- [x] `SWEP:CustomAmmoDisplay` 已有 native 入口；主弹药 HUD 按返回表决定显示与数值，medkit 使用原版 callback，2026-10-23 修复。副弹药自定义字段还未完整接入，不能再写成“无引擎路径、刻意不做”。
+- [~] `SWEP:ShouldDropOnDie` 已有 native 投票适配；`EquipAmmo` 仍需单独核对消费路径，移除旧合并“刻意不做”结论。

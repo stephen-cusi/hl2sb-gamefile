@@ -26,6 +26,7 @@ include( "cl_spawnmenu.lua" )
 -- HL2SB (2026-10-08): 拾取通知条（GMod base cl_hudpickup.lua 的分叉移植版，
 -- 含 hud_killfeed item_pickup 事件 -> GM:HUD*PickedUp 的适配器）。
 include( "cl_hudpickup.lua" )
+include( "cl_deathnotice.lua" )
 
 -- HL2SB (2026-10-10): GMod base 的记分板（cl_scoreboard.lua 分叉移植版，
 -- +showscoreboard/-showscoreboard 按钮命令在文件尾注册，TAB 绑定走它们）。

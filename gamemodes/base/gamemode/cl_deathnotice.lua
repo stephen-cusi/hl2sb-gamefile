@@ -31,7 +31,7 @@
          (cdll_client_int.cpp loads the gamemode last), so there is no table to
          attach to at load time: they are locals here, resolved lazily.  A
          gamemode that defines its own is called INSTEAD of ours.
-         ⚠️ Do not also install ours on that table: hook.lua's CallBody runs the
+         Do not also install ours on that table: hook.lua's CallBody runs the
          registered hooks and then the gamemode method, so a hook plus an
          installed method adds every notice twice (two rows, different colours).
 
@@ -60,7 +60,7 @@
     IsEnemyEntityName / IsFriendEntityName and the achievements library -- none of
     which exist in HL2SB.  Nothing else in a death notice depends on it.
 
-    Loaded from lua/game/client/ (client only: it draws).
+    Included by the base gamemode client entry, after shared client libraries.
 -----------------------------------------------------------------------------]]--
 
 if ( not _CLIENT ) then return end
@@ -440,7 +440,7 @@ end
 -- at this point (luamanager.cpp sets it in luasrc_LoadGamemode, and
 -- cdll_client_int.cpp calls that last).  Resolve it lazily.
 --
--- ⚠️ Do NOT install our AddDeathNotice on that table.  The engine dispatches
+-- Do NOT install our AddDeathNotice on that table.  The engine dispatches
 -- this event with hook.call(), and hook.lua's CallBody runs the registered
 -- hooks FIRST and the gamemode method SECOND (hook.lua:57-89) -- so a hook plus
 -- an installed method produce TWO notices per death (seen in game 2026-09-11:

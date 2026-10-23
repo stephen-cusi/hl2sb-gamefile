@@ -9,7 +9,7 @@ WeaponData
 	"anim_prefix"		"gauss"
 	"bucket"			"0"
 	"bucket_position"	"2"
-	"clip_size"			"0"
+	"clip_size"			"1"
 	"clip2_size"		"0"
 	"primary_ammo"		"None"
 	"secondary_ammo"	"None"
@@ -52,14 +52,6 @@ WeaponData
 		{	
 				"font"		"WeaponIconsSelected"
 				"character"	"m"
-		}
-		"ammo"
-		{
-			"file"		"sprites/a_icons1"
-			"x"			"0"
-			"y"			"0"
-			"width"		"32"
-			"height"	"32"
 		}
 		"crosshair"
 		{
