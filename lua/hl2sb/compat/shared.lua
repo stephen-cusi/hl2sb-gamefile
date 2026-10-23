@@ -16,6 +16,7 @@ end
 
 
 include( "hl2sb/compat/enumerations.lua" )
+include( "hl2sb/compat/player_manager.lua" )
 
 local hl2sb_EntityMeta = FindMetaTable( "Entity" )
 

@@ -42,7 +42,7 @@ function PLAYER:Loadout()
 	-- GMod 玩家天生有 suit（引擎保证，走 HEV 电力/手电/冲刺）。
 	-- HL2SB 的等价物就是 EquipSuit：幂等、无拾取 HUD，替代 C++
 	-- GiveAllItems 里被 Lua 桥拦掉的那次 EquipSuit。
-	self.Player:EquipSuit()
+	self.Player:EquipSuit( false )
 
 	if ( cvars.Bool( "sbox_weapons", true ) ) then
 		self.Player:GiveAmmo( 256, "Pistol",     true )
@@ -74,6 +74,7 @@ function PLAYER:Loadout()
 	-- "weapon_toolgun" was a reskinned-pistol placeholder
 	-- (scripts/weapon_toolgun.txt) with no tool behaviour behind it.
 	self.Player:Give( "gmod_tool" )
+	self.Player:Give( "gmod_camera" )
 	-- self.Player:Give( "weapon_toolgun" )  -- pre-port placeholder
 
 	self.Player:SwitchToDefaultWeapon()
