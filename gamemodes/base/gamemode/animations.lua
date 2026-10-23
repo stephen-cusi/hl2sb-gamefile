@@ -1,35 +1,3 @@
---===========================================================================
--- HL2SB (2026-09-27): port of GMod's base gamemode animations.lua
--- (garrysmod/gamemodes/base/gamemode/animations.lua, 406 lines) - the Lua
--- side of GMod's player animation.  The fork's C++ dispatches these hooks
--- from the player animation path (CHL2MP_Player::SetAnimation / PostThink,
--- C_HL2MP_Player::PostThink) with the contracts GMod's lua_shared
--- reference pinned down:
---
---   GM:CalcMainActivity( ply, velocity )  -> ( idealActivity, seqOverride )
---   GM:UpdateAnimation( ply, velocity, maxseqgroundspeed )
---   GM:TranslateActivity( ply, act )      -> newAct
---   GM:DoAnimationEvent( ply, event, data ) -> viewmodelActivity
---
--- Adaptations to this fork (all commented inline):
---   * HandlePlayerNoClipping leaves the noclip pose layer to the engine
---     (CPlayerAnimState::UpdateNoclipLayer already runs the exact
---     ACT_GMOD_NOCLIP_LAYER layer, server-side and networked).
---   * FL_ANIMDUCKING is published here under the Source flag name
---     FL_DUCKING_ANIMATION (same value).
---   * list.GetEntry has no binding yet - list.Get(id)[name] fallback.
---   * Weapon:GetHoldType has no binding yet - the SWEP table's HoldType
---     field (what the anim probe reads) is used instead.
---===========================================================================--
-
--- HL2SB NOTE: GMod tests FL_ANIMDUCKING here, but THIS fork's HL2 movement code
--- never sets that flag - only the cstrike game code does (gamemovement.cpp only
--- ever does AddFlag( FL_DUCKING ), in FinishDuck/FinishUnDuck).  Testing
--- FL_ANIMDUCKING returned false for every crouch, so this branch never ran and
--- the whole Lua crouch pose was dead: crouch showed no animation, and every
--- subsequent crouch activity was never requested.  FL_DUCKING is the flag the
--- fork actually raises, so that is the one to test.
-local HL2SB_FL_DUCKING = FL_DUCKING or DUCKING or 2
 
 function GM:HandlePlayerJumping( ply, velocity, plyTable )
 
@@ -88,7 +56,7 @@ function GM:HandlePlayerDucking( ply, velocity, plyTable )
 
 	if ( !plyTable ) then plyTable = ply:GetTable() end
 
-	if ( !ply:IsFlagSet( HL2SB_FL_DUCKING ) ) then return false end
+	if ( !ply:IsFlagSet( FL_ANIMDUCKING ) ) then return false end
 
 	if ( velocity:Length2DSqr() > 0.25 ) then
 		plyTable.CalcIdeal = ACT_MP_CROUCHWALK
@@ -104,32 +72,26 @@ function GM:HandlePlayerNoClipping( ply, velocity, plyTable )
 
 	if ( !plyTable ) then plyTable = ply:GetTable() end
 
-	-- HL2SB: the noclip POSE (ACT_GMOD_NOCLIP_LAYER on GESTURE_SLOT_CUSTOM) is
-	-- engine-managed here (CPlayerAnimState::UpdateNoclipLayer - server-side
-	-- AddLayeredSequence, networked).  Starting the same layer from Lua would
-	-- stack a second copy, so only the CalcIdeal decision is Lua's, exactly
-	-- like GMod's ordering ("noclip wins over everything but the main-sequence
-	-- decision").
-
 	if ( ply:GetMoveType() != MOVETYPE_NOCLIP || ply:InVehicle() ) then
 
 		if ( plyTable.m_bWasNoclipping ) then
 
 			plyTable.m_bWasNoclipping = nil
+			ply:AnimResetGestureSlot( GESTURE_SLOT_CUSTOM )
+			if ( CLIENT ) then ply:SetIK( true ) end
 
 		end
 
-		return false
+		return
 
 	end
 
 	if ( !plyTable.m_bWasNoclipping ) then
-		plyTable.m_bWasNoclipping = true
-	end
 
-	-- Noclipping keeps the body in the idle pose; the engine layer plays the
-	-- superman pose on top of it.
-	plyTable.CalcIdeal = ACT_MP_STAND_IDLE
+		ply:AnimRestartGesture( GESTURE_SLOT_CUSTOM, ACT_GMOD_NOCLIP_LAYER, false )
+		if ( CLIENT ) then ply:SetIK( false ) end
+
+	end
 
 	return true
 
@@ -183,7 +145,6 @@ function GM:HandlePlayerDriving( ply, plyTable )
 
 	local pVehicle = ply:GetVehicle()
 
-	-- list.GetEntry( listid, key ) is the GMod spelling (list.lua:86).
 	if ( !pVehicle.HandleAnimation && pVehicle.GetVehicleClass ) then
 		local listEntr = list.GetEntry( "Vehicles", pVehicle:GetVehicleClass() )
 		if ( listEntr && listEntr.Members && listEntr.Members.HandleAnimation ) then
@@ -216,11 +177,7 @@ function GM:HandlePlayerDriving( ply, plyTable )
 
 	local use_anims = ( plyTable.CalcSeqOverride == ply:LookupSequence( "sit_rollercoaster" ) || plyTable.CalcSeqOverride == ply:LookupSequence( "sit" ) )
 	if ( use_anims && ply:GetAllowWeaponsInVehicle() && IsValid( ply:GetActiveWeapon() ) ) then
-
-		-- HL2SB: Weapon:GetHoldType has no binding yet; SWEPs carry HoldType in
-		-- their script table, which the weapon entity's __index resolves.
-		local wep = ply:GetActiveWeapon()
-		local holdtype = wep.HoldType || "passive"
+		local holdtype = ply:GetActiveWeapon():GetHoldType()
 		if ( holdtype == "smg" ) then holdtype = "smg1" end
 
 		local seqid = ply:LookupSequence( "sit_" .. holdtype )
@@ -372,48 +329,29 @@ function GM:CalcMainActivity( ply, velocity )
 
 end
 
--- HL2SB NOTE: GMod's original table derives the HL2MP activity arithmetically
--- (IdleActivity + 1/2/3/4/5/6/9).  That assumes GMod's engine enum order
---
---     ACT_HL2MP_IDLE, ACT_HL2MP_WALK, ACT_HL2MP_RUN, ACT_HL2MP_IDLE_CROUCH,
---     ACT_HL2MP_WALK_CROUCH, ACT_HL2MP_GESTURE_RANGE_ATTACK, ...
---
--- but THIS fork's ai_activity.h was built from an older HL2MP enum that has no
--- ACT_HL2MP_WALK in the head block at all (it is appended at the very END of the
--- enum, ai_activity.h:1349).  Its order is
---
---     ACT_HL2MP_IDLE, ACT_HL2MP_RUN, ACT_HL2MP_IDLE_CROUCH, ACT_HL2MP_WALK_CROUCH,
---     ACT_HL2MP_GESTURE_RANGE_ATTACK, ACT_HL2MP_GESTURE_RELOAD, ACT_HL2MP_JUMP, ...
---
--- so the arithmetic was off by one from ACT_MP_WALK onward: crouchwalk landed on
--- ACT_HL2MP_GESTURE_RANGE_ATTACK (an attack gesture with no crouch sequence ->
--- "some weapons lose their animation when crouching"), run landed on crouch idle,
--- reload on jump.  Map by NAME, so the divergent enum can never skew it again.
+local IdleActivity = ACT_HL2MP_IDLE
 local IdleActivityTranslate = {}
-IdleActivityTranslate[ ACT_MP_STAND_IDLE ]					= ACT_HL2MP_IDLE
-IdleActivityTranslate[ ACT_MP_WALK ]						= ACT_HL2MP_WALK
-IdleActivityTranslate[ ACT_MP_RUN ]							= ACT_HL2MP_RUN
-IdleActivityTranslate[ ACT_MP_CROUCH_IDLE ]					= ACT_HL2MP_IDLE_CROUCH
-IdleActivityTranslate[ ACT_MP_CROUCHWALK ]					= ACT_HL2MP_WALK_CROUCH
-IdleActivityTranslate[ ACT_MP_ATTACK_STAND_PRIMARYFIRE ]	= ACT_HL2MP_GESTURE_RANGE_ATTACK
-IdleActivityTranslate[ ACT_MP_ATTACK_CROUCH_PRIMARYFIRE ]	= ACT_HL2MP_GESTURE_RANGE_ATTACK
-IdleActivityTranslate[ ACT_MP_RELOAD_STAND ]				= ACT_HL2MP_GESTURE_RELOAD
-IdleActivityTranslate[ ACT_MP_RELOAD_CROUCH ]				= ACT_HL2MP_GESTURE_RELOAD
+IdleActivityTranslate[ ACT_MP_STAND_IDLE ]					= IdleActivity
+IdleActivityTranslate[ ACT_MP_WALK ]						= IdleActivity + 1
+IdleActivityTranslate[ ACT_MP_RUN ]							= IdleActivity + 2
+IdleActivityTranslate[ ACT_MP_CROUCH_IDLE ]					= IdleActivity + 3
+IdleActivityTranslate[ ACT_MP_CROUCHWALK ]					= IdleActivity + 4
+IdleActivityTranslate[ ACT_MP_ATTACK_STAND_PRIMARYFIRE ]	= IdleActivity + 5
+IdleActivityTranslate[ ACT_MP_ATTACK_CROUCH_PRIMARYFIRE ]	= IdleActivity + 5
+IdleActivityTranslate[ ACT_MP_RELOAD_STAND ]				= IdleActivity + 6
+IdleActivityTranslate[ ACT_MP_RELOAD_CROUCH ]				= IdleActivity + 6
 IdleActivityTranslate[ ACT_MP_JUMP ]						= ACT_HL2MP_JUMP_SLAM
-IdleActivityTranslate[ ACT_MP_SWIM ]						= ACT_HL2MP_SWIM
+IdleActivityTranslate[ ACT_MP_SWIM ]						= IdleActivity + 9
 IdleActivityTranslate[ ACT_LAND ]							= ACT_LAND
 
 -- it is preferred you return ACT_MP_* in CalcMainActivity, and if you have a specific need to not translate through the weapon do it here
 function GM:TranslateActivity( ply, act )
 
-	-- GMod original: ask the weapon first (this fork's HL2MP weapon acttables
-	-- are keyed on ACT_MP_*, weapon_pistol.cpp:147), and only when the weapon
-	-- has no opinion fall back to the hold-type-less HL2MP activity.
 	local newact = ply:TranslateWeaponActivity( act )
 
 	-- select idle anims if the weapon didn't decide
 	if ( act == newact ) then
-		return IdleActivityTranslate[ act ] or act
+		return IdleActivityTranslate[ act ]
 	end
 
 	return newact
@@ -424,7 +362,7 @@ function GM:DoAnimationEvent( ply, event, data )
 
 	if ( event == PLAYERANIMEVENT_ATTACK_PRIMARY ) then
 
-		if ply:IsFlagSet( HL2SB_FL_DUCKING ) then
+		if ply:IsFlagSet( FL_ANIMDUCKING ) then
 			ply:AnimRestartGesture( GESTURE_SLOT_ATTACK_AND_RELOAD, ACT_MP_ATTACK_CROUCH_PRIMARYFIRE, true )
 		else
 			ply:AnimRestartGesture( GESTURE_SLOT_ATTACK_AND_RELOAD, ACT_MP_ATTACK_STAND_PRIMARYFIRE, true )
@@ -439,7 +377,7 @@ function GM:DoAnimationEvent( ply, event, data )
 
 	elseif ( event == PLAYERANIMEVENT_RELOAD ) then
 
-		if ply:IsFlagSet( HL2SB_FL_DUCKING ) then
+		if ply:IsFlagSet( FL_ANIMDUCKING ) then
 			ply:AnimRestartGesture( GESTURE_SLOT_ATTACK_AND_RELOAD, ACT_MP_RELOAD_CROUCH, true )
 		else
 			ply:AnimRestartGesture( GESTURE_SLOT_ATTACK_AND_RELOAD, ACT_MP_RELOAD_STAND, true )
