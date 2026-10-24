@@ -875,32 +875,6 @@ if ( EntityMeta.FollowBone == nil and EntityMeta.SetParent != nil
 	Msg( "[HL2SB]   Entity:FollowBone shim added (parent + per-tick bone follow)\n" )
 end
 
--- Server-side bone manipulation: quiet defaults until the engine lands the
--- real thing (the client realm's implementations are NOT shadowed -- the
--- guard checks the CBaseAnimating metatable the client binds them on).
-do
-	local AnimMeta = FindMetaTable( "CBaseAnimating" )
-
-	if ( EntityMeta.ManipulateBonePosition == nil and ( AnimMeta == nil or AnimMeta.ManipulateBonePosition == nil ) ) then
-
-		local s_bBoneManipNoteShown = false
-
-		local function HL2SB_BoneManipGapNote()
-			if ( s_bBoneManipNoteShown ) then return end
-			s_bBoneManipNoteShown = true
-			Msg( "[HL2SB]   server-side bone manipulation is not implemented in this fork's engine; bone-widget dragging will not move the model (no-op accepted).  Engine gap recorded in the session report.\n" )
-		end
-
-		function EntityMeta:ManipulateBonePosition( bone, pos ) HL2SB_BoneManipGapNote() end
-		function EntityMeta:ManipulateBoneScale( bone, scale ) HL2SB_BoneManipGapNote() end
-		function EntityMeta:GetManipulateBonePosition( bone ) return vector_origin end
-		function EntityMeta:GetManipulateBoneAngles( bone ) return angle_zero end
-		function EntityMeta:GetManipulateBoneScale( bone ) return Vector( 1, 1, 1 ) end
-
-		Msg( "[HL2SB]   server-side ManipulateBone*/GetManipulateBone* no-op shims added\n" )
-	end
-end
-
 -- ---------------------------------------------------------------------------
 -- HL2SB (2026-10-16): runtime-registered SENT classes reach the engine's
 -- entity layer.
