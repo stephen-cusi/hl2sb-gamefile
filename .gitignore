@@ -104,6 +104,10 @@ videoconfig*.cfg
 backup/
 _lua_enc_backup/
 
+# --- 本地地图/移植说明目录:不提交远程 ---
+docs/
+custom/
+
 # --- 一次性分析脚本(临时工具,不进仓库) ---
 _*.py
 *.gma
