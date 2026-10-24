@@ -1,11 +1,3 @@
---===========================================================================
--- HL2SB (2026-10-02): verbatim GMod garrysmod/gamemodes/base/entities/
--- entities/gmod_hands.lua - every fork delta removed now that the engine
--- surface exists (Entity:SetTransmitWithParent, Entity:DeleteOnRemove,
--- vector_origin/angle_zero globals).  The entity is EF_BONEMERGE'd onto the
--- owner's viewmodel, carries RENDERGROUP_OTHER so the world pass never draws
--- it, and GM:PostDrawViewModel (deathmatch cl_init.lua) owns its single draw.
---===========================================================================--
 
 AddCSLuaFile()
 

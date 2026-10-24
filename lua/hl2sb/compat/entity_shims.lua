@@ -337,8 +337,17 @@ if ( EntityMeta.SetDTFloat == nil ) then
 		Angle  = {},
 	}
 
+    local vehicleSlots = {
+        Bool = "_HL2SBThirdPersonMode",
+        Float = "_HL2SBCameraDistance",
+        String = "_HL2SBVehicleClass"
+    }
+
 	for strType, t in pairs( DTVarTypes ) do
 		EntityMeta[ "SetDT" .. strType ] = function( self, key, value )
+            if ( key == 3 && vehicleSlots[ strType ] && self:IsVehicle() ) then
+                return self[ "Set" .. vehicleSlots[ strType ] ]( self, value )
+            end
 			-- engine-declared slot: the replicated accessor owns the value
 			local nm = ResolveEngineNW( self, strType, key )
 			if ( nm != nil ) then
@@ -358,6 +367,9 @@ if ( EntityMeta.SetDTFloat == nil ) then
 		end
 
 		EntityMeta[ "GetDT" .. strType ] = function( self, key )
+            if ( key == 3 && vehicleSlots[ strType ] && self:IsVehicle() ) then
+                return self[ "Get" .. vehicleSlots[ strType ] ]( self )
+            end
 			local nm = ResolveEngineNW( self, strType, key )
 			if ( nm != nil ) then
 				local f = self[ "Get" .. nm ]
