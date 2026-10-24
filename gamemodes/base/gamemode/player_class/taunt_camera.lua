@@ -1,43 +1,126 @@
---[[--------------------------------------------------------------------------
-    gamemodes/base/gamemode/player_class/taunt_camera.lua
 
-    GMod 的 taunt camera 需要 CBasePlayer 的 CalcView / CreateMove 客户端钩子
-    才能真的推镜头俯仰、滚转。HL2SB 目前没有把这两个钩子接到 Lua，
-    所以这里是**惰性桩**：API 和 GMod 一样，但 ShouldDrawLocal / CalcView /
-    CreateMove 永远返回“不接管”，于是沙盒玩家类照抄 GMod 代码不会炸，
-    只是暂时看不到 taunt 镜头。
+AddCSLuaFile()
 
-    等引擎把客户端 CalcView/CreateMove 接到 Lua 之后，把真正的实现填进来即可。
---------------------------------------------------------------------------]]--
+local m_pitch = GetConVar( "m_pitch" )
+local m_yaw = GetConVar( "m_yaw" )
 
+--
+-- This is designed so you can call it like
+--
+-- tauntcam = TauntCamera()
+--
+-- Then you have your own copy.
+--
 function TauntCamera()
+
 	local CAM = {}
 
-	CAM.IsTaunting = false
-	CAM.TauntEndTime = 0
+	local WasOn					= false
 
-	function CAM:ShouldDrawLocalPlayer( ply, isTaunting )
-		return false
+	local CustomAngles			= angle_zero
+	local PlayerLockAngles		= nil
+
+	local InLerp				= 0
+	local OutLerp				= 1
+
+	--
+	-- Draw the local player if we're active in any way
+	--
+	CAM.ShouldDrawLocalPlayer = function( self, ply, on )
+
+		return on || OutLerp < 1
+
 	end
 
-	function CAM:CalcView( view, ply, isTaunting )
-		return false
+	--
+	-- Implements the third person, rotation view (with lerping in/out)
+	--
+	CAM.CalcView = function( self, view, ply, on )
+
+		if ( !ply:Alive() || !IsValid( ply:GetViewEntity() ) || ply:GetViewEntity() != ply ) then on = false end
+
+		if ( WasOn != on ) then
+
+			if ( on ) then InLerp = 0 end
+			if ( !on ) then OutLerp = 0 end
+
+			WasOn = on
+
+		end
+
+		if ( !on && OutLerp >= 1 ) then
+
+			CustomAngles = view.angles * 1
+			CustomAngles.r = 0
+			PlayerLockAngles = nil
+			InLerp = 0
+			return
+
+		end
+
+		if ( PlayerLockAngles == nil ) then return end
+
+		--
+		-- Simple 3rd person camera
+		--
+		local TargetOrigin = view.origin - CustomAngles:Forward() * 100
+		local tr = util.TraceHull( { start = view.origin, endpos = TargetOrigin, mask = MASK_SHOT, filter = player.GetAll(), mins = Vector( -8, -8, -8 ), maxs = Vector( 8, 8, 8 ) } )
+		TargetOrigin = tr.HitPos + tr.HitNormal
+
+		if ( InLerp < 1 ) then
+
+			InLerp = InLerp + FrameTime() * 5.0
+			view.origin = LerpVector( InLerp, view.origin, TargetOrigin )
+			view.angles = LerpAngle( InLerp, PlayerLockAngles, CustomAngles )
+			return true
+
+		end
+
+		if ( OutLerp < 1 ) then
+
+			OutLerp = OutLerp + FrameTime() * 3.0
+			view.origin = LerpVector( 1-OutLerp, view.origin, TargetOrigin )
+			view.angles = LerpAngle( 1-OutLerp, PlayerLockAngles, CustomAngles )
+			return true
+
+		end
+
+		view.angles = CustomAngles * 1
+		view.origin = TargetOrigin
+		return true
+
 	end
 
-	function CAM:CreateMove( cmd, ply, isTaunting )
-		return false
-	end
+	--
+	-- Freezes the player in position and uses the input from the user command to
+	-- rotate the custom third person camera
+	--
+	CAM.CreateMove = function( self, cmd, ply, on )
 
-	function CAM:StartTaunt( ply, act )
-		self.IsTaunting = true
-		self.TauntEndTime = 0
+		if ( !ply:Alive() ) then on = false end
+		if ( !on ) then return end
+
+		if ( PlayerLockAngles == nil ) then
+			PlayerLockAngles = CustomAngles * 1
+		end
+
+		--
+		-- Rotate our view
+		--
+		CustomAngles.pitch	= CustomAngles.pitch	+ cmd:GetMouseY() * m_pitch:GetFloat()
+		CustomAngles.yaw	= CustomAngles.yaw		- cmd:GetMouseX() * m_yaw:GetFloat()
+
+		--
+		-- Lock the player's controls and angles
+		--
+		cmd:SetViewAngles( PlayerLockAngles )
+		cmd:ClearButtons()
+		cmd:ClearMovement()
 
 		return true
-	end
 
-	function CAM:StopTaunt()
-		self.IsTaunting = false
 	end
 
 	return CAM
+
 end

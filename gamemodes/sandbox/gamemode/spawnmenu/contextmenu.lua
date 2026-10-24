@@ -114,18 +114,6 @@ function PANEL:EndKeyFocus( pPanel )
 
 end
 
-function PANEL:OnDesktopWindowClosed( window )
-
-	for _, child in ipairs( self:GetChildren() ) do
-		if ( child != window && IsValid( child ) && child.ContextDesktopWindow && child:IsVisible() ) then return end
-	end
-
-	self:KillFocus()
-	self:SetHangOpen( false )
-	self:Close()
-
-end
-
 function PANEL:RestoreControlPanel()
 
 	-- Restore the active panel
@@ -227,22 +215,11 @@ function CreateContextMenu()
 
 			-- Make the window
 			icon.Window = g_ContextMenu:Add( "DFrame" )
-			icon.Window.ContextDesktopWindow = true
 			icon.Window:SetSize( newWdgt.width, newWdgt.height )
 			icon.Window:SetTitle( newWdgt.title )
 			icon.Window:Center()
 
 			newWdgt.init( icon, icon.Window )
-
-			local window = icon.Window
-			local onClose = rawget( window:GetTable(), "OnClose" )
-			window.OnClose = function( closed )
-				local parent = closed:GetParent()
-				if ( isfunction( onClose ) ) then onClose( closed ) end
-				if ( parent == g_ContextMenu && IsValid( g_ContextMenu ) ) then
-					g_ContextMenu:OnDesktopWindowClosed( closed )
-				end
-			end
 
 		end
 

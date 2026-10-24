@@ -258,7 +258,7 @@ hook.Add( "OnSaveSpawnlist", "DoSaveSpawnlist", function()
 	CheckIfAnyVisible( g_SpawnMenu.CustomizableSpawnlistNode )
 
 end )
-
+ 
 hook.Add( "OnRevertSpawnlist", "DoRevertSpawnlists", function()
 
 	-- First delete all of the existing spawnlists

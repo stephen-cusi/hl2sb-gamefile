@@ -1,58 +1,59 @@
---[[--------------------------------------------------------------------------
-    gamemodes/sandbox/gamemode/player_class/player_sandbox.lua
 
-    对应 GMod 的 gamemodes/sandbox/gamemode/player_class/player_sandbox.lua。
+AddCSLuaFile()
+DEFINE_BASECLASS( "player_default" )
 
-    开局装备从旧的 GM:GiveDefaultItems 搬到了这里的 PLAYER:Loadout()，
-    和 GMod 一致：GM:PlayerSpawn -> PlayerLoadout -> RunClass("Loadout")。
+if ( CLIENT ) then
 
-    gmod_tool   -> 已移植（2026-10-16，lua/weapons/gmod_tool/，GMod 原文）
-    gmod_camera -> 略过（只有半个 shared.lua，没有 init.lua，也缺 camera.mdl）
---------------------------------------------------------------------------]]--
+	CreateConVar( "cl_playercolor", "0.24 0.34 0.41", { FCVAR_ARCHIVE, FCVAR_USERINFO, FCVAR_DONTRECORD }, "The value is a Vector - so between 0-1 - not between 0-255" )
+	CreateConVar( "cl_weaponcolor", "0.30 1.80 2.10", { FCVAR_ARCHIVE, FCVAR_USERINFO, FCVAR_DONTRECORD }, "The value is a Vector - so between 0-1 - not between 0-255" )
+	CreateConVar( "cl_playerskin", "0", { FCVAR_ARCHIVE, FCVAR_USERINFO, FCVAR_DONTRECORD }, "The skin to use, if the model has any" )
+	CreateConVar( "cl_playerbodygroups", "0", { FCVAR_ARCHIVE, FCVAR_USERINFO, FCVAR_DONTRECORD }, "The bodygroups to use, if the model has any" )
+
+end
 
 local PLAYER = {}
 
-PLAYER.DuckSpeed     = 0.1
-PLAYER.UnDuckSpeed   = 0.1
+PLAYER.DuckSpeed			= 0.1		-- How fast to go from not ducking, to ducking
+PLAYER.UnDuckSpeed			= 0.1		-- How fast to go from ducking, to not ducking
 
--- HL2SB 没有 GMod 的 TauntCamera 全局（嘲讽镜头），没有就置 nil——
--- 下面的 ShouldDrawLocal/CreateMove/CalcView 本来就做了 nil 保护。
--- 之前直接 TauntCamera() 会让整个类文件加载失败（class=nil 的根因之一）。
-if ( TauntCamera ~= nil ) then
-	PLAYER.TauntCam = TauntCamera()
-else
-	PLAYER.TauntCam = nil
-end
+--
+-- Creates a Taunt Camera
+--
+PLAYER.TauntCam = TauntCamera()
 
-PLAYER.SlowWalkSpeed = 100
-PLAYER.WalkSpeed     = 200
-PLAYER.RunSpeed      = 400
+--
+-- See gamemodes/base/player_class/player_default.lua for all overridable variables
+--
+PLAYER.SlowWalkSpeed		= 100
+PLAYER.WalkSpeed 			= 200
+PLAYER.RunSpeed				= 400
 
--------------------------------------------------------------------------------
+--
+-- Set up the network table accessors
+--
 function PLAYER:SetupDataTables()
+
+	BaseClass.SetupDataTables( self )
+
 end
 
--------------------------------------------------------------------------------
--- Purpose: 出生装备（GMod 沙盒预设）
--------------------------------------------------------------------------------
+
 function PLAYER:Loadout()
-	-- 不 StripWeapons：GMod 也注释掉了，说会破坏现有 mod
+
+	-- This would make sense, but breaks existing mods
+	--self.Player:StripWeapons()
 	self.Player:RemoveAllAmmo()
 
-	-- GMod 玩家天生有 suit（引擎保证，走 HEV 电力/手电/冲刺）。
-	-- HL2SB 的等价物就是 EquipSuit：幂等、无拾取 HUD，替代 C++
-	-- GiveAllItems 里被 Lua 桥拦掉的那次 EquipSuit。
-	self.Player:EquipSuit( false )
-
 	if ( cvars.Bool( "sbox_weapons", true ) ) then
-		self.Player:GiveAmmo( 256, "Pistol",     true )
-		self.Player:GiveAmmo( 256, "SMG1",       true )
-		self.Player:GiveAmmo( 5,   "grenade",    true )
-		self.Player:GiveAmmo( 64,  "Buckshot",   true )
-		self.Player:GiveAmmo( 32,  "357",        true )
-		self.Player:GiveAmmo( 32,  "XBowBolt",   true )
-		self.Player:GiveAmmo( 6,   "AR2AltFire", true )
-		self.Player:GiveAmmo( 100, "AR2",        true )
+
+		self.Player:GiveAmmo( 256,	"Pistol", 		true )
+		self.Player:GiveAmmo( 256,	"SMG1", 		true )
+		self.Player:GiveAmmo( 5,	"grenade", 		true )
+		self.Player:GiveAmmo( 64,	"Buckshot", 	true )
+		self.Player:GiveAmmo( 32,	"357", 			true )
+		self.Player:GiveAmmo( 32,	"XBowBolt", 	true )
+		self.Player:GiveAmmo( 6,	"AR2AltFire", 	true )
+		self.Player:GiveAmmo( 100,	"AR2", 			true )
 
 		self.Player:Give( "weapon_crowbar" )
 		self.Player:Give( "weapon_pistol" )
@@ -64,71 +65,137 @@ function PLAYER:Loadout()
 		self.Player:Give( "weapon_357" )
 		self.Player:Give( "weapon_rpg" )
 		self.Player:Give( "weapon_ar2" )
+
+		-- The only reason I'm leaving this out is because
+		-- I don't want to add too many weapons to the first
+		-- row because that's where the gravgun is.
+		--pl:Give( "weapon_stunstick" )
+
 	end
 
-	-- 工具（GMod 里这两个不受 sbox_weapons 影响）
-	self.Player:Give( "weapon_physgun" )
-
-	-- HL2SB (2026-10-16): the ported GMod tool gun.  GMod's sandbox
-	-- player_sandbox.lua:76 gives "gmod_tool" here; this fork's old
-	-- "weapon_toolgun" was a reskinned-pistol placeholder
-	-- (scripts/weapon_toolgun.txt) with no tool behaviour behind it.
 	self.Player:Give( "gmod_tool" )
 	self.Player:Give( "gmod_camera" )
-	-- self.Player:Give( "weapon_toolgun" )  -- pre-port placeholder
+	self.Player:Give( "weapon_physgun" )
 
 	self.Player:SwitchToDefaultWeapon()
+
 end
 
--------------------------------------------------------------------------------
 function PLAYER:SetModel()
-	local cl_playermodel = self.Player:GetInfo( "cl_playermodel" )
-	local modelname      = player_manager.TranslatePlayerModel( cl_playermodel )
 
-	util.PrecacheModel( modelname )
-	self.Player:SetModel( modelname )
+	BaseClass.SetModel( self )
+
+	local skin = self.Player:GetInfoNum( "cl_playerskin", 0 )
+	self.Player:SetSkin( skin )
+
+	local bodygroups = self.Player:GetInfo( "cl_playerbodygroups" )
+	if ( bodygroups == nil ) then bodygroups = "" end
+
+	local groups = string.Split( bodygroups, " " )
+	for k = 0, self.Player:GetNumBodyGroups() - 1 do
+		self.Player:SetBodygroup( k, tonumber( groups[ k + 1 ] ) or 0 )
+	end
+
 end
 
--------------------------------------------------------------------------------
+--
+-- Called when the player spawns
+--
 function PLAYER:Spawn()
+
+	BaseClass.Spawn( self )
+
+	local plyclr = self.Player:GetInfo( "cl_playercolor" )
+	self.Player:SetPlayerColor( Vector( plyclr ) )
+
+	local wepclr = Vector( self.Player:GetInfo( "cl_weaponcolor" ) )
+	if ( wepclr:Length() < 0.001 ) then
+		wepclr = Vector( 0.001, 0.001, 0.001 )
+	end
+	self.Player:SetWeaponColor( wepclr )
+
 end
 
+--
+-- Return true to draw local (thirdperson) camera - false to prevent - nothing to use default behaviour
+--
 function PLAYER:ShouldDrawLocal()
-	if ( self.TauntCam ~= nil ) then
-		return self.TauntCam:ShouldDrawLocalPlayer( self.Player, false )
-	end
+
+	if ( self.TauntCam:ShouldDrawLocalPlayer( self.Player, self.Player:IsPlayingTaunt() ) ) then return true end
+
 end
 
+--
+-- Allow player class to create move
+--
 function PLAYER:CreateMove( cmd )
-	if ( self.TauntCam ~= nil ) then
-		return self.TauntCam:CreateMove( cmd, self.Player, false )
-	end
+
+	if ( self.TauntCam:CreateMove( cmd, self.Player, self.Player:IsPlayingTaunt() ) ) then return true end
+
 end
 
+--
+-- Allow changing the player's view
+--
 function PLAYER:CalcView( view )
-	if ( self.TauntCam ~= nil ) then
-		return self.TauntCam:CalcView( view, self.Player, false )
-	end
+
+	if ( self.TauntCam:CalcView( view, self.Player, self.Player:IsPlayingTaunt() ) ) then return true end
+
+	-- Your stuff here
+
 end
 
--------------------------------------------------------------------------------
--- Purpose: HL2 单机的跳跃加成（GMod 沙盒原样保留）
--------------------------------------------------------------------------------
+--
+-- Reproduces the jump boost from HL2 singleplayer
+--
 local JUMPING
 
 function PLAYER:StartMove( move )
-	if ( bit == nil ) then return end
 
-	if ( bit.band( move:GetButtons(), 2 ) ~= 0 and bit.band( move:GetOldButtons(), 2 ) == 0 and self.Player:OnGround() ) then
+	-- Only apply the jump boost in FinishMove if the player has jumped during this frame
+	-- Using a global variable is safe here because nothing else happens between SetupMove and FinishMove
+	if bit.band( move:GetButtons(), IN_JUMP ) ~= 0 and bit.band( move:GetOldButtons(), IN_JUMP ) == 0 and self.Player:OnGround() then
 		JUMPING = true
 	end
+
 end
 
 function PLAYER:FinishMove( move )
-	if ( not JUMPING ) then return end
+
+	-- If the player has jumped this frame
+	if ( JUMPING ) then
+		-- Get their orientation
+		local forward = move:GetAngles()
+		forward.p = 0
+		forward = forward:Forward()
+
+		-- Compute the speed boost
+
+		-- HL2 normally provides a much weaker jump boost when sprinting
+		-- For some reason this never applied to GMod, so we won't perform
+		-- this check here to preserve the "authentic" feeling
+		local speedBoostPerc = ( ( not self.Player:Crouching() ) and 0.5 ) or 0.1
+
+		local speedAddition = math.abs( move:GetForwardSpeed() * speedBoostPerc )
+		local maxSpeed = move:GetMaxSpeed() * ( 1 + speedBoostPerc )
+		local newSpeed = speedAddition + move:GetVelocity():Length2D()
+
+		-- Clamp it to make sure they can't bunnyhop to ludicrous speed
+		if newSpeed > maxSpeed then
+			speedAddition = speedAddition - ( newSpeed - maxSpeed )
+		end
+
+		-- Reverse it if the player is running backwards
+		if move:GetVelocity():Dot( forward ) < 0 then
+			speedAddition = -speedAddition
+		end
+
+		-- Apply the speed boost
+		move:SetVelocity( forward * speedAddition + move:GetVelocity() )
+	end
 
 	JUMPING = nil
-	-- HL2SB 没有 move:SetVelocity 的绑定，跳跃加成留待引擎侧补齐。
+
 end
 
 player_manager.RegisterClass( "player_sandbox", PLAYER, "player_default" )

@@ -1,87 +1,86 @@
---========== Copyleft © 2010, Team Sandbox, Some rights reserved. ===========--
---
--- Purpose: Gamemode handling.
---
---===========================================================================--
 
--- 必须和 C++ 的 LUA_BASE_GAMEMODE 一致（game/shared/lua/luamanager.h）。
--- 2026-10-08 切换：基础 gamemode 是 "base"（gamemodes/base/），deathmatch
--- 降级为普通子 gamemode，与 sandbox / campaign 一样经 table.inherit 继承。
-_BASE_GAMEMODE = "base"
+local gmod			= gmod
+local Msg			= Msg
+local hook			= hook
+local table			= table
+local baseclass		= baseclass
 
-require( "hook" )
-
-local hook = hook
-local table = table
-local print = print
-local _BASE_GAMEMODE = _BASE_GAMEMODE
-local _G = _G
-local tostring = tostring
-local Warning = dbg.Warning
-
+--[[---------------------------------------------------------
+	Name: gamemode
+	Desc: A module to manage gamemodes
+-----------------------------------------------------------]]
 module( "gamemode" )
 
-local tGamemodes = {}
+local GameList = {}
 
--------------------------------------------------------------------------------
--- Purpose: Calls a gamemode function
--- Input  : strEventName - Name of the internal GameRules method
--- Output :
--------------------------------------------------------------------------------
-function call( strEventName, ... )
-  if ( _G._GAMEMODE and _G._GAMEMODE[ strEventName ] == nil ) then
-    return false
-  end
-  return hook.call( strEventName, _G._GAMEMODE, ... )
+--[[---------------------------------------------------------
+	Name: RegisterGamemode( table, string )
+	Desc: Used to register your gamemode with the engine
+-----------------------------------------------------------]]
+function Register( t, name, derived )
+
+	local CurrentGM = gmod.GetGamemode()
+
+	if ( CurrentGM ) then
+
+		if ( CurrentGM.FolderName == name ) then
+			table.Merge( CurrentGM, t )
+			Call( "OnReloaded" )
+		end
+
+		if ( CurrentGM.BaseClass && CurrentGM.BaseClass.FolderName == name ) then
+			table.Merge( CurrentGM.BaseClass, t )
+			Call( "OnReloaded" )
+		end
+
+	end
+
+	-- This gives the illusion of inheritence
+	if ( name != "base" ) then
+
+		local basetable = Get( derived )
+		if ( basetable ) then
+			t = table.Inherit( t, basetable )
+		else
+			Msg( "Warning: Couldn't find derived gamemode (", derived, ")\n" )
+		end
+
+	end
+
+	GameList[ name ] = t
+
+	--
+	-- Using baseclass for gamemodes kind of sucks, because
+	-- the base gamemode is called "base" - and they have to all be unique.
+	-- so here we prefix the gamemode name with "gamemode_" - and when using
+	-- DEFINE_BASECLASS you're expected to do the same.
+	--
+	baseclass.Set( "gamemode_" .. name, t )
+
 end
 
--- HL2SB: GMod spells this Call (capital C).  lua/derma/derma.lua:167 calls
--- gamemode.Call( "ForceDermaSkin" ) from GetDefaultSkin(), and GetDefaultSkin()
--- runs on every panel skin lookup -- with only the lowercase name defined that
--- threw
---
---     lua/derma/derma.lua:167: attempt to call a nil value (field 'Call')
---
--- once per frame, so the GMod notice panel existed but could never paint (the
--- "no animation" symptom).  Same function, both names.
-Call = call
-
--------------------------------------------------------------------------------
--- Purpose: Returns a gamemode table object
--- Input  : strName - Name of the gamemode
--- Output : table
--------------------------------------------------------------------------------
-function get( strName )
-  return tGamemodes[ strName ]
+--[[---------------------------------------------------------
+	Name: Get( string )
+	Desc: Get a gamemode by name.
+-----------------------------------------------------------]]
+function Get( name )
+	return GameList[ name ]
 end
 
--------------------------------------------------------------------------------
--- Purpose: Registers a gamemode
--- Input  : tGamemode - Gamemode table object
---          strName - Name of the gamemode
---          strBaseClass - Name of the base class
--- Output :
--------------------------------------------------------------------------------
-function register( tGamemode, strName, strBaseClass )
-  if ( get( strName ) ~= nil and _G._GAMEMODE ~= nil ) then
-    tGamemode = table.inherit( tGamemode, _G._GAMEMODE )
-  end
-  if ( strName ~= _BASE_GAMEMODE ) then
-    -- 父 gamemode 必须先加载好（引擎是按 base -> 当前 gamemode 的顺序加载的）。
-    -- 拿不到就只警告，不要 table.inherit(nil) 直接把加载打断。
-    local tBase = get( strBaseClass )
-    if ( tBase ~= nil ) then
-      tGamemode = table.inherit( tGamemode, tBase )
-    else
-      Warning( "WARNING: gamemode \"" .. tostring( strName ) ..
-               "\" declares base \"" .. tostring( strBaseClass ) ..
-               "\" but it is not registered yet!\n" )
-    end
-  end
-  tGamemodes[ strName ] = tGamemode
-end
+--[[---------------------------------------------------------
+	Name: Call( name, args )
+	Desc: Calls a gamemode function
+-----------------------------------------------------------]]
+local currentGM
+function Call( name, ... )
 
--- HL2SB: GMod spells the public surface capitalised (gamemode.Get / gamemode.Register,
--- wiki). We already alias Call above; these complete the trio. Same functions.
-Get = get
-Register = register
+	if ( !currentGM ) then
+		currentGM = gmod.GetGamemode()
+	end
+
+	-- If the gamemode function doesn't exist just return false
+	if ( currentGM && currentGM[name] == nil ) then return false end
+
+	return hook.Call( name, currentGM, ... )
+
+end

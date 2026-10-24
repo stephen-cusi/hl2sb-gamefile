@@ -1,251 +1,233 @@
---[[--------------------------------------------------------------------------
-    gamemodes/base/gamemode/shared.lua
 
-    HL2SB 的基础 gamemode —— 对应 GMod 的 gamemodes/base。
+--[[---------------------------------------------------------
 
-    和 GMod 版的差异（都是缺绑定导致的，不是设计选择）：
-      - GAMEMODE 全局由引擎在 luasrc_SetGamemode 里设好（等价 GMod 的 GAMEMODE）。
-      - DEFINE_BASECLASS 是 GMod 的加载期文本宏，HL2SB 没有，
-        子 gamemode 里要写 local BaseClass = baseclass.Get( "base" )。
+  This file should contain variables and functions that are
+   the same on both client and server.
 
-    这个文件客户端和服务端都会加载。
---------------------------------------------------------------------------]]--
+  This file will get sent to the client - so don't add
+   anything to this file that you don't want them to be
+   able to see.
 
--- 顺序重要：player_default 定义 TauntCamera 和 player_default 类，
--- player_shd 只往引擎 metatable 上挂方法。万一 player_shd 出错，
--- 也不能把 base gamemode 的注册拖死（否则所有 gamemode 都失去基类）。
+-----------------------------------------------------------]]
+
 include( "obj_player_extend.lua" )
 
--- Player extensions and classes follow the shared gamemode setup.
+include( "gravitygun.lua" )
+include( "player_shd.lua" )
+include( "animations.lua" )
 include( "player_class/player_default.lua" )
 
-local fOk, fErr = pcall( include, "player_shd.lua" )
-if ( not fOk ) then
-	dbg.Warning( "[base] player_shd.lua failed: " .. tostring( fErr ) .. "\n" )
+GM.Name			= "Base Gamemode"
+GM.Author		= "Garry Newman"
+GM.Email		= "garrynewman@gmail.com"
+GM.Website		= "www.garry.tv"
+GM.TeamBased	= false
+
+--[[---------------------------------------------------------
+   Name: gamemode:KeyPress( )
+   Desc: Player pressed a key (see IN enums)
+-----------------------------------------------------------]]
+function GM:KeyPress( player, key )
 end
 
--- HL2SB (2026-10-08): GMod 的玩家动画胶水层（原 deathmatch/gamemode/
--- animations.lua，随 LUA_BASE_GAMEMODE 切换上提到 base——所有 gamemode 都
--- 从这里继承 CalcMainActivity / UpdateAnimation / TranslateActivity /
--- DoAnimationEvent）。文件内的分叉修正（FL_DUCKING、noclip 让位引擎层、
--- 显式 ACT 名字映射）一个都不能丢。
-include( "animations.lua" )
-include( "variable_edit.lua" )
-
-GM.Name      = "Base Gamemode"
-GM.Author    = "HL2SB"
-GM.Email     = ""
-GM.Website   = ""
-GM.TeamBased = false
-
--------------------------------------------------------------------------------
--- GMod 同名钩子（默认空实现，子 gamemode 覆盖）
--------------------------------------------------------------------------------
-function GM:KeyPress( ply, key )
+--[[---------------------------------------------------------
+   Name: gamemode:KeyRelease( )
+   Desc: Player released a key (see IN enums)
+-----------------------------------------------------------]]
+function GM:KeyRelease( player, key )
 end
 
-function GM:KeyRelease( ply, key )
-end
-
+--[[---------------------------------------------------------
+   Name: gamemode:PlayerConnect( )
+   Desc: Player has connects to the server (hasn't spawned)
+-----------------------------------------------------------]]
 function GM:PlayerConnect( name, address )
 end
 
+--[[---------------------------------------------------------
+   Name: gamemode:PropBreak( )
+   Desc: Prop has been broken
+-----------------------------------------------------------]]
 function GM:PropBreak( attacker, prop )
 end
 
+--[[---------------------------------------------------------
+   Name: gamemode:PhysgunPickup( )
+   Desc: Return true if player can pickup entity
+-----------------------------------------------------------]]
 function GM:PhysgunPickup( ply, ent )
-	if ( ent == nil or ent.IsValid == nil or not ent:IsValid() ) then return false end
 
-	-- 不让物理枪抓玩家（GMod 同款默认行为）
-	if ( ent.IsPlayer ~= nil and ent:IsPlayer() ) then return false end
-
-	-- GMod 对齐：除 func_physbox 外，排除所有地图笔刷实体（玻璃、门、梯子等）
-	local EntClass = ent:GetClass()
-	if ( EntClass ~= "func_physbox" and string.find( EntClass, "func_" ) ) then
-		return false
-	end
+	-- Don't pick up players
+	if ( ent:IsPlayer() ) then return false end
 
 	return true
 end
 
+--[[---------------------------------------------------------
+   Name: gamemode:PhysgunDrop( )
+   Desc: Dropped an entity
+-----------------------------------------------------------]]
 function GM:PhysgunDrop( ply, ent )
 end
 
--------------------------------------------------------------------------------
--- 重力枪四个 gamemode 钩子（引擎 CWeaponPhysCannon 在抓取/弹射/释放时调用，
--- 服务端 realm）。语义对齐 GMod wiki：
---
---   GM:GravGunPickupAllowed( ply, ent ) -> false = 拒绝抓取，nil/true = 按引擎
---       规则（质量上限 physcannon_maxmass、距离 physcannon_tracelength 等）
---   GM:GravGunPunt( ply, ent )          -> false = 否决弹射（物体保持被抓住）
---   GM:GravGunOnPickedUp / OnDropped    -> 通知；OnDropped 对手动放下、
---       超距脱手、弹射发射都会触发（GMod 同款）
---
--- GMod 的沙盒 gamemode 用它们转发 ENTITY:GravGun* 实体方法，这里保持同款：
--- 实体表上定义了对应方法就把决定权交给它。
--------------------------------------------------------------------------------
-include( "gravitygun.lua" )
-
+--[[---------------------------------------------------------
+   Name: Text to show in the server browser
+-----------------------------------------------------------]]
 function GM:GetGameDescription()
 	return self.Name
 end
 
--------------------------------------------------------------------------------
--- GetMapRemainingTime —— 引擎每帧都会问，答错会让服务器无限重载地图
---
--- 这个方法是 2026-09-11「地图每几秒自己重开一次」的根因，别删。
---
--- 引擎侧 CHL2MPRules::Think() 每帧做：
---     if ( GetMapRemainingTime() < 0 ) { GoToIntermission(); return; }
--- 而 CHL2MPRules::GetMapRemainingTime() 在 LUA_SDK 下会先问 Lua，**拿不到数字就走兜底**：
---     float timeleft = (m_flGameStartTime + mp_timelimit.GetInt() * 60.0f) - gpGlobals->curtime;
--- mp_timelimit 默认就是 0，于是兜底算出的是 m_flGameStartTime - curtime —— 一个很大的负数，
--- 引擎据此认为「时间到了」→ GoToIntermission() → g_fGameOver = true → mp_chattime 秒后
--- ChangeLevel()；又因为地图循环文件坏掉（CRLF 导致条目全被判非法），切换目标是同一张图，
--- 于是：进图 → 几秒 → 重开 → 再进图 → …… 无限循环。
---
--- 这个方法原本**只**定义在 gamemodes/deathmatch/gamemode/shared.lua 里，而本 fork 的 gamemode
--- 都没有声明继承（没有 DeriveGamemode / __base），所以跑 sandbox / campaign 时引擎问不到答案，
--- 必然落到那个负数兜底上。放在 base 里，所有 gamemode 都能继承到。
---
--- 返回 0 = 没有时间限制（不要进入 intermission）；返回 nil = 让引擎用 mp_timelimit 自己算。
--------------------------------------------------------------------------------
-function GM:GetMapRemainingTime()
-	-- 读不到 mp_timelimit 时**保守地当作无限制**，宁可永不循环地图，
-	-- 也不能让引擎落到上面那个负数兜底上。
-	local limit = 0
-
-	if ( _G.cvar ~= nil and cvar.FindVar ~= nil ) then
-		local ok, var = pcall( cvar.FindVar, "mp_timelimit" )
-		if ( ok and var ~= nil and var.GetInt ~= nil ) then
-			local ok2, v = pcall( var.GetInt, var )
-			if ( ok2 and type( v ) == "number" ) then
-				limit = v
-			end
-		end
-	end
-
-	if ( limit <= 0 ) then
-		return 0
-	end
-
-	-- 有计时上限：返回 nil，交给引擎按 m_flGameStartTime 算真实剩余时间。
-	return nil
-end
-
+--[[---------------------------------------------------------
+   Name: Saved
+-----------------------------------------------------------]]
 function GM:Saved()
 end
 
+--[[---------------------------------------------------------
+   Name: Restored
+-----------------------------------------------------------]]
 function GM:Restored()
 end
 
+--[[---------------------------------------------------------
+   Name: EntityRemoved
+   Desc: Called right before an entity is removed. Note that this
+   isn't going to be totally reliable on the client since the client
+   only knows about entities that it has had in its PVS.
+-----------------------------------------------------------]]
 function GM:EntityRemoved( ent )
 end
 
--------------------------------------------------------------------------------
--- Tick —— GMod 是每 tick 都调；HL2SB 的 "Think" 钩子每帧一次，
--- 语义上够用，所以这里转发过去，让 GMod 脚本里的 GM:Tick 也能跑。
--------------------------------------------------------------------------------
+--[[---------------------------------------------------------
+   Name: Tick
+   Desc: Like Think except called every tick on both client and server
+-----------------------------------------------------------]]
 function GM:Tick()
 end
 
-function GM:OnEntityCreated( ent )
+--[[---------------------------------------------------------
+   Name: OnEntityCreated
+   Desc: Called right after the Entity has been made visible to Lua
+-----------------------------------------------------------]]
+function GM:OnEntityCreated( Ent )
 end
 
+--[[---------------------------------------------------------
+   Name: gamemode:EntityKeyValue( ent, key, value )
+   Desc: Called when an entity has a keyvalue set
+		 Returning a string it will override the value
+-----------------------------------------------------------]]
 function GM:EntityKeyValue( ent, key, value )
 end
 
--------------------------------------------------------------------------------
--- CreateTeams —— 必须是 shared
--------------------------------------------------------------------------------
+--[[---------------------------------------------------------
+   Name: gamemode:CreateTeams()
+   Desc: Note - HAS to be shared.
+-----------------------------------------------------------]]
 function GM:CreateTeams()
-	if ( not GAMEMODE.TeamBased ) then return end
+
+	-- Don't do this if not teambased. But if it is teambased we
+	-- create a few teams here as an example. If you're making a teambased
+	-- gamemode you should override this function in your gamemode
+
+	if ( !GAMEMODE.TeamBased ) then return end
 
 	TEAM_BLUE = 1
 	team.SetUp( TEAM_BLUE, "Blue Team", Color( 0, 0, 255 ) )
+	team.SetSpawnPoint( TEAM_BLUE, "ai_hint" ) -- <-- This would be info_terrorist or some entity that is in your map
 
 	TEAM_ORANGE = 2
 	team.SetUp( TEAM_ORANGE, "Orange Team", Color( 255, 150, 0 ) )
+	team.SetSpawnPoint( TEAM_ORANGE, "sky_camera" ) -- <-- This would be info_terrorist or some entity that is in your map
 
-	team.SetSpawnPoint( TEAM_SPECTATOR, "info_player_start" )
+	TEAM_SEXY = 3
+	team.SetUp( TEAM_SEXY, "Sexy Team", Color( 255, 150, 150 ) )
+	team.SetSpawnPoint( TEAM_SEXY, "info_player_start" ) -- <-- This would be info_terrorist or some entity that is in your map
+
+	team.SetSpawnPoint( TEAM_SPECTATOR, "worldspawn" )
+
 end
 
+--[[---------------------------------------------------------
+   Name: gamemode:ShouldCollide( Ent1, Ent2 )
+   Desc: This should always return true unless you have
+		  a good reason for it not to.
+-----------------------------------------------------------]]
 function GM:ShouldCollide( Ent1, Ent2 )
+
 	return true
+
 end
 
--------------------------------------------------------------------------------
--- 移动钩子：HL2SB 没有 drive 库，只保留 player_manager 那半
--------------------------------------------------------------------------------
+--[[---------------------------------------------------------
+   Name: gamemode:Move
+   This basically overrides the NOCLIP, PLAYERMOVE movement stuff.
+   It's what actually performs the move.
+   Return true to not perform any default movement actions. (completely override)
+-----------------------------------------------------------]]
 function GM:Move( ply, mv )
+
 	if ( drive.Move( ply, mv ) ) then return true end
 	if ( player_manager.RunClass( ply, "Move", mv ) ) then return true end
+
 end
 
+--[[---------------------------------------------------------
+-- Purpose: This is called pre player movement and copies all the data necessary
+--          from the player for movement. Copy from the usercmd to move.
+-----------------------------------------------------------]]
 function GM:SetupMove( ply, mv, cmd )
+
 	if ( drive.StartMove( ply, mv, cmd ) ) then return true end
 	if ( player_manager.RunClass( ply, "StartMove", mv, cmd ) ) then return true end
+
 end
 
+--[[---------------------------------------------------------
+   Name: gamemode:FinishMove( player, movedata )
+-----------------------------------------------------------]]
 function GM:FinishMove( ply, mv )
+
 	if ( drive.FinishMove( ply, mv ) ) then return true end
 	if ( player_manager.RunClass( ply, "FinishMove", mv ) ) then return true end
-end
 
--- ===========================================================================
--- HL2SB (2026-10-08): 上提自 deathmatch shared.lua（GMod base player_shd.lua
--- 同款）。noclip 的权限闸门：引擎 CC_Player_NoClip 切换前问一次，显式 false
--- 否决。sandbox gamemode 会用自己的 sbox_noclip 版本覆盖这里。
--- ===========================================================================
+end
 
 --[[---------------------------------------------------------
-	Name: gamemode:PlayerNoClip( player, bool )
-	Desc: Player pressed the noclip key, return true if
-		 the player is allowed to noclip, false to block
+	Called after the player's think.
 -----------------------------------------------------------]]
-function GM:PlayerNoClip( pl, on )
-	if ( !on ) then return true end
-	-- Allow noclip if we're in single player and living
-	return game.SinglePlayer() && IsValid( pl ) && pl:Alive()
-
-end
-
--- ===========================================================================
--- HL2SB (2026-10-03): GM:PlayerFootstep, verbatim from GMod
--- (gamemodes/base/gamemode/player_shd.lua:31).  The portalgun plays its own
--- in-portal footsteps by calling GAMEMODE:PlayerFootstep directly; without
--- the default method that call died ("attempt to call a nil value (field
--- 'PlayerFootstep')").  Return true suppresses the normal step sound.
--- ===========================================================================
-
---[[---------------------------------------------------------
-	Name: gamemode:PlayerFootstep( ply, vPos, iFoot, strSoundName, fVolume, pFilter )
-	Desc: Called when a player steps
-		pFilter is the recipient filter to use for effects/sounds
-			and is only valid SERVERSIDE. Clientside needs no filter!
-		Return true to not play normal sound
------------------------------------------------------------]]
-function GM:PlayerFootstep( ply, vPos, iFoot, strSoundName, fVolume, pFilter )
-	if ( IsValid( ply ) && !ply:Alive() ) then
-		return true
-	end
-
-end
-
 function GM:PlayerPostThink( ply )
+
 end
 
+--[[---------------------------------------------------------
+	A player has started driving an entity
+-----------------------------------------------------------]]
 function GM:StartEntityDriving( ent, ply )
+
 	drive.Start( ply, ent )
+
 end
 
+--[[---------------------------------------------------------
+	A player has stopped driving an entity
+-----------------------------------------------------------]]
 function GM:EndEntityDriving( ent, ply )
+
 	drive.End( ply, ent )
+
 end
 
+--[[---------------------------------------------------------
+	To update the player's animation during a drive
+-----------------------------------------------------------]]
 function GM:PlayerDriveAnimate( ply )
+
 end
 
+--[[---------------------------------------------------------
+	The gamemode has been reloaded
+-----------------------------------------------------------]]
 function GM:OnReloaded()
 end
 
@@ -258,23 +240,33 @@ end
 function GM:PostGamemodeLoaded()
 end
 
--------------------------------------------------------------------------------
--- 玩家换武器导致 viewmodel 变化时，转发给玩家类
--------------------------------------------------------------------------------
+--
+-- Name: GM:OnViewModelChanged
+-- Desc: Called when the player changes their weapon to another one - and their viewmodel model changes
+-- Arg1: Entity|viewmodel|The viewmodel that is changing
+-- Arg2: string|old|The old model
+-- Arg3: string|new|The new model
+-- Ret1:
+--
 function GM:OnViewModelChanged( vm, old, new )
-	local ply = vm.GetOwner and vm:GetOwner() or nil
 
+	local ply = vm:GetOwner()
 	if ( IsValid( ply ) ) then
 		player_manager.RunClass( ply, "ViewModelChanged", vm, old, new )
 	end
+
 end
 
--- 非 sandbox 派生的 gamemode 默认关掉属性编辑
-function GM:CanProperty( ply, property, ent )
+--[[---------------------------------------------------------
+	Disable properties serverside for all non-sandbox derived gamemodes.
+-----------------------------------------------------------]]
+function GM:CanProperty( pl, property, ent )
 	return false
 end
 
--- 允许 hook 覆盖子弹而不吃掉其它 hook
+--[[---------------------------------------------------------
+	Allow hooks to override bullet without ignoring all other hooks
+-----------------------------------------------------------]]
 function GM:EntityFireBullets( ent, bullets )
 	return true
 end

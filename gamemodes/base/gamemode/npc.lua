@@ -1,21 +1,3 @@
---[[--------------------------------------------------------------------------
-    gamemodes/base/gamemode/npc.lua
-
-    GMod base gamemode npc.lua, ported for HL2SB (2026-10-08).  Server realm,
-    included from init.lua.
-
-    Deviations:
-      - list.GetEntry has no binding in this fork; a local helper answers the
-        same queries through list.Get( id )[ name ] (the deathmatch
-        animations.lua fallback, kept consistent tree-wide).
-      - GMod's Entity( 1 ) host-player probe for the disposition flags is
-        replaced with player.GetAll()[ 1 ] (same intent: "some player" for
-        the friendly-fire decoration; nil-safe when there is none).
-      - The native HUD transport draws notices. NextBots enter that transport
-        through GM:OnNPCKilled, so custom OnKilled handlers control notices.
-        DeathNoticeEvent remains available to Lua consumers.
---------------------------------------------------------------------------]]--
-
 
 -- Backwards compatibility with addons
 util.AddNetworkString( "PlayerKilledNPC" )
@@ -31,18 +13,6 @@ DEATH_NOTICE_FRIENDLY_VICTIM = 1
 DEATH_NOTICE_FRIENDLY_ATTACKER = 2
 --DEATH_NOTICE_HEADSHOT = 4
 --DEATH_NOTICE_PENETRATION = 8
-local function ListGetEntry( id, name )
-	local t = list.Get( id )
-	if ( t == nil ) then return nil end
-	return t[ name ]
-end
-
-local function AnyPlayer()
-	local all = ( player.GetAll ~= nil and player.GetAll() ) or nil
-	if ( all == nil ) then return nil end
-	return all[ 1 ]
-end
-
 function GM:SendDeathNotice( attacker, inflictor, victim, flags )
 
 	net.Start( "DeathNoticeEvent" )
@@ -97,19 +67,18 @@ function GM:GetDeathNoticeEntityName( ent )
 
 	-- Custom vehicle and NPC names from spawnmenu
 	if ( ent:IsVehicle() ) then
-		local vehTable = ListGetEntry( "Vehicles", ent.VehicleName )
+		local vehTable = list.GetEntry( "Vehicles", ent.VehicleName )
 		if ( vehTable and vehTable.Name ) then return vehTable.Name end
 	elseif ( ent:IsNPC() ) then
-		local npcTable = ListGetEntry( "NPC", ent.NPCName )
+		local npcTable = list.GetEntry( "NPC", ent.NPCName )
 		if ( npcTable and npcTable.Name ) then return npcTable.Name end
 	elseif ( ent.EntityName ) then
-		local sentTable = ListGetEntry( "SpawnableEntities", ent.EntityName )
+		local sentTable = list.GetEntry( "SpawnableEntities", ent.EntityName )
 		if ( sentTable and sentTable.PrintName ) then return sentTable.PrintName end
 	end
 
 	if ( ent:GetClass() == "npc_antlion" and ent:GetModel() == "models/antlion_worker.mdl" ) then
-		local antlionWorker = ListGetEntry( "NPC", "npc_antlion_worker" )
-		return antlionWorker and antlionWorker.Name or nil
+		return list.GetEntry( "NPC", "npc_antlion_worker" ).Name
 	end
 
 	-- Fallback to old behavior
@@ -149,11 +118,6 @@ function GM:OnNPCKilled( ent, attacker, inflictor )
 	local InflictorClass = "worldspawn"
 	local AttackerClass = game.GetWorld()
 
-	-- NextBot notices follow the Lua death hook, including custom OnKilled handlers.
-	if ( HL2SB_NotifyNextBotKilled ) then
-		HL2SB_NotifyNextBotKilled( ent, attacker, inflictor )
-	end
-
 	if ( IsValid( inflictor ) ) then InflictorClass = inflictor:GetClass() end
 	if ( IsValid( attacker ) ) then
 
@@ -180,10 +144,9 @@ function GM:OnNPCKilled( ent, attacker, inflictor )
 	-- It was NPC suicide..
 	if ( ent == AttackerClass ) then InflictorClass = "suicide" end
 
-	local hostPlayer = AnyPlayer()
 	local flags = 0
-	if ( IsValid( hostPlayer ) and ent:IsNPC() and ent:Disposition( hostPlayer ) == D_LI ) then flags = flags + DEATH_NOTICE_FRIENDLY_VICTIM end
-	if ( IsValid( hostPlayer ) and AttackerClass:IsNPC() and AttackerClass:Disposition( hostPlayer ) == D_LI ) then flags = flags + DEATH_NOTICE_FRIENDLY_ATTACKER end
+	if ( IsValid( Entity( 1 ) ) and ent:IsNPC() and ent:Disposition( Entity( 1 ) ) == D_LI ) then flags = flags + DEATH_NOTICE_FRIENDLY_VICTIM end
+	if ( IsValid( Entity( 1 ) ) and AttackerClass:IsNPC() and AttackerClass:Disposition( Entity( 1 ) ) == D_LI ) then flags = flags + DEATH_NOTICE_FRIENDLY_ATTACKER end
 
 	self:SendDeathNotice( self:GetDeathNoticeEntityName( AttackerClass ), InflictorClass, self:GetDeathNoticeEntityName( ent ), flags )
 

@@ -1,22 +1,3 @@
---[[--------------------------------------------------------------------------
-    gamemodes/base/gamemode/cl_scoreboard.lua
-
-    GMod base gamemode cl_scoreboard.lua, ported for HL2SB (2026-10-10).
-    Client realm, included from cl_init.lua.
-
-    Deviations (missing-binding driven):
-      - Player:ShowProfile opens a Steam profile in GMod; with no Steam layer
-        the avatar button is a silent click target here.
-      - The mute button's volume wheel (Player:Get/SetVoiceVolumeScale) has no
-        binding in this fork, so the wheel and its PaintOver indicator are
-        omitted; the click toggles the mute.
-      - DLabel:SetExpensiveShadow is not ported; the call is dropped.
-      - GMod's client registers +showscoreboard/-showscoreboard in the
-        engine; here they are concommand.Add'ed at the bottom (real engine
-        button commands, same mechanism as +menu), and TAB is bound to them
-        in cfg/config.cfg.
---------------------------------------------------------------------------]]--
-
 
 surface.CreateFont( "ScoreboardDefault", {
 	font	= "Helvetica",
@@ -30,12 +11,7 @@ surface.CreateFont( "ScoreboardDefaultTitle", {
 	weight	= 800
 } )
 
--- GMod ships its team number constants as globals; this fork has no team
--- module, so the constants the scoreboard sorts with are created here with
--- GMod's values when absent.
-TEAM_UNASSIGNED = TEAM_UNASSIGNED or 0
-TEAM_CONNECTING = TEAM_CONNECTING or 1
-TEAM_SPECTATOR = TEAM_SPECTATOR or 2
+local mWheelMat = Material( "gui/mwheel.png" )
 
 --
 -- This defines a new panel type for the player row. The player row is given a player
@@ -48,9 +24,7 @@ local PLAYER_LINE = {
 		self.AvatarButton = self:Add( "DButton" )
 		self.AvatarButton:Dock( LEFT )
 		self.AvatarButton:SetSize( 32, 32 )
-		-- GMod opens the player's Steam profile here (Player:ShowProfile);
-		-- this fork has no Steam layer, so the click stays silent.
-		self.AvatarButton.DoClick = function() end
+		self.AvatarButton.DoClick = function() self.Player:ShowProfile() end
 
 		self.Avatar = vgui.Create( "AvatarImage", self.AvatarButton )
 		self.Avatar:SetSize( 32, 32 )
@@ -65,10 +39,36 @@ local PLAYER_LINE = {
 		self.Mute = self:Add( "DImageButton" )
 		self.Mute:SetSize( 32, 32 )
 		self.Mute:Dock( RIGHT )
-		-- GMod wheels the player's voice volume on this button
-		-- (Player:Get/SetVoiceVolumeScale); no such binding in this fork, so
-		-- only the click-to-mute below is wired.
+		self.Mute.OnMouseWheeled = function( s, delta )
+			-- Clamp the old value to the closest 5, to deal with floating point imprecision
+			local oldValue = math.floor( self.Player:GetVoiceVolumeScale() * 100 )
+			oldValue = math.Round( oldValue / 5 ) * 5
+
+			self.Player:SetVoiceVolumeScale( ( oldValue + ( delta * 5 ) ) / 100 )
+			s.LastWheelTick = CurTime()
+		end
 		self.Mute:NoClipping( true )
+		self.Mute.PaintOver = function( s, w, h )
+			if ( !IsValid( self.Player ) ) then return end
+
+			if ( s.Hovered ) then  s.LastWheelTick = CurTime() end
+
+			local time = math.Clamp( CurTime() - ( s.LastWheelTick or 0 ), 0, 0.75 ) / 0.75
+
+			local bgAlpha = 255 - time * 255
+			if ( bgAlpha <= 0 ) then return end
+
+			local x = w + 8
+			w = w * 1.5
+
+			draw.RoundedBox( 4, x, 0, w, h, Color( 0, 0, 0, bgAlpha * 0.8 ) )
+			draw.SimpleText( math.Round( self.Player:GetVoiceVolumeScale() * 100 ) .. "%", "DermaDefault",
+				x + ( w / 2 ) + 5, h * 0.5, Color( 255, 255, 255, bgAlpha ), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
+
+			surface.SetMaterial( mWheelMat )
+			surface.SetDrawColor( 255, 255, 255, bgAlpha )
+			surface.DrawTexturedRect( x, ( h / 2 - 8 ), 16, 16 )
+		end
 
 		self.Ping = self:Add( "DLabel" )
 		self.Ping:Dock( RIGHT )
@@ -105,6 +105,9 @@ local PLAYER_LINE = {
 		self.Avatar:SetPlayer( pl )
 
 		self:Think( self )
+
+		--local friend = self.Player:GetFriendStatus()
+		--MsgN( pl, " Friend: ", friend )
 
 	end,
 
@@ -224,15 +227,17 @@ local SCORE_BOARD = {
 		self.Name:Dock( TOP )
 		self.Name:SetHeight( 40 )
 		self.Name:SetContentAlignment( 5 )
+		self.Name:SetExpensiveShadow( 2, Color( 0, 0, 0, 200 ) )
+
+		--self.NumPlayers = self.Header:Add( "DLabel" )
+		--self.NumPlayers:SetFont( "ScoreboardDefault" )
+		--self.NumPlayers:SetTextColor( color_white )
+		--self.NumPlayers:SetPos( 0, 100 - 30 )
+		--self.NumPlayers:SetSize( 300, 30 )
+		--self.NumPlayers:SetContentAlignment( 4 )
 
 		self.Scores = self:Add( "DScrollPanel" )
 		self.Scores:Dock( FILL )
-
-		-- The bar only appears when the roster overflows (DVScrollBar:SetUp
-		-- enables on demand); hide its arrow buttons and narrow the strip so
-		-- the scoreboard stays quiet while it is up.
-		self.Scores.VBar:SetHideButtons( true )
-		self.Scores.VBar.BarWidth = function( s ) return 8 end
 
 	end,
 
@@ -293,7 +298,7 @@ end
 
 --[[---------------------------------------------------------
 	Name: gamemode:ScoreboardHide( )
-	Desc: Sets the scoreboard to visible
+	Desc: Hides the scoreboard
 -----------------------------------------------------------]]
 function GM:ScoreboardHide()
 
@@ -309,14 +314,3 @@ end
 -----------------------------------------------------------]]
 function GM:HUDDrawScoreBoard()
 end
-
--- HL2SB: GMod's client creates these two button commands in the engine; here
--- the concommand library creates the real engine ConCommands (the +menu
--- mechanism) and TAB is bound to the pair in cfg/config.cfg.
-concommand.Add( "+showscoreboard", function()
-	if ( GAMEMODE != nil and GAMEMODE.ScoreboardShow != nil ) then GAMEMODE:ScoreboardShow() end
-end )
-
-concommand.Add( "-showscoreboard", function()
-	if ( GAMEMODE != nil and GAMEMODE.ScoreboardHide != nil ) then GAMEMODE:ScoreboardHide() end
-end )

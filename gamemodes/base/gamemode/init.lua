@@ -1,100 +1,47 @@
---[[--------------------------------------------------------------------------
-    gamemodes/base/gamemode/init.lua
-
-    服务端半边。对应 GMod 的 gamemodes/base/gamemode/init.lua。
-
-    缺绑定而省略的部分（HL2SB 没有，写个假的只会掩盖问题）：
-      - ply:CreateRagdoll()（分数绑定 AddDeaths/AddFrags 已落地，2026-10-10）
-      - GM:ShowTeam 的 ChatPrint + SendLua 团队选择界面
-      - GM:CheckPassword 仍实现（只用到引擎的 sv_password 语义）
---------------------------------------------------------------------------]]--
 
 include( "shared.lua" )
 include( "player.lua" )
 include( "npc.lua" )
 include( "variable_edit.lua" )
 
--- HL2SB (2026-10-08): gm_save / gm_load（GMod sandbox save_load 的文件存储
--- 适配版）。放 base 是本分叉的既定取舍——每个 gamemode 都从 base 继承，
--- "命令随在"（deathmatch 里还有一份同款拷贝被它自己的 init.lua include，
--- concommand.Add 在引擎侧对重名是去重的，双载安全）。
-include( "save_load.lua" )
-
--- HL2SB (2026-10-08): 出生链别名。sandbox 的 GM:PlayerSpawn 设完
--- player_sandbox 类后调 self.PlayerSpawnChain(...)（它的原版写法），导出
--- 这个别名，sandbox / deathmatch 的覆盖版就不需要知道 base 的文件布局。
-GM.PlayerSpawnChain = GM.PlayerSpawn
-
--------------------------------------------------------------------------------
--- 出生 —— 这是整套玩家类体系的驱动点（GMod 在 base/gamemode/player.lua 里）
---
---   顺序和 GMod 一致：
---     player_manager.OnPlayerSpawn -> RunClass("Spawn")
---     -> PlayerLoadout -> RunClass("Loadout")   <-- 出生装备在这里决定
---     -> PlayerSetModel -> RunClass("SetModel")
---
---   HL2SB 的 C++ 在 CHL2MPRules::PlayerSpawn 里调 Lua 的 "PlayerSpawn" 钩子，
---   所以这里定义 GM:PlayerSpawn 就会被调到。
--------------------------------------------------------------------------------
-
-local HookCall = ( _G.hook ~= nil and ( hook.Call or hook.call ) ) or nil
-
-local function CallHook( name, ... )
-	if ( HookCall ~= nil ) then
-		return HookCall( name, GAMEMODE, ... )
-	end
-	return nil
-end
-
--------------------------------------------------------------------------------
--- PlayerSpawnAsSpectator / PlayerSpawn / PlayerLoadout / PlayerSetModel moved
--- to player.lua (GMod's layout) - included above.
--------------------------------------------------------------------------------
-
--------------------------------------------------------------------------------
--- Purpose: HL2SB 专用的桥
---
---   引擎在 CHL2MP_Player::Spawn() 里除了 PlayerSpawn 之外，还会调一次 Lua 的
---   "GiveDefaultItems" 钩子（C++ 侧有自己的兜底 GiveAllItems）。
---   装备已经由上面的 GM:PlayerLoadout -> PLAYER:Loadout 发过了，所以这里
---   明确返回 false —— 对 C++ 的 RETURN_LUA_NONE() 来说就是“Lua 处理完了，
---   别再兜底”，否则会发第二套武器。
--------------------------------------------------------------------------------
-function GM:GiveDefaultItems( pl )
-	return false
-end
-
--------------------------------------------------------------------------------
--- 生命周期
--------------------------------------------------------------------------------
+--[[---------------------------------------------------------
+	Name: gamemode:Initialize()
+	Desc: Called immediately after starting the gamemode
+-----------------------------------------------------------]]
 function GM:Initialize()
 end
 
+--[[---------------------------------------------------------
+	Name: gamemode:InitPostEntity()
+	Desc: Called as soon as all map entities have been spawned
+-----------------------------------------------------------]]
 function GM:InitPostEntity()
 end
 
+--[[---------------------------------------------------------
+	Name: gamemode:Think()
+	Desc: Called every frame
+-----------------------------------------------------------]]
 function GM:Think()
-	-- GMod 的 GM:Tick 是每 tick；这里用每帧的 Think 顶上。
-	if ( self.Tick ~= nil ) then
-		self:Tick()
-	end
 end
 
+--[[---------------------------------------------------------
+	Name: gamemode:ShutDown()
+	Desc: Called when the Lua system is about to shut down
+-----------------------------------------------------------]]
 function GM:ShutDown()
 end
 
--------------------------------------------------------------------------------
--- 死亡 / 伤害
--------------------------------------------------------------------------------
+--[[---------------------------------------------------------
+	Name: gamemode:DoPlayerDeath( )
+	Desc: Carries out actions when the player dies
+-----------------------------------------------------------]]
 function GM:DoPlayerDeath( ply, attacker, dmginfo )
 
-	-- GMod 原文的计分：任何死法死亡数 +1（世界/NPC 击杀也算），
-	-- 只有攻击者是玩家才 +1 击杀，自杀 -1。引擎死亡管线不碰计数器
-	-- （2026-10-10 起：引擎派发 (ply, attacker, dmginfo) 与 GMod 同序同个数，
-	-- 原版反编译定案 arg2=attacker；multiplay 的 C++ 计分在 Lua SDK 构建下
-	-- 整段旁路，不会在这里之外二次计数。）
-	-- （GMod 原文开头还有 dmginfo:IsDamageType(DMG_REMOVENORAGDOLL) 判定 +
-	-- ply:CreateRagdoll()——本分叉还没有 CreateRagdoll 绑定，略过。）
+	if ( !dmginfo:IsDamageType( DMG_REMOVENORAGDOLL ) ) then
+		ply:CreateRagdoll()
+	end
+
 	ply:AddDeaths( 1 )
 
 	if ( attacker:IsValid() && attacker:IsPlayer() ) then
@@ -109,70 +56,93 @@ function GM:DoPlayerDeath( ply, attacker, dmginfo )
 
 end
 
+--[[---------------------------------------------------------
+	Name: gamemode:PlayerShouldTakeDamage
+	Return true if this player should take damage from this attacker
+-----------------------------------------------------------]]
 function GM:PlayerShouldTakeDamage( ply, attacker )
 	return true
 end
 
+--[[---------------------------------------------------------
+	Name: gamemode:EntityTakeDamage( ent, info )
+	Desc: The entity has received damage
+-----------------------------------------------------------]]
 function GM:EntityTakeDamage( ent, info )
 end
 
-function GM:PlayerHurt( ply, attacker, healthleft, healthtaken )
+--[[---------------------------------------------------------
+	Name: gamemode:PlayerHurt( )
+	Desc: Called when a player is hurt.
+-----------------------------------------------------------]]
+function GM:PlayerHurt( player, attacker, healthleft, healthtaken )
 end
 
-function GM:CreateEntityRagdoll( ent, ragdoll )
+--[[---------------------------------------------------------
+	Name: gamemode:CreateEntityRagdoll( entity, ragdoll )
+	Desc: A ragdoll of an entity has been created
+-----------------------------------------------------------]]
+function GM:CreateEntityRagdoll( entity, ragdoll )
 end
 
--------------------------------------------------------------------------------
--- 服务器名广播（GMod 每 30 秒写一次全局字符串，供客户端读）
--------------------------------------------------------------------------------
+-- Set the ServerName every 30 seconds in case it changes..
+-- This is for backwards compatibility only - client can now use GetHostName()
 local function HostnameThink()
+
 	SetGlobalString( "ServerName", GetHostName() )
+
 end
 
--- 加载期语句一旦抛错，luasrc_dofile 会返回非 0，引擎就判定 gamemode 无效、
--- 整条 base 链都不注册（所有 gamemode 都会失去基类）。所以这里兜一层。
-if ( _G.timer ~= nil and timer.Create ~= nil ) then
-	local ok, err = pcall( timer.Create, "HostnameThink", 30, 0, HostnameThink )
-	if ( not ok ) then
-		dbg.Warning( "[base] HostnameThink timer failed: " .. tostring( err ) .. "\n" )
-	end
-end
+timer.Create( "HostnameThink", 30, 0, HostnameThink )
 
--------------------------------------------------------------------------------
--- 团队选择界面（客户端在 cl_pickteam.lua 里画）
--------------------------------------------------------------------------------
+--[[---------------------------------------------------------
+	Show the default team selection screen
+-----------------------------------------------------------]]
 function GM:ShowTeam( ply )
-	if ( not GAMEMODE.TeamBased ) then return end
 
-	local switchDelay = GAMEMODE.SecondsBetweenTeamSwitches or 10
-	if ( ply.LastTeamSwitch ~= nil and RealTime() - ply.LastTeamSwitch < switchDelay ) then
+	if ( !GAMEMODE.TeamBased ) then return end
+
+	local TimeBetweenSwitches = GAMEMODE.SecondsBetweenTeamSwitches or 10
+	if ( ply.LastTeamSwitch && RealTime() - ply.LastTeamSwitch < TimeBetweenSwitches ) then
+		ply.LastTeamSwitch = ply.LastTeamSwitch + 1
+		ply:ChatPrint( Format( "Please wait %i more seconds before trying to change team again", ( TimeBetweenSwitches - ( RealTime() - ply.LastTeamSwitch ) ) + 1 ) )
 		return
 	end
 
-	ply.LastTeamSwitch = RealTime()
+	-- For clientside see cl_pickteam.lua
+	ply:SendLua( "GAMEMODE:ShowTeam()" )
+
 end
 
--------------------------------------------------------------------------------
--- 密码校验（非本地玩家加入时调用）
--------------------------------------------------------------------------------
+--
+-- CheckPassword( steamid, networkid, server_password, password, name )
+--
+-- Called every time a non-localhost player joins the server. steamid is their 64bit
+-- steamid. Return false and a reason to reject their join. Return true to allow
+-- them to join.
+--
 function GM:CheckPassword( steamid, networkid, server_password, password, name )
-	if ( server_password ~= nil and server_password ~= "" and server_password ~= password ) then
-		return false
+
+	-- The server has sv_password set
+	if ( server_password != "" ) then
+
+		-- The joining clients password doesn't match sv_password
+		if ( server_password != password ) then
+			return false
+		end
+
 	end
 
+	--
+	-- Returning true means they're allowed to join the server
+	--
 	return true
+
 end
 
--------------------------------------------------------------------------------
--- 载具
--------------------------------------------------------------------------------
-
--- HL2SB (2026-10-08): 上提自 deathmatch init.lua——GMod base gamemode 的
--- SERVER GM:VehicleMove 逐字体（IN_DUCK 第三人称开关 + 滚轮拉远拉近）。
--- 休眠是刻意的：本引擎不派发 VehicleMove（载具相机逻辑原生跑在
--- CPropVehicleDriveable::HL2SB_UpdateCameraState，行为与本函数一致）。
--- 若将来给 VehicleMove 加引擎派发，必须先删 C++ 写者——同坐一 tick 两次
--- 翻转 = 第三人称开关抖回来的老 bug。
+--[[---------------------------------------------------------
+	Name: gamemode:FinishMove( player, movedata )
+-----------------------------------------------------------]]
 function GM:VehicleMove( ply, vehicle, mv )
 
 	--
@@ -196,13 +166,15 @@ function GM:VehicleMove( ply, vehicle, mv )
 
 end
 
--------------------------------------------------------------------------------
--- 撤销 —— HL2SB 自己就有撤销栈（lua/includes/modules/undo.lua + 引擎侧），
--- 这里的钩子和 GMod 同名，直接接上。
--------------------------------------------------------------------------------
+--[[---------------------------------------------------------
+	Name: gamemode:PreUndo( undo )
+-----------------------------------------------------------]]
 function GM:PreUndo( undo )
 	return true
 end
 
+--[[---------------------------------------------------------
+	Name: gamemode:PreUndo( undo )
+-----------------------------------------------------------]]
 function GM:PostUndo( undo, count )
 end

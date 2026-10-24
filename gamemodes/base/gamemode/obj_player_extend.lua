@@ -1,22 +1,3 @@
---[[--------------------------------------------------------------------------
-    gamemodes/base/gamemode/obj_player_extend.lua
-
-    GMod base gamemode obj_player_extend.lua, ported for HL2SB (2026-10-08).
-
-    Two deviations, both deliberate:
-      - meta:GetEyeTrace / meta:GetEyeTraceNoCursor are NOT ported.  The engine
-        ships C bindings for both (lbaseplayer_shared.cpp) with MASK_SOLID
-        semantics already matched to GMod; the Lua frames would just shadow
-        the faster C path.
-      - meta:PhysgunUnfreeze here INTENTIONALLY shadows the engine's native
-        C binding of the same name: the GMod behaviour walks the constraint
-        chain (constraint.GetAllConstrainedEntities) and respects
-        CanPlayerUnfreeze, which the C binding does not.
-
-    Loads from base/gamemode/shared.lua (shared realm), matching GMod's
-    include order.
---------------------------------------------------------------------------]]--
-
 
 local meta = FindMetaTable( "Player" )
 if ( !meta ) then return end
@@ -186,3 +167,45 @@ function meta:UniqueIDTable( key )
 
 end
 
+--[[---------------------------------------------------------
+	Player Eye Trace
+-----------------------------------------------------------]]
+function meta:GetEyeTrace()
+	if ( CLIENT ) then
+		local framenum = FrameNumber()
+
+		-- Cache the trace results for the current frame, unless we're serverside
+		-- in which case it wouldn't play well with lag compensation at all
+		if ( self.LastPlayerTrace == framenum ) then
+			return self.PlayerTrace
+		end
+
+		self.LastPlayerTrace = framenum
+	end
+
+	local tr = util.TraceLine( util.GetPlayerTrace( self ) )
+	self.PlayerTrace = tr
+
+	return tr
+end
+
+--[[---------------------------------------------------------
+	GetEyeTraceIgnoreCursor
+	Like GetEyeTrace but doesn't use the cursor aim vector..
+-----------------------------------------------------------]]
+function meta:GetEyeTraceNoCursor()
+	if ( CLIENT ) then
+		local framenum = FrameNumber()
+
+		if ( self.LastPlayerAimTrace == framenum ) then
+			return self.PlayerAimTrace
+		end
+
+		self.LastPlayerAimTrace = framenum
+	end
+
+	local tr = util.TraceLine( util.GetPlayerTrace( self, self:EyeAngles():Forward() ) )
+	self.PlayerAimTrace = tr
+
+	return tr
+end

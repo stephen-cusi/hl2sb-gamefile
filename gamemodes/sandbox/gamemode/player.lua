@@ -1,30 +1,20 @@
---[[----------------------------------------------------------------------------
-    Sandbox: 生成上限的 gamemode 层
-
-    逐字移植 GMod gamemodes/sandbox/gamemode/player.lua 中与生成上限有关的
-    部分（GMod 同位同文件名，插件按这个路径找这些方法）：
-
-        GM:PlayerSpawn<Type>( ... )    -> LimitReachedProcess -> ply:CheckLimit
-        GM:PlayerSpawned<Type>( ... )  -> ply:AddCount
-
-    生成命令现在在 commands.lua（GMod 同位文件，同目录 / 同 include 面），
-    它在这两处问一次 gamemode：前置返回 false 就不生成，生成成功后再回来计数。
-    复制/粘贴（duplicator 与 save_load.lua）走的是同一对方法，所以一处接上
-    两条路都受上限约束。
-
-    注意：本分叉的 gamemode.Call 对「方法不存在」回答 false（不是 nil），
-    所以这些方法**必须存在**，否则调用方（save_load.lua 等）会把生成整段
-    掐掉。GMod 的 base 层不提供它们，方法缺了就是全禁——这正是这里要补齐的。
-
-    基类已有的 CanPlayerUnfreeze / PlayerEnteredVehicle / PlayerButtonDown/Up
-    不在这里重定义（沙盒版是 GMod 的额外增强，基类空桩已够用）。
-------------------------------------------------------------------------------]]
 
 --[[---------------------------------------------------------
    Name: gamemode:PlayerSpawnObject( ply )
    Desc: Called to ask whether player is allowed to spawn any objects
 -----------------------------------------------------------]]
 function GM:PlayerSpawnObject( ply )
+	return true
+end
+
+--[[---------------------------------------------------------
+   Name: gamemode:CanPlayerUnfreeze( )
+   Desc: Can the player unfreeze this entity & physobject
+-----------------------------------------------------------]]
+function GM:CanPlayerUnfreeze( ply, entity, physobject )
+
+	if ( entity:GetPersistent() && GetConVarString( "sbox_persist" ):Trim() != "" ) then return false end
+
 	return true
 end
 
@@ -39,9 +29,10 @@ local function LimitReachedProcess( ply, str )
 
 end
 
+
 --[[---------------------------------------------------------
    Name: gamemode:PlayerSpawnRagdoll( ply, model )
-   Desc: Return true if it's allowed
+   Desc: Return true if it's allowed 
 -----------------------------------------------------------]]
 function GM:PlayerSpawnRagdoll( ply, model )
 
@@ -49,9 +40,10 @@ function GM:PlayerSpawnRagdoll( ply, model )
 
 end
 
+
 --[[---------------------------------------------------------
    Name: gamemode:PlayerSpawnProp( ply, model )
-   Desc: Return true if it's allowed
+   Desc: Return true if it's allowed 
 -----------------------------------------------------------]]
 function GM:PlayerSpawnProp( ply, model )
 
@@ -61,7 +53,7 @@ end
 
 --[[---------------------------------------------------------
    Name: gamemode:PlayerSpawnEffect( ply, model )
-   Desc: Return true if it's allowed
+   Desc: Return true if it's allowed 
 -----------------------------------------------------------]]
 function GM:PlayerSpawnEffect( ply, model )
 
@@ -71,7 +63,7 @@ end
 
 --[[---------------------------------------------------------
    Name: gamemode:PlayerSpawnVehicle( ply, model, vname, vtable )
-   Desc: Return true if it's allowed
+   Desc: Return true if it's allowed 
 -----------------------------------------------------------]]
 function GM:PlayerSpawnVehicle( ply, model, vname, vtable )
 
@@ -79,25 +71,28 @@ function GM:PlayerSpawnVehicle( ply, model, vname, vtable )
 
 end
 
+
 --[[---------------------------------------------------------
    Name: gamemode:PlayerSpawnSWEP( ply, wname, wtable )
-   Desc: Return true if it's allowed
+   Desc: Return true if it's allowed 
 -----------------------------------------------------------]]
 function GM:PlayerSpawnSWEP( ply, wname, wtable )
 
 	return LimitReachedProcess( ply, "sents" )
-
+	
 end
+
 
 --[[---------------------------------------------------------
    Name: gamemode:PlayerGiveSWEP( ply, wname, wtable )
-   Desc: Return true if it's allowed
+   Desc: Return true if it's allowed 
 -----------------------------------------------------------]]
 function GM:PlayerGiveSWEP( ply, wname, wtable )
 
 	return true
 
 end
+
 
 --[[---------------------------------------------------------
    Name: gamemode:PlayerSpawnSENT( ply, name )
@@ -169,6 +164,7 @@ function GM:PlayerSpawnedNPC( ply, ent )
 
 end
 
+
 --[[---------------------------------------------------------
    Name: gamemode:PlayerSpawnedSENT( ply, ent )
    Desc: Called after the player has spawned a SENT
@@ -180,7 +176,7 @@ function GM:PlayerSpawnedSENT( ply, ent )
 end
 
 --[[---------------------------------------------------------
-   Name: gamemode:PlayerSpawnedSWEP( ply, ent )
+   Name: gamemode:PlayerSpawnedWeapon( ply, ent )
    Desc: Called after the player has spawned a Weapon
 -----------------------------------------------------------]]
 function GM:PlayerSpawnedSWEP( ply, ent )
@@ -190,7 +186,21 @@ function GM:PlayerSpawnedSWEP( ply, ent )
 
 end
 
-function GM:PlayerButtonDown( ply, btn )
+--[[---------------------------------------------------------
+   Name: gamemode:PlayerEnteredVehicle( player, vehicle, role )
+   Desc: Player entered the vehicle fine
+-----------------------------------------------------------]]
+function GM:PlayerEnteredVehicle( player, vehicle, role )
+
+	player:SendHint( "VehicleView", 2 )
+
+end
+
+--[[---------------------------------------------------------
+	These are buttons that the client is pressing. They're used
+	in Sandbox mode to control things like wheels, thrusters etc.
+-----------------------------------------------------------]]
+function GM:PlayerButtonDown( ply, btn ) 
 
 	numpad.Activate( ply, btn )
 
@@ -200,7 +210,7 @@ end
 	These are buttons that the client is pressing. They're used
 	in Sandbox mode to control things like wheels, thrusters etc.
 -----------------------------------------------------------]]
-function GM:PlayerButtonUp( ply, btn )
+function GM:PlayerButtonUp( ply, btn ) 
 
 	numpad.Deactivate( ply, btn )
 

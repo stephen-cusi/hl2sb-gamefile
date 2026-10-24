@@ -1,18 +1,3 @@
---[[--------------------------------------------------------------------------
-    gamemodes/base/gamemode/cl_spawnmenu.lua
-
-    GMod base gamemode cl_spawnmenu.lua, ported for HL2SB (2026-10-08).
-
-    Deviation: GMod's file also registers the +menu / -menu / +menu_context /
-    -menu_context concommands.  On this fork those four are engine
-    ConCommands (cdll_client_int.cpp) that dispatch OnSpawnMenuOpen /
-    OnSpawnMenuClose / OnContextMenuOpen / OnContextMenuClose directly, so
-    registering the Lua twins would collide with the engine registration.
-    Only the four gamemode stubs are kept - hook.Run falls back to the
-    GAMEMODE method when no hook is registered, which is what makes the
-    engine commands reach them.
---------------------------------------------------------------------------]]--
-
 --[[---------------------------------------------------------
 	Spawn Menu
 -----------------------------------------------------------]]
@@ -22,6 +7,16 @@ end
 function GM:OnSpawnMenuClose()
 end
 
+concommand.Add( "+menu", function()
+	hook.Run( "OnSpawnMenuOpen" )
+end, nil, "Opens the spawnmenu", FCVAR_DONTRECORD )
+
+concommand.Add( "-menu", function()
+	if ( input.IsKeyTrapping() ) then return end
+	hook.Run( "OnSpawnMenuClose" )
+end, nil, "Closes the spawnmenu", FCVAR_DONTRECORD )
+
+
 --[[---------------------------------------------------------
 	Context Menu
 -----------------------------------------------------------]]
@@ -30,3 +25,12 @@ end
 
 function GM:OnContextMenuClose()
 end
+
+concommand.Add( "+menu_context", function()
+	hook.Run( "OnContextMenuOpen" )
+end, nil, "Opens the context menu", FCVAR_DONTRECORD )
+
+concommand.Add( "-menu_context", function()
+	if ( input.IsKeyTrapping() ) then return end
+	hook.Run( "OnContextMenuClose" )
+end, nil, "Closes the context menu", FCVAR_DONTRECORD )

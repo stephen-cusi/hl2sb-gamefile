@@ -1,3 +1,4 @@
+include( "hl2sb/compat/gamemode.lua" )
 -- Shared native aliases and scripted-effect compatibility.
 
 if ( _E ~= nil ) then
@@ -78,3 +79,5 @@ if ( CLIENT and type( effects ) == "table" and type( effects.Register ) == "func
 
 	Msg( "[HL2SB]   EFFECT:EntIndex / SetRenderMode / SetRenderFX added\n" )
 end
+
+include( "hl2sb/compat/sandbox.lua" )

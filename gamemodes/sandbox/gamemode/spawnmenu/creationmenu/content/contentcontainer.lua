@@ -186,7 +186,7 @@ hook.Add( "SpawnlistOpenGenericMenu", "DragAndDropSelectionMenu", function( canv
 				pnl:GetParent():Layout()
 				pnl:SetModel( pnl:GetModelName(), pnl:GetSkinID(), pnl:GetBodyGroup() )
 			end
-
+			
 		end, language.FormatPhrase( "spawnmenu.menu.resizex", spawnicons ) )
 
 		menu:AddOption( language.FormatPhrase( "spawnmenu.menu.rerenderx", spawnicons ), function()

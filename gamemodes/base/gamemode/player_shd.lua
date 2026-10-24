@@ -1,115 +1,135 @@
---[[--------------------------------------------------------------------------
-    gamemodes/base/gamemode/player_shd.lua
 
-    对应 GMod 的 base/gamemode/player_shd.lua —— 给玩家实体补一组
-    “GMod 语义”的方法，让玩家类脚本能直接写 ply:AllowFlashlight(...) 之类。
+--[[---------------------------------------------------------
+	Name: gamemode:PlayerTraceAttack( )
+	Desc: A bullet has been fired and hit this player
+		 Return true to completely override internals
+-----------------------------------------------------------]]
+function GM:PlayerTraceAttack( ply, dmginfo, dir, trace )
 
-    HL2SB 里这些不是 metatable 别名就够的（有些要组合判断），所以在 Lua 里实现。
-    只在**服务端**真正生效的部分（例如 SetAvoidPlayers）会检查 _GAME。
---------------------------------------------------------------------------]]--
+	return false
 
-local meta = _R ~= nil and _R.CBasePlayer or nil
-
-if ( meta == nil ) then
-	return
 end
 
--------------------------------------------------------------------------------
--- 手电
--------------------------------------------------------------------------------
-if ( meta.AllowFlashlight == nil ) then
-	function meta:AllowFlashlight( able )
-		self.m_bFlashlightAllowed = able and true or false
-	end
+--[[---------------------------------------------------------
+	Name: gamemode:SetPlayerSpeed( )
+	Desc: Sets the player's run/walk speed
+-----------------------------------------------------------]]
+function GM:SetPlayerSpeed( ply, walk, run )
 
-	function meta:CanUseFlashlight()
-		return self.m_bFlashlightAllowed ~= false
-	end
+	ply:SetWalkSpeed( walk )
+	ply:SetRunSpeed( run )
+
 end
 
--------------------------------------------------------------------------------
--- 走路速度（GMod 用它们覆盖 MaxSpeed）
--------------------------------------------------------------------------------
-if ( meta.SetWalkSpeed == nil ) then
-	function meta:SetWalkSpeed( speed )
-		self.m_flHL2SBWalkSpeed = speed
+--[[---------------------------------------------------------
+	Name: gamemode:PlayerFootstep( ply, vPos, iFoot, strSoundName, fVolume, pFilter )
+	Desc: Called when a player steps
+		pFilter is the recipient filter to use for effects/sounds
+			and is only valid SERVERSIDE. Clientside needs no filter!
+		Return true to not play normal sound
+-----------------------------------------------------------]]
+function GM:PlayerFootstep( ply, vPos, iFoot, strSoundName, fVolume, pFilter )
+	if ( IsValid( ply ) and !ply:Alive() ) then
+		return true
 	end
 
-	function meta:SetRunSpeed( speed )
-		self.m_flHL2SBRunSpeed = speed
-	end
+	--[[
+	-- Draw effect on footdown
+	local effectdata = EffectData()
+		effectdata:SetOrigin( vPos )
+	util.Effect( "phys_unfreeze", effectdata, true, pFilter )
+	--]]
 
-	function meta:SetSlowWalkSpeed( speed )
-		self.m_flHL2SBSlowWalkSpeed = speed
-	end
+	--[[
+	-- Don't play left foot
+	if ( iFoot == 0 ) then return true end
+	--]]
 
-	function meta:SetCrouchedWalkSpeed( mul )
-		self.m_flHL2SBCrouchedWalkSpeed = mul
-	end
-
-	function meta:SetJumpPower( power )
-		self.m_flHL2SBJumpPower = power
-	end
 end
 
--------------------------------------------------------------------------------
--- 分数 -- C++ 绑定（Frags/AddFrags/Deaths/AddDeaths，读引擎计数器）落地后
--- 这组方法来自 lbaseplayer_shared.cpp，这里不再有 Lua 版双源。
--------------------------------------------------------------------------------
+--[[---------------------------------------------------------
+	Name: gamemode:PlayerStepSoundTime( ply, iType, bWalking )
+	Desc: Return the time between footsteps
+-----------------------------------------------------------]]
+function GM:PlayerStepSoundTime( ply, iType, bWalking )
 
--------------------------------------------------------------------------------
--- 聊天输出
--------------------------------------------------------------------------------
-if ( meta.ChatPrint == nil ) then
-	function meta:ChatPrint( msg )
-		-- 服务端：直接给这个玩家的控制台塞一条 echo
-		if ( _GAME and engine ~= nil and engine.ClientCmd ~= nil ) then
-			pcall( engine.ClientCmd, self, "echo \"" .. tostring( msg ) .. "\"\n" )
-			return
+	local fStepTime = 350
+	local fMaxSpeed = ply:GetMaxSpeed()
+
+	if ( iType == STEPSOUNDTIME_NORMAL || iType == STEPSOUNDTIME_WATER_FOOT ) then
+
+		if ( fMaxSpeed <= 100 ) then
+			fStepTime = 400
+		elseif ( fMaxSpeed <= 300 ) then
+			fStepTime = 350
+		else
+			fStepTime = 250
 		end
 
-		print( tostring( msg ) )
+	elseif ( iType == STEPSOUNDTIME_ON_LADDER ) then
+
+		fStepTime = 450
+
+	elseif ( iType == STEPSOUNDTIME_WATER_KNEE ) then
+
+		fStepTime = 600
+
 	end
+
+	-- Step slower if crouching
+	if ( ply:Crouching() ) then
+		fStepTime = fStepTime + 50
+	end
+
+	return fStepTime
+
 end
 
--------------------------------------------------------------------------------
--- 默认武器 —— GMod 的 ply:SwitchToDefaultWeapon()
--- 读客户端 cl_defaultweapon，拥有就切过去
--------------------------------------------------------------------------------
-if ( meta.SwitchToDefaultWeapon == nil ) then
-	function meta:SwitchToDefaultWeapon()
-		local name = ""
+--[[---------------------------------------------------------
+	Name: gamemode:PlayerNoClip( player, bool )
+	Desc: Player pressed the noclip key, return true if
+		 the player is allowed to noclip, false to block
+-----------------------------------------------------------]]
+function GM:PlayerNoClip( pl, on )
+	if ( !on ) then return true end
+	-- Allow noclip if we're in single player and living
+	return game.SinglePlayer() && IsValid( pl ) && pl:Alive()
 
-		if ( self.GetInfo ~= nil ) then
-			local ok, v = pcall( self.GetInfo, self, "cl_defaultweapon" )
-			if ( ok and type( v ) == "string" ) then name = v end
-		end
-
-		if ( name ~= "" and self.Weapon_OwnsThisType ~= nil ) then
-			local wep = self:Weapon_OwnsThisType( name )
-			if ( wep ~= nil and self.Weapon_Switch ~= nil ) then
-				self:Weapon_Switch( wep )
-				return
-			end
-		end
-
-		-- 兜底：切到物理枪
-		if ( self.Weapon_OwnsThisType ~= nil and self.Weapon_Switch ~= nil ) then
-			local wep = self:Weapon_OwnsThisType( "weapon_physgun" )
-			if ( wep ~= nil ) then
-				self:Weapon_Switch( wep )
-			end
-		end
-	end
 end
 
--------------------------------------------------------------------------------
--- 网络：SendLua。
--- 这里曾有一个"退化成空操作"的垫片（if meta.SendLua == nil 罩了个空函数）。
--- 守卫本身有缺陷：SendLua 的 C 绑定注册在 Entity 元表上（lbaseentity_shared
--- 的实体方法表），Player 元表要经 __index 回退才够得着，所以 meta.SendLua
--- 对 Player 元表自身恒为 nil，垫片永远安装、永远遮蔽真正的引擎绑定——
--- 服务端 ply:SendLua 从此全部静默丢包（上限提示/错误提示/提示语全灭）。
--- GMod 的 SendLua 是引擎方法、没有 Lua 垫片；引擎绑定（stufftext 到客户端
--- 的 lua_run_cl）是现成的，删掉垫片让 C 绑定接管即可。
--------------------------------------------------------------------------------
+--
+-- FindUseEntity
+--
+function GM:FindUseEntity( ply, ent )
+
+	-- ent is what the game found to use by default
+	-- return what you REALLY want it to use
+
+	-- Simple fix to allow entities inside playerclip brushes to be used. Necessary for c1a0c map in Half-Life: Source 
+	if ( !IsValid( ent ) ) then
+		local traceEnt = util.TraceLine( {
+			start = ply:GetShootPos(),
+			endpos = ply:GetShootPos() + ply:GetAimVector() * 72,
+			filter = ply
+		} ).Entity
+		if ( IsValid( traceEnt ) ) then return traceEnt end
+	end
+
+	return ent
+
+end
+
+--
+-- Player tick
+--
+function GM:PlayerTick( ply, mv )
+end
+
+--
+-- Player is switching weapon. Return true to prevent the switch.
+--
+function GM:PlayerSwitchWeapon( ply, oldwep, newwep )
+
+	return false
+
+end

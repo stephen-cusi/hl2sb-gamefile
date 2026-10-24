@@ -5,6 +5,72 @@ hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移�
 库清单基准：GMod wiki 全部 88 个 Lua 库（经 libgmod 权威绑定表核对，2026-10-10）。
 最近全量复核：2026-10-14；2026-10-23 增量核对 Lua 布局、base/sandbox 文件与已有 native 派发点，详见 `docs/lua_layout.md`。原“完成”不等于与当前 GMod 逐字一致或已通过所有实机验证。
 
+## 2026-10-24 原版 Gamemode 完整迁移
+
+本轮按阶段执行。参考仅使用实际 Steam GMod 安装目录；原版 Lua 保持原样，缺口修在原生层。下面未完成项不能按文件存在或同名绑定标为完成。
+
+- [x] 迁移前完整备份当前 lua/ 与 gamemodes/ 到本地临时目录，并记录两仓已有改动。
+- [~] 清点 base/sandbox 原版文件、旧实现、原生消费者及加载顺序；归档取证先查各 DLL 的 _index.txt，缺失才新增。
+- [x] 接入原版 gamemode 注册、BaseClass、Folder/FolderName 和规范 entities 目录；保留旧目录兼容扫描并保持 campaign/deathmatch 可加载。
+- [x] 语音面板、计分板、目标提示、死亡通知替换为原版 Lua；死亡协议和拾取事件已接入原版 HUD 钩子。
+- [x] 替换 base 客户端入口和默认面板生命周期；旧 C++ killfeed 绘制/死亡事件桥已移除，拾取只保留原生事件转发。
+- [x] 替换 base 服务端/共享/player_class/动画与生命周期；修复重复出生装备、重复布娃娃、复活尸体和死亡掉枪。
+- [~] 替换 sandbox 服务端/共享命令、通知、存档与驱动；原版出生、冻结/解冻、菜单文件已接入，保存仍是兼容适配。
+- [~] 把 gamemode 实体、效果和武器迁回原版目录；完整目录已迁移的类已停用旧副本，仍依赖虚拟 LUA 查询或有兼容差异的类暂留旧路径。
+- [x] 静态清单与逐模块离线运行检查；覆盖 137 个 gamemode/依赖 Lua 的原生 CompileFile 编译、gamemode 继承、生命周期、死亡/拾取/冻结、UI 和新绑定合同。
+- [x] 所有本轮修改 C++ 已单 TU 检查，client/server 增量构建通过；部署待本轮结束前完成并校验 DLL/PDB。
+- [ ] 完整重启后的游戏验证：进图、出生、换枪、语音、TAB、死亡通知、Q/C、工具枪、保存/读档及切图。
+- [-] SteamAPI/CEF 等外部服务不作为迁移阻塞；按调用契约跳过或提供明确空桩，不把空桩算作已实现。
+
+### 本轮已核实的周边功能
+
+- [x] `ai_serverragdolls` 菜单选项：第二轮按当前 GMod 实现补齐 native 注册与 NPC 创建时快照；开启后新 NPC 使用服务端保留尸体，默认仍为 0。上一轮关于 `CBaseAnimating` 已消费的结论不准确，已纠正。`effects_unfreeze` 由原版 `phys_unfreeze.lua` 消费。
+- [x] 物理枪解冻：原版 `Player:PhysgunUnfreeze`、`CanPlayerUnfreeze`、`PlayerUnfrozeObject` 和 `phys_unfreeze` 已恢复，冻结/解冻提示合同通过。
+- [x] 出生状态：player class 的速度、生命、护甲、手电、掉枪、队友碰撞/绕行设置都会按原版调用；掉枪已连接 native 消费，队友碰撞/绕行 native 消费仍待补。
+- [x] 击杀/拾取：原版死亡 net 六种编码、原版 `DeathNoticeEvent` 解析和 `HUD*PickedUp` 钩子均有离线合同；实际多人网络顺序待游戏验证。
+- [~] Derma/VGUI：原版 base/sandbox Derma 与面板脚本已载入；`ContextMenu` 关闭焦点保留在独立兼容层，CEF/HTML 面板功能不纳入本轮。
+
+### 2026-10-24 第二轮回归修复
+
+- [x] 重进地图崩溃：崩溃转储与 DLL/PDB 时间戳匹配。Combine/Metropolice 死亡掉落错误使用 CHalfLife2 类型，掉落计时覆盖多人规则的 response vector，退出地图释放时崩溃。改用正确多人规则，并初始化多人掉落计时；实际函数回归复现旧写坏并验证 2000 次修复后调用不污染容器。
+- [x] 图标编辑器：补 `Entity:GetSequenceCount` 真实客户端绑定，包含虚拟模型合并序列计数；原版 IconEditor 的序列排序、搜索和滑块离线合同通过。
+- [x] NPC 保留尸体：补 `ai_serverragdolls` 注册及真实 native 路径，按 GMod 在 NPC 创建时快照；开启后须重新生成 NPC，关时保留普通客户端尸体路径。自定义模型和实际尸体画面仍未实机验证。
+- [x] 出生默认武器：子代理修复 native 默认 `cl_defaultweapon=weapon_physgun`、`Player:HasWeapon` 真布尔和旧默认武器兼容层；原版 Lua 保持不改，用户本轮要求主线程只集成部署，不另改配置。
+- [ ] 图标编辑器 `SetLOD` 仍为旧空实现，不能把全部编辑器功能标为完成。
+- [ ] 菜单 realm 仍有原生日志缺口：ConVar 构造未开放，Material 的真实客户端构造由 luaopen_ITexture 注册，单独 luaopen_IMaterial 只创建元表，导致原版 util.lua 捕获 nil。后续需修 native 初始化顺序，不改原版 Lua。
+- [x] 第二轮所有改动单 TU 和离线合同通过；client/server 增量构建 21.158 秒，DLL/PDB 已直接部署且四对 SHA256 一致。未启动游戏，实机重进图与尸体/编辑器验证仍由用户进行。
+
+### 2026-10-24 第三轮回归修复
+
+- [x] 移除旧 physgun halo autorun，消除捕获 hook 短路与原版同名渲染 hook 覆盖；使用原版 Sandbox halo 开关和目标列表，开/关/开离线回归通过。
+- [x] 独立兼容层补 Sandbox 禁用 HL2 武器时的默认持枪回退：首选武器不在库存且拥有物理枪时选物理枪，有效自定义首选仍保留，原版 Lua 和用户配置未改。
+- [x] 原生服务端尸体创建完成后派发 CreateEntityRagdoll，原版 Sandbox 转移 NPC 的 undo/cleanup 记录，原实体删除后 Z 可移除尸体；实际派发宏与原版 Lua 合同通过。
+- [x] client/server 构建成功（23.060 秒），DLL/PDB 已直接部署到实际游戏 bin，四对 SHA256 一致。未写结果报告、未启动游戏、未提交推送。
+- [ ] 实机验证 halo 开关、无 HL2 配给时持枪、NPC 尸体撤销。保留尸体开关不是立即删除开关；普通客户端尸体受回收队列管理，开关只影响之后生成的 NPC。
+
+### 仍未完成或刻意跳过
+
+- [ ] `SetNoCollideWithTeammates`、`SetAvoidPlayers` 仍只有脚本字段，尚无真实 native 碰撞/推开消费者。
+- [ ] `engine.WriteSave`、完整 `.gms`/`LoadGModSave` 原生存档链未实现，当前 save_load 是文件适配。
+- [ ] taunt camera 的完整 native CalcView/CreateMove/ShouldDrawLocalPlayer 与跨图 transition 参数仍需实机核对。
+- [ ] SteamAPI 功能（Workshop 查询之外的好友、档案、网页服务）不实现；`Player:ShowProfile` 是明确空桩。
+- [ ] CEF/HTML/JavaScript 面板不实现；相关菜单路径保留空桩或现有 VGUI 替代，不把它们标成完整 GMod 功能。
+- [ ] `GetVoiceVolumeScale` 当前是本地比例存储，未接入 Steam voice mixer 的增益控制。
+- [ ] 实机未启动：出生、多人击杀/拾取、TAB、Q/C、工具枪、冻结解冻、保存读档和切图必须完整重启后验证。
+
+过程只更新本 TODO；临时测试、快照和取证留本地，不新增结果报告，不自动启动游戏或提交推送。
+
+### 2026-10-24 Lua 启动面清理
+
+- [x] 原版公共库及 base/sandbox Lua 本轮未改；仅调整分叉 includes/init.lua 的兼容入口；本轮迁移的兼容代码收纳到 `lua/hl2sb/compat/`，由两个 `hl2sb_compat.lua` 入口按顺序加载。
+- [x] 移出会覆盖原版行为的旧自动脚本：强制关闭跌落伤害、重复写玩家颜色、未引用的显示名全局和空准星入口。
+- [x] 移出重复的帮助/队伍命令注册；`gm_showhelp`、`gm_showteam` 由原生命令处理，仅保留旧 `gm_showspawns` 兼容命令。
+- [x] 二进制模块示例改为手动测试，不再随服务器和客户端启动强制 `require`。
+- [x] 删除重复的通知兼容入口；渲染过滤器已有原生无操作绑定，Sandbox 的 AddNotify 由 gamemode 提供。
+- [x] Lua 清理前快照、哈希和变更清单：`D:/tmp/hl2sb_lua_cleanup_20261024/`。
+- [x] 14 个本轮 Lua 文件语法通过；实际双端入口离线执行保留 59 个 NPC 和 15 个载具/座椅；录制、错误钩子、字体阶段/重入合同通过。9 项移动逐字核对通过，其余 Lua/gamemode 与清理前快照一致。
+- [ ] 本轮未启动游戏；需完整重启后验证 autorun 顺序、载具/NPC 注册、错误提示和准星菜单。
+
 ## 2026-10-23 Lua 整理与搬运缺口
 
 - [x] 33 个手动诊断脚本归到 `lua/tests/`；原自动加载的字符串测试改为手动运行。

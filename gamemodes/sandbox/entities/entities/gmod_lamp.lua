@@ -283,3 +283,4 @@ function ENT:DrawTranslucent( flags )
 	self:DrawEffects()
 
 end
+

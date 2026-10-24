@@ -1,17 +1,3 @@
---[[--------------------------------------------------------------------------
-    gamemodes/base/gamemode/cl_voice.lua
-
-    GMod base gamemode cl_voice.lua, ported for HL2SB (2026-10-13).
-    Client realm, live via the deathmatch cl_init.lua include (this fork's
-    real base gamemode while LUA_BASE_GAMEMODE is still "deathmatch").
-
-    Deviation: util.IsPlayerSpeaking / Player:VoiceVolume answer the speaking
-    state with the volume endpoints 1/0 -- the reference reads a per-player
-    loudness table fed by the engine voice mixer, and this fork's engine has
-    no loudness channel.  The voice bar therefore sits full green while a
-    player talks instead of following their mic level.  Every other line is
-    the reference file verbatim.
---------------------------------------------------------------------------]]--
 
 local PANEL = {}
 local PlayerVoicePanels = {}
@@ -52,6 +38,9 @@ function PANEL:Setup( ply, playerIndex )
 	self.ply = ply
 	self.plyIndex = playerIndex
 
+	-- For addon gamemodes that reuse this panel
+	if ( self.plyIndex and IsValid( ply ) ) then self.plyIndex = ply:EntIndex() end
+
 	self:UpdatePlayerInfo()
 
 	self:InvalidateLayout()
@@ -83,16 +72,16 @@ function PANEL:SetText( text )
 	self.LabelName:SetText( text )
 end
 
-function PANEL:UpdatePlayerInfo( skinColor )
+function PANEL:UpdatePlayerInfo( setColor )
 
 	if ( IsValid( self.ply ) ) then
 		self:SetText( self.ply:Nick() )
 		self.Avatar:SetPlayer( self.ply )
-		if ( !skinColor ) then self.Color = hook.Run( "GetTeamColor", self.ply ) end
+		if ( !setColor ) then self.Color = hook.Run( "GetTeamColor", self.ply ) end
 	else
 		self:SetText( "Unknown Player " .. self.plyIndex )
 		self.Avatar:SetPlayer( NULL )
-		if ( !skinColor ) then self.Color = hook.Run( "GetTeamColor", NULL ) end
+		if ( !setColor ) then self.Color = hook.Run( "GetTeamColor", NULL ) end
 	end
 
 end

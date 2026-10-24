@@ -1,51 +1,58 @@
---========== HL2SB - GMod compat ==========--
+
+
 --
--- Purpose: Base class registry (ported from Garry's Mod's baseclass module).
+-- The baseclass module uses upvalues to give the impression of inheritence.
 --
---   DEFINE_BASECLASS( "name" ) is an engine-side macro in GMod; HL2SB has no
---   such preprocessing, so ported files must write
+-- At the top of your class file add 
 --
---       local BaseClass = baseclass.Get( "name" )
+-- DEFINE_BASECLASS( "base_class_name" )
 --
---   instead.  Everything else behaves like GMod.
+-- Now the local variable BaseClass will be available.
+-- ( in engine DEFINE_BASECLASS is replaced with "local BaseClass = baseclass.Get" )
 --
---===========================================================================--
+-- Baseclasses are added using baseclass.Set - this is done automatically for:
+--
+--		> widgets
+--		> panels
+--		> drive modes
+--		> entities
+--		> weapons
+-- 
+-- Classes don't have to be created in any particular order. The system is 
+-- designed to work with whatever order the classes are defined.
+--
+-- The only caveat is that classnames must be unique. 
+-- eg Creating a panel and widget with the same name will cause problems.
+--
 
 module( "baseclass", package.seeall )
 
 local BaseClassTable = {}
 
--------------------------------------------------------------------------------
--- Purpose: Returns (and remembers) the base class table for a name.
---          Also records the name on ENT/SWEP under construction, which is how
---          GMod learns an entity's or weapon's base.
--------------------------------------------------------------------------------
 function Get( name )
-	if ( ENT )  then ENT.Base  = name end
+
+	if ( ENT )	then ENT.Base = name end
 	if ( SWEP ) then SWEP.Base = name end
-
-	BaseClassTable[ name ] = BaseClassTable[ name ] or {}
-
-	return BaseClassTable[ name ]
+	
+	BaseClassTable[name] = BaseClassTable[name] or {}
+	
+	return BaseClassTable[name]
+	
 end
 
--------------------------------------------------------------------------------
--- Purpose: Registers a base class table
--------------------------------------------------------------------------------
 function Set( name, tab )
-	if ( not BaseClassTable[ name ] ) then
-		BaseClassTable[ name ] = tab
+
+	if ( !BaseClassTable[name] ) then
+
+		BaseClassTable[name] =  tab
+
 	else
-		table.Merge( BaseClassTable[ name ], tab )
-		setmetatable( BaseClassTable[ name ], getmetatable( tab ) )
+
+		table.Merge( BaseClassTable[name], tab )
+		setmetatable( BaseClassTable[name], getmetatable(tab) )
+
 	end
 
-	BaseClassTable[ name ].ThisClass = name
-end
+	BaseClassTable[name].ThisClass = name
 
--------------------------------------------------------------------------------
--- Purpose: All registered base classes
--------------------------------------------------------------------------------
-function GetAll()
-	return BaseClassTable
 end

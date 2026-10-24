@@ -1,15 +1,3 @@
---[[--------------------------------------------------------------------------
-    gamemodes/base/gamemode/cl_targetid.lua
-
-    GMod base gamemode cl_targetid.lua, ported for HL2SB (2026-10-08).
-    Client realm, driven from GM:HUDPaint via hook.Run( "HUDDrawTargetID" ).
-
-    Deviation: input.GetCursorPos and vgui.CursorVisible have no bindings in
-    this fork yet - both probes fall back to "no cursor" behaviour (aim at
-    screen centre) instead of erroring, and pick the real cursor up as soon
-    as the bindings land.
---------------------------------------------------------------------------]]--
-
 
 --[[---------------------------------------------------------
    Name: gamemode:HUDDrawTargetID( )
@@ -34,13 +22,9 @@ function GM:HUDDrawTargetID()
 	surface.SetFont( font )
 	local w, h = surface.GetTextSize( text )
 
-	local MouseX, MouseY = 0, 0
-	if ( input.GetCursorPos ~= nil ) then
-		MouseX, MouseY = input.GetCursorPos()
-	end
+	local MouseX, MouseY = input.GetCursorPos()
 
-	local bCursorVisible = ( vgui.CursorVisible ~= nil and vgui.CursorVisible() ) or false
-	if ( ( MouseX == 0 && MouseY == 0 ) || !bCursorVisible ) then
+	if ( MouseX == 0 && MouseY == 0 || !vgui.CursorVisible() ) then
 
 		MouseX = ScrW() / 2
 		MouseY = ScrH() / 2

@@ -1,25 +1,3 @@
---[[--------------------------------------------------------------------------
-    gamemodes/base/gamemode/player.lua
-
-    GMod base gamemode player.lua, ported for HL2SB (2026-10-08).  Server
-    realm, included from init.lua (matching GMod's include order).
-
-    Two deliberate deviations (both documented inline below):
-      - GM:PlayerDeathThink body is left empty.  The engine's C++
-        BaseClass::PlayerDeathThink already drives the respawn timer after
-        the hook dispatch (hl2mp_player.cpp), and GMod's body would add a
-        second pl:Spawn() path next to it - the two systems must not race.
-        Revisit when the death/respawn chain gets its GMod-parity round.
-      - GM:OnDamagedByExplosion returns early when Player:SetDSP is not
-        bound yet (no DSP channel binding in this fork), instead of erroring
-        inside the explosion damage path on every blast.
-
-    Everything else is GMod verbatim.  The engine-side hooks most of these
-    methods ride on are dispatched by the game DLLs (the GMod-name bridge
-    round, 2026-10-08); the few with no dispatch point yet stay inert until
-    their C++ site lands.
---------------------------------------------------------------------------]]--
-
 
 --[[---------------------------------------------------------
 	Name: gamemode:OnPhysgunFreeze( weapon, phys, ent, player )
@@ -47,11 +25,7 @@ end
 -----------------------------------------------------------]]
 function GM:OnPhysgunReload( weapon, ply )
 
-	local num = ply:PhysgunUnfreeze()
-
-	if ( isnumber( num ) and num > 0 ) then
-		ply:SendLua( string.format( "GAMEMODE:UnfrozeObjects(%d)", num ) )
-	end
+	ply:PhysgunUnfreeze()
 
 end
 
@@ -120,8 +94,13 @@ end
 -----------------------------------------------------------]]
 function GM:PlayerDeathThink( pl )
 
-	-- HL2SB: intentionally empty - see the file header.  The engine C++
-	-- BaseClass::PlayerDeathThink owns the respawn timing on this fork.
+	if ( pl.NextSpawnTime && pl.NextSpawnTime > CurTime() ) then return end
+
+	if ( pl:IsBot() || pl:KeyPressed( IN_ATTACK ) || pl:KeyPressed( IN_ATTACK2 ) || pl:KeyPressed( IN_JUMP ) ) then
+
+		pl:Spawn()
+
+	end
 
 end
 
@@ -551,10 +530,6 @@ function GM:OnDamagedByExplosion( ply, info )
 	local shock = info:GetDamage() >= MIN_SHOCK_AND_CONFUSION_DAMAGE
 
 	if ( !shock and !ear_ringing ) then return end
-
-	-- HL2SB: Player:SetDSP has no binding yet; bail instead of erroring
-	-- inside the explosion damage path.
-	if ( ply.SetDSP == nil ) then return end
 
 	-- The effect names are actually backwards
 	if ( shock ) then

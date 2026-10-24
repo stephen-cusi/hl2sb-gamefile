@@ -1,145 +1,187 @@
---========== Copyleft © 2010, Team Sandbox, Some rights reserved. ===========--
---
--- Purpose:
---
---===========================================================================--
+--[[---------------------------------------------------------
 
-include( "ammo.lua" )
+  Sandbox Gamemode
 
--- HL2SB: 沙盒上限体系的本体（GMod 同位文件、同位 include——GMod 把它放在
--- sandbox/gamemode/shared.lua，双 realm 都加载；客户端靠网络化的 Count.* 读数）。
+  This is GMod's default gamemode
+
+-----------------------------------------------------------]]
+
 include( "player_extension.lua" )
-
--- HL2SB: GMod 同位 include（sandbox shared.lua:10）。save_load.lua 需要
--- 引擎的 WriteSave 绑定与存档恢复时的 LoadGModSave 派发（两条引擎通路都还
--- 没有，见 AGENTS.md），先不接；persistence 的依赖已全部就绪。
 include( "persistence.lua" )
-
--- HL2SB (2026-10-16): GMod 同位 include（sandbox shared.lua:13
--- include( "drive/drive_sandbox.lua" )）。file 在 lua/drive/drive_sandbox.lua，
--- include 的根搜索（lua/%s）把它解析到那里。必须加载：C 菜单 drive 属性的
--- 服务端 Receive 调 drive.PlayerStartDriving( ply, ent, "drive_sandbox" )，
--- 而 drive.Register 的类型表里没有 "drive_sandbox" 时那一步直接
--- ErrorNoHalt( "Unknown drive type drive_sandbox!" ) 并什么都不做。
+include( "save_load.lua" )
+include( "player_class/player_sandbox.lua" )
 include( "drive/drive_sandbox.lua" )
+include( "editor_player.lua" )
 
-GM.Name			= "Sandbox"
+--
+-- Make BaseClass available
+--
+DEFINE_BASECLASS( "gamemode_base" )
+
+GM.Name 	= "Sandbox"
+GM.Author 	= "TEAM GARRY"
+GM.Email 	= "teamgarry@garrysmod.com"
+GM.Website 	= "www.garrysmod.com"
+
+--[[
+ Note: This is so that in addons you can do stuff like
+
+ if ( !GAMEMODE.IsSandboxDerived ) then return end
+
+--]]
+
 GM.IsSandboxDerived = true
-GM.Homepage		= "http://www.andrewmcwatters.com/hl2sb/"
-GM.Developer	= "Team Sandbox"
-GM.Manual		= nil
 
-function GM:Initialize()
-if ( not _CLIENT ) then
-  -- Sandbox default: real fall damage OFF (the create-server "Enable
-  -- fall damage" checkbox can turn it back on per session).
-  engine.ServerCommand( "mp_falldamage 0\n" )
-  engine.ServerCommand( "mp_flashlight 1\n" )
-end
-end
+cleanup.Register( "props" )
+cleanup.Register( "ragdolls" )
+cleanup.Register( "effects" )
+cleanup.Register( "npcs" )
+cleanup.Register( "constraints" )
+cleanup.Register( "ropeconstraints" )
+cleanup.Register( "sents" )
+cleanup.Register( "vehicles" )
 
-function GM:FlWeaponRespawnTime( pWeapon )
-  return -1
-end
 
-function GM:FlWeaponTryRespawn( pWeapon )
-  return 0
-end
+local physgun_limited = CreateConVar( "physgun_limited", "0", FCVAR_REPLICATED, "Prevent the Physics Gun from picking up certain map entities." )
 
-local function PlayerPlayStepSound_Impl( pPlayer, vecOrigin, psurface, fvol, force )
-	if ( gpGlobals.maxClients() > 1 and cvar.FindVar( "sv_footsteps" ):GetFloat() == 0 ) then
-		return false;
-	end
+--[[---------------------------------------------------------
+   Name: gamemode:CanTool( ply, trace, mode, tool, button )
+   Return true if the player is allowed to use this tool
+-----------------------------------------------------------]]
+function GM:CanTool( ply, trace, mode, tool, button )
 
-if ( _CLIENT ) then
-	-- during prediction play footstep sounds only once
-	if ( prediction.InPrediction() and not prediction.IsFirstTimePredicted() ) then
-		return false;
-	end
-end
-
-	if ( not psurface ) then
-		return false;
-	end
-
-	local nSide = pPlayer:GetPlayerLocalData().m_nStepside;
-	local stepSoundName = nSide ~= 0 and psurface.sounds.stepleft or psurface.sounds.stepright;
-	if ( not stepSoundName ) then
-		return false;
-	end
-
-	pPlayer:SetPlayerLocalData( "m_nStepside", nSide == 0 and 1 or 0 );
-
-	local params;
-
-	assert( nSide == 0 or nSide == 1 );
-
-	if ( pPlayer:GetStepSoundCache()[ nSide ].m_usSoundNameIndex == stepSoundName ) then
-		params = pPlayer:GetStepSoundCache()[ nSide ].m_SoundParameters;
-	else
-		local physprops = MoveHelper():GetSurfaceProps();
-		local pSoundName = physprops:GetString( stepSoundName );
-		local b
-		b, params = _R.CBaseEntity.GetParametersForSound( pSoundName )
-		if ( not b ) then
-			return false;
-		end
-
-		-- Only cache if there's one option.  Otherwise we'd never here any other sounds
-		if ( params.count == 1 ) then
-			pPlayer:SetStepSoundCache( nSide, "m_usSoundNameIndex", stepSoundName );
-			pPlayer:SetStepSoundCache( nSide, "m_SoundParameters", params );
-		end
-	end
-
-	local filter = CRecipientFilter();
-	filter:AddRecipientsByPAS( vecOrigin );
-
-if not _CLIENT then
-	-- in MP, server removes all players in the vecOrigin's PVS, these players generate the footsteps client side
-	if ( gpGlobals.maxClients() > 1 ) then
-		filter:RemoveRecipientsByPVS( vecOrigin );
-	end
-end
-
-	local ep = {};
-	ep.m_nChannel = 4; -- CHAN_BODY
-	ep.m_pSoundName = params.soundname;
-	ep.m_flVolume = fvol;
-	ep.m_SoundLevel = params.soundlevel;
-	ep.m_nFlags = 0;
-	ep.m_nPitch = params.pitch;
-	ep.m_pOrigin = vecOrigin;
-
-	_R.CBaseEntity.EmitSound( filter, pPlayer:entindex(), ep );
-	return false
-end
-
--- HL2SB: the hook above used to fail once per footstep with a bare
--- "attempt to index a number value" (no file/line), which spammed the log
--- hundreds of times per session.  Run it through xpcall + debug.traceback so
--- the failure reports its exact line instead of an anonymous message.
-function GM:PlayerPlayStepSound( pPlayer, vecOrigin, psurface, fvol, force )
-	local ok, err = xpcall( function()
-		return PlayerPlayStepSound_Impl( pPlayer, vecOrigin, psurface, fvol, force )
-	end, debug.traceback )
-
-	if ( not ok ) then
-		dbg.Warning( "[step-sound] " .. tostring( err ) .. "\n" )
+	-- The jeep spazzes out when applying something
+	-- todo: Find out what it's reacting badly to and change it in _physprops
+	if ( mode == "physprop" && trace.Entity:IsValid() && ( trace.Entity:GetClass() == "prop_vehicle_jeep" || trace.Entity:GetClass() == "prop_vehicle_apc" ) ) then
 		return false
 	end
 
-	return err
+	-- If we have a toolsallowed table, check to make sure the toolmode is in it
+	if ( trace.Entity.m_tblToolsAllowed ) then
+
+		local vFound = false
+		for k, v in pairs( trace.Entity.m_tblToolsAllowed ) do
+			if ( mode == v ) then vFound = true end
+		end
+
+		if ( !vFound ) then return false end
+
+	end
+
+	-- Give the entity a chance to decide
+	if ( trace.Entity.CanTool ) then
+		return trace.Entity:CanTool( ply, trace, mode, tool, button )
+	end
+
+	return true
+
 end
 
-function GM:WeaponShouldRespawn( pItem )
-  pItem:AddSpawnFlags( 2^30 )
-  -- return 2
+
+--[[---------------------------------------------------------
+   Name: gamemode:GravGunPunt( )
+   Desc: We're about to punt an entity (primary fire).
+		 Return true if we're allowed to.
+-----------------------------------------------------------]]
+function GM:GravGunPunt( ply, ent )
+
+	if ( ent:IsValid() && ent.GravGunPunt ) then
+		return ent:GravGunPunt( ply )
+	end
+
+	return BaseClass.GravGunPunt( self, ply, ent )
+
 end
 
--- HL2SB (2026-09-29): verbatim from GMod gamemodes/sandbox/gamemode/shared.lua:185.
--- Consumed by the engine's PlayerNoClip hook dispatch (game/server/client.cpp
--- CC_Player_NoClip); sbox_noclip is created in this gamemode's init.lua.
+--[[---------------------------------------------------------
+   Name: gamemode:GravGunPickupAllowed( )
+   Desc: Return true if we're allowed to pickup entity
+-----------------------------------------------------------]]
+function GM:GravGunPickupAllowed( ply, ent )
+
+	if ( ent:IsValid() && ent.GravGunPickupAllowed ) then
+		return ent:GravGunPickupAllowed( ply )
+	end
+
+	return BaseClass.GravGunPickupAllowed( self, ply, ent )
+
+end
+
+
+--[[---------------------------------------------------------
+   Name: gamemode:PhysgunPickup( )
+   Desc: Return true if player can pickup entity
+-----------------------------------------------------------]]
+function GM:PhysgunPickup( ply, ent )
+
+	-- Don't pick up persistent props
+	if ( ent:GetPersistent() && GetConVarString( "sbox_persist" ):Trim() != "" ) then return false end
+
+	if ( ent:IsValid() && ent.PhysgunPickup ) then
+		return ent:PhysgunPickup( ply )
+	end
+
+	-- Some entities specifically forbid physgun interaction
+	if ( ent.PhysgunDisabled ) then return false end
+
+	local EntClass = ent:GetClass()
+
+	-- Never pick up players
+	if ( EntClass == "player" ) then return false end
+
+	if ( physgun_limited:GetBool() ) then
+
+		if ( string.find( EntClass, "prop_dynamic" ) ) then return false end
+		if ( string.find( EntClass, "prop_door" ) ) then return false end
+
+		-- Don't move physboxes if the mapper logic says no
+		if ( EntClass == "func_physbox" && ent:HasSpawnFlags( SF_PHYSBOX_MOTIONDISABLED ) ) then return false  end
+
+		-- If the physics object is frozen by the mapper, don't allow us to move it.
+		if ( string.find( EntClass, "prop_" ) && ( ent:HasSpawnFlags( SF_PHYSPROP_MOTIONDISABLED ) || ent:HasSpawnFlags( SF_PHYSPROP_PREVENT_PICKUP ) ) ) then return false end
+
+		-- Allow physboxes, but get rid of all other func_'s (ladder etc)
+		if ( EntClass != "func_physbox" && string.find( EntClass, "func_" ) ) then return false end
+
+
+	end
+
+	if ( SERVER ) then
+
+		ply:SendHint( "PhysgunFreeze", 2 )
+		ply:SendHint( "PhysgunUse", 8 )
+
+	end
+
+	return true
+
+end
+
+
+--[[---------------------------------------------------------
+   Name: gamemode:EntityKeyValue( ent, key, value )
+   Desc: Called when an entity has a keyvalue set
+	      Returning a string it will override the value
+-----------------------------------------------------------]]
+function GM:EntityKeyValue( ent, key, value )
+
+	-- Physgun not allowed on this prop..
+	if ( key == "gmod_allowphysgun" && value == "0" ) then
+		ent.PhysgunDisabled = true
+	end
+
+	-- Prop has a list of tools that are allowed on it.
+	if ( key == "gmod_allowtools" ) then
+		ent.m_tblToolsAllowed = string.Split( value, " " )
+	end
+
+end
+
+--[[---------------------------------------------------------
+   Name: gamemode:PlayerNoClip( player, bool )
+   Desc: Player pressed the noclip key, return true if
+		  the player is allowed to noclip, false to block
+-----------------------------------------------------------]]
 function GM:PlayerNoClip( pl, on )
 
 	-- Don't allow if player is in vehicle
@@ -153,44 +195,6 @@ function GM:PlayerNoClip( pl, on )
 end
 
 --[[---------------------------------------------------------
-   Name: gamemode:PhysgunPickup( ply, ent )
-   Desc: Return true if player can pick up entity with physics gun
------------------------------------------------------------]]
-function GM:PhysgunPickup( ply, ent )
-
-	if ( ent == nil or not IsValid( ent ) ) then return false end
-	if ( ent.PhysgunDisabled ) then return false end
-
-	local EntClass = ent:GetClass()
-	if ( EntClass == "player" or ( ent.IsPlayer and ent:IsPlayer() ) ) then return false end
-
-	if ( cvars.Bool( "physgun_limited", false ) ) then
-		if ( string.find( EntClass, "prop_dynamic" ) ) then return false end
-		if ( string.find( EntClass, "prop_door" ) ) then return false end
-		if ( EntClass == "func_physbox" and ent.HasSpawnFlags and ent:HasSpawnFlags( 32768 ) ) then return false end
-		if ( string.find( EntClass, "prop_" ) and ent.HasSpawnFlags and ( ent:HasSpawnFlags( 8 ) or ent:HasSpawnFlags( 1 ) ) ) then return false end
-		if ( EntClass != "func_physbox" and string.find( EntClass, "func_" ) ) then return false end
-	else
-		if ( EntClass != "func_physbox" and string.find( EntClass, "func_" ) ) then
-			return false
-		end
-	end
-
-	-- HL2SB: the first successful grab queues the two physgun tutorial hints
-	-- (freeze / rotate).  SendHint is once-per-player (self.Hints guard), so
-	-- this fires the first time this session that anyone lifts something with
-	-- the physgun, matching the reference.  Server-only: SendHint is a SERVER
-	-- Player method and drives the client through SendLua.
-	if ( SERVER ) then
-		ply:SendHint( "PhysgunFreeze", 2 )
-		ply:SendHint( "PhysgunUse", 8 )
-	end
-
-	return true
-
-end
-
---[[---------------------------------------------------------
    Name: gamemode:CanProperty( pl, property, ent )
    Desc: Can the player do this property, to this entity?
 -----------------------------------------------------------]]
@@ -200,6 +204,7 @@ function GM:CanProperty( pl, property, ent )
 	-- Always a chance some bastard got through
 	--
 	if ( !IsValid( ent ) ) then return false end
+
 
 	--
 	-- If we have a toolsallowed table, check to make sure the toolmode is in it
@@ -272,16 +277,19 @@ function GM:CanDrive( pl, ent )
 	if ( classname == "prop_dynamic" ) then return false end
 	if ( classname == "prop_door" ) then return false end
 
+	--
+	-- I'm guessing we'll find more things we don't want the player to fly around during development
+	--
+
 	return true
 
 end
+
 
 --[[---------------------------------------------------------
 	To update the player's animation during a drive
 -----------------------------------------------------------]]
 function GM:PlayerDriveAnimate( ply )
-
-	if ( !IsValid( ply ) or ply.GetDrivingEntity == nil ) then return end
 
 	local driving = ply:GetDrivingEntity()
 	if ( !IsValid( driving ) ) then return end
@@ -311,43 +319,5 @@ function GM:PlayerDriveAnimate( ply )
 
 	ply:SetRenderAngles( AimAng )
 	ply:SetEyeTarget( driving:GetPos() )
-
-end
-
-
---[[---------------------------------------------------------
-   HL2SB port (2026-10-16): GMod sandbox/gamemode/shared.lua:48-80
-   gm:CanTool( ply, trace, mode, tool, button ) -- the gate the tool gun asks
-   before every tool action (gmod_tool/shared.lua:248/271/299 does
-   gamemode.Call( "CanTool", ... )) and the tool menu asks before enabling a
-   tool (spawnmenu/toolpanel.lua:159 hook.Run( "CanTool", ... )).  Pure Lua on
-   both sides: no engine binding named "CanTool" exists in either tree.
------------------------------------------------------------]]
-function GM:CanTool( ply, trace, mode, tool, button )
-
-	-- The jeep spazzes out when applying something
-	-- todo: Find out what it's reacting badly to and change it in _physprops
-	if ( mode == "physprop" && trace.Entity:IsValid() && ( trace.Entity:GetClass() == "prop_vehicle_jeep" || trace.Entity:GetClass() == "prop_vehicle_apc" ) ) then
-		return false
-	end
-
-	-- If we have a toolsallowed table, check to make sure the toolmode is in it
-	if ( trace.Entity.m_tblToolsAllowed ) then
-
-		local vFound = false
-		for k, v in pairs( trace.Entity.m_tblToolsAllowed ) do
-			if ( mode == v ) then vFound = true end
-		end
-
-		if ( !vFound ) then return false end
-
-	end
-
-	-- Give the entity a chance to decide
-	if ( trace.Entity.CanTool ) then
-		return trace.Entity:CanTool( ply, trace, mode, tool, button )
-	end
-
-	return true
 
 end

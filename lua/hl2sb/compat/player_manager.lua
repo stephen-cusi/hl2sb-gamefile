@@ -50,3 +50,4 @@ if ( playerMeta ~= nil ) then
 		function playerMeta:SetAvoidPlayers( enabled ) self.__hl2sbAvoidPlayers = enabled and true or false end
 	end
 end
+include( "hl2sb/compat/player_methods.lua" )

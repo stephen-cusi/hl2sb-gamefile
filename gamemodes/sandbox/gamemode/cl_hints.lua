@@ -1,10 +1,4 @@
---[[---------------------------------------------------------
 
-  Sandbox Gamemode: Hint system
-
-  Reference: GMod sandbox/gamemode/cl_hints.lua
-
------------------------------------------------------------]]
 
 local cl_showhints = CreateClientConVar( "cl_showhints", "1", true, false, "Whether to display popup hints." )
 
@@ -19,10 +13,10 @@ local function LookupBinding( group )
 	local key = input.LookupBinding( group )
 
 	if ( !key ) then
-		return "'" .. string.lower( group ) .. " not bound'"
+		return "'" ..  string.lower( group ) .. " not bound'"
 	end
 
-	return "'" .. string.upper( key ) .. "'"
+	return "'" ..  string.upper( key ) .. "'"
 
 end
 
@@ -40,6 +34,7 @@ local function ThrowHint( name )
 	surface.PlaySound( "ambient/water/drip" .. math.random( 1, 4 ) .. ".wav" )
 
 end
+
 
 --
 -- Adds a hint to the queue

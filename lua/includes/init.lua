@@ -26,5 +26,5 @@ end
 include( "hl2sb/compat/shared.lua" )
 
 if ( CLIENT ) then
-	include( "hl2sb/compat/notification.lua" )
+	include( "hl2sb/compat/contextmenu.lua" )
 end

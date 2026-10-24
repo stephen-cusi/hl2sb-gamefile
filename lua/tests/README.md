@@ -12,3 +12,7 @@ lua_dofile_cl tests/derma_lib_test.lua
 Use the realm required by each script. Scripts that spawn or change entities should only be run in a disposable test map. The former automatically loaded string probe is now `tests/hl2sb_strtest.lua` and runs only on request.
 
 The migration preserves diagnostic code. `hands_lib_test.lua` and `portalgun_lib_test.lua` already had syntax errors before the move and remain historical probes; they are not passing automated tests.
+
+The binary-module example is opt-in: `lua_dofile tests/sbrust_binary_modules.lua`
+(or the client equivalent). It requires a locally installed matching module;
+normal startup does not require that example.

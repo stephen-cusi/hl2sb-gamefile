@@ -1,17 +1,3 @@
---========== HL2SB - GMod compat ==========--
---
--- Purpose: GMod sandbox persistence, verbatim from
--- gamemodes/sandbox/gamemode/persistence.lua.
---
--- sbox_persist names a page: on InitPostEntity the page is restored from
--- data/persist/<map>_<page>.txt (a duplicator paste of the JSON snapshot),
--- on ShutDown every entity tagged SetPersistent( true ) is snapshotted back,
--- and switching the convar saves the old page then reloads the new one after
--- a map cleanup.  The persistent tag lives on the entity's Lua instance
--- table (entity.lua shims) - the pipeline only needs it to survive within
--- the running session, same as the reference.
---
---===========================================================================--
 
 if ( CLIENT ) then return end
 

@@ -1,10 +1,3 @@
---[[---------------------------------------------------------
-
-  Sandbox Gamemode: 3D Worldtips
-
-  Reference: GMod sandbox/gamemode/cl_worldtips.lua
-
------------------------------------------------------------]]
 
 surface.CreateFont( "GModWorldtip",
 {
@@ -43,14 +36,8 @@ local function DrawWorldTip( tip )
 
 	local pos = tip.pos:ToScreen()
 
-	local w, h
-	local hfont = ( draw and draw.GetFont ) and draw.GetFont( "GModWorldtip" )
-	if ( hfont ) then
-		w, h = surface.GetTextSize( hfont, tip.text )
-	else
-		surface.SetFont( "GModWorldtip" )
-		w, h = surface.GetTextSize( tip.text )
-	end
+	surface.SetFont( "GModWorldtip" )
+	local w, h = surface.GetTextSize( tip.text )
 
 	local x = pos.x - w - tipOffset
 	local y = pos.y - h - tipOffset
@@ -64,9 +51,7 @@ local function DrawWorldTip( tip )
 
 	draw.NoTexture()
 	surface.SetDrawColor( 0, 0, 0, tipColor.a )
-	if ( surface.DrawPoly ) then
-		surface.DrawPoly( verts )
-	end
+	surface.DrawPoly( verts )
 
 	draw.RoundedBox( 8, x - tipPadding, y - tipPadding, w + tipPadding * 2, h + tipPadding * 2, tipColor )
 
@@ -77,13 +62,12 @@ local function DrawWorldTip( tip )
 
 	draw.NoTexture()
 	surface.SetDrawColor( tipColor.r, tipColor.g, tipColor.b, tipColor.a )
-	if ( surface.DrawPoly ) then
-		surface.DrawPoly( verts )
-	end
+	surface.DrawPoly( verts )
 
 	draw.DrawText( tip.text, "GModWorldtip", x + w / 2, y, tipBGColor, TEXT_ALIGN_CENTER )
 
 end
+
 
 function GM:PaintWorldTips()
 

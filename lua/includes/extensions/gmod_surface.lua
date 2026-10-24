@@ -19,7 +19,7 @@
     Loaded every level from lua/includes/extensions/.
 -----------------------------------------------------------------------------]]--
 
-if ( not _CLIENT ) then return end
+if ( not _CLIENT and not _GAMEUI ) then return end
 
 local surface = surface
 local type    = type
