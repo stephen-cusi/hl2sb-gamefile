@@ -192,87 +192,6 @@ if ( SERVER ) then
 
 end
 
--- ===========================================================================
--- RunConsoleCommand( cmd, ... )   (GMod global, both realms)
---
--- This fork has no binding for it at all: there is no engine Lua function for
--- "execute this console command line" (no ClientCmd / ServerCommand exposure),
--- and lua/includes/modules/concommand.lua only offers Dispatch() for commands
--- registered *in Lua*.  GMod Lua calls RunConsoleCommand constantly -- the
--- player model panel is one of them:
---
---     RunConsoleCommand( "cl_playermodel", entry.name )
---
--- Two paths cover what GMod scripts actually do:
---   1. a Lua concommand (concommand.Create / concommand.Add) -> run it, so its
---      callback gets GMod's ( ply, cmd, args, argStr ) signature;
---   2. anything else (an engine ConVar, which is what cl_playermodel is) ->
---      set the ConVar, which is what typing it in the console does for a plain
---      cvar anyway.
---
--- HL2SB: path 1 goes through concommand.Run with a real arguments TABLE, the way
--- the engine does it now (public/lua/tier1/lconvar.cpp pushes arguments[1..n] +
--- the raw tail).  It used to call Dispatch with just the raw string, so a GMod
--- command reached through RunConsoleCommand saw a string in the arguments slot
--- and arguments[1] was nil -- the same defect the engine path had.  Dispatch is
--- kept as the fallback for a lua/includes/ tree that predates Run.
---
--- HL2SB (2026-10-03): this block MUST stay ABOVE the `if ( not _CLIENT )`
--- section below -- that section ends the server's pass with a bare `return`,
--- and with the definition below it RunConsoleCommand simply never existed in
--- the SERVER realm (hitnumbers' settings loader died on it).  GMod has it on
--- both realms.
---
--- TODO(engine): bind the real thing once an engine command executor is
--- exposed; this cannot run commands that are neither a cvar nor a Lua
--- concommand ("say", "noclip", ...).
--- ===========================================================================
-if ( RunConsoleCommand == nil ) then
-	function RunConsoleCommand( cmd, ... )
-		local strCmd = tostring( cmd )
-		local name, inlineArgs = string.match( strCmd, "^(%S+)%s*(.*)$" )
-
-		if ( name == nil ) then return end
-
-		local strArgs = inlineArgs or ""
-
-		for i = 1, select( "#", ... ) do
-			local arg = select( i, ... )
-			strArgs = ( strArgs == "" ) and tostring( arg ) or ( strArgs .. " " .. tostring( arg ) )
-		end
-
-		if ( concommand ~= nil ) then
-			local tArguments = {}
-
-			if ( concommand.Run ~= nil ) then
-				for strArg in string.gmatch( strArgs, "%S+" ) do
-					tArguments[ #tArguments + 1 ] = strArg
-				end
-
-				if ( concommand.Run( nil, name, tArguments, strArgs ) ) then
-					return
-				end
-			elseif ( concommand.Dispatch ~= nil and concommand.Dispatch( nil, name, strArgs ) ) then
-				return
-			end
-		end
-
-		local cv = ( GetConVar_Internal ~= nil ) and GetConVar_Internal( name ) or nil
-
-		if ( cv ~= nil and cv.SetString ~= nil and strArgs ~= "" ) then
-			cv:SetString( strArgs )
-			return
-		end
-
-		-- Engine console command ("jpeg", "noclip", "retry", ...): neither a
-		-- Lua concommand nor a ConVar, so hand the whole line to the engine.
-		-- gmod_camera fires "jpeg" on every snapshot without this.
-		if ( HL2SB_EngineCommand ~= nil ) then
-			HL2SB_EngineCommand( ( strArgs ~= "" ) and ( name .. " " .. strArgs ) or name )
-		end
-	end
-end
-
 if ( not _CLIENT ) then
 	-- Server side has no surface / skin; still bridge time + convar.
 	gpGlobals = gpGlobals or _G.gpGlobals
@@ -538,36 +457,6 @@ if ( input ~= nil ) then
 
 end
 
--- ===========================================================================
--- HL2SB (2026-10-16): input.IsButtonDown( code ) - GMod's union of the keyboard
--- and mouse state queries.  The engine binding input.IsKeyDown (LIInput.cpp)
--- deliberately only answers keyboard codes (an out-of-range code pushes false,
--- the vgui key array must not take garbage), so mouse codes (MOUSE_FIRST and
--- up) route to input.IsMouseDown instead.  lua/includes/modules/properties.lua
--- tests it while servicing the C-menu world click (PropertiesClick /
--- PreventScreenClicks); the only prior definition was the inert
--- gmod_compatibility/sh_init.lua alias IsButtonDown = IsKeyDown, which would
--- make every mouse button read as never pressed.  MOUSE_FIRST/MOUSE_LAST are
--- pushed by public/lenumerations_shared.cpp.
--- ===========================================================================
-if ( input.IsButtonDown == nil and input.IsKeyDown ~= nil ) then
-
-	function input.IsButtonDown( code )
-
-		code = tonumber( code )
-
-		if ( code == nil ) then return false end
-
-		if ( MOUSE_FIRST ~= nil and MOUSE_LAST ~= nil and code >= MOUSE_FIRST and code <= MOUSE_LAST ) then
-			if ( input.IsMouseDown == nil ) then return false end
-			return input.IsMouseDown( code ) and true or false
-		end
-
-		return input.IsKeyDown( code ) and true or false
-
-	end
-
-end
 -- ===========================================================================
 -- HL2SB: the `achievements` table (GMod global, client)
 --
@@ -850,11 +739,6 @@ if ( EyeAngles == nil ) then
 		return Angle( 0, 0, 0 )
 	end
 end
-
--- HL2SB (2026-10-16): MainEyePos() - GMod global consumed by
--- lua/includes/modules/properties.lua (PropertiesHover / PropertiesClick /
--- PreventScreenClicks all trace from it).  Same eye as EyePos.
-MainEyePos = MainEyePos or EyePos
 
 -- HL2SB GMod compat (2026-09-24): meta-table chain for FindMetaTable reads.
 -- Addons capture methods straight off the bare metatable (PLAYER.Alive,

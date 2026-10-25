@@ -320,44 +320,10 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Microsoft YaHei"
-				"tall"		"9"
-				"weight"	"700"
-				"antialias" "1"
-				"yres"	"1 599"
-			}
-			"2"
-			{
-				"name"		"Microsoft YaHei"
+				"name"		"Verdana"
 				"tall"		"12"
 				"weight"	"700"
 				"antialias" "1"
-				"yres"	"600 767"
-			}
-			"3"
-			{
-				"name"		"Microsoft YaHei"
-				"tall"		"14"
-				"weight"	"900"
-				"antialias" "1"
-				"yres"	"768 1023"
-			}
-			"4"
-			{
-				"name"		"Microsoft YaHei"
-				"tall"		"20"
-				"weight"	"900"
-				"antialias" "1"
-				"yres"	"1024 1199"
-			}
-			"5"
-			{
-				"name"		"Microsoft YaHei"
-				"tall"		"24"
-				"weight"	"900"
-				"antialias" "1"
-				"yres"	"1200 10000"
-				"additive"	"1"
 			}
 		}
 		"DefaultSmall"
@@ -879,42 +845,42 @@ Scheme
 		{
 			"1"
 			{
-				"name"		"Microsoft YaHei"
+				"name"		"Verdana"
 				"tall"		"12"
 				"weight"	"700"
-				"yres"	"480 599"
+				"yres"		"480 599"
 				"dropshadow"	"1"
 			}
 			"2"
 			{
-				"name"		"Microsoft YaHei"
-				"tall"		"13"
+				"name"		"Verdana"
+				"tall"		"14"
 				"weight"	"700"
-				"yres"	"600 767"
+				"yres"		"600 767"
 				"dropshadow"	"1"
 			}
 			"3"
 			{
-				"name"		"Microsoft YaHei"
-				"tall"		"14"
+				"name"		"Verdana"
+				"tall"		"15"
 				"weight"	"700"
-				"yres"	"768 1023"
+				"yres"		"768 1023"
 				"dropshadow"	"1"
 			}
 			"4"
 			{
-				"name"		"Microsoft YaHei"
-				"tall"		"20"
+				"name"		"Verdana"
+				"tall"		"17"
 				"weight"	"700"
-				"yres"	"1024 1199"
+				"yres"		"1024 1199"
 				"dropshadow"	"1"
 			}
 			"5"
 			{
-				"name"		"Microsoft YaHei"
-				"tall"		"24"
+				"name"		"Verdana"
+				"tall"		"22"
 				"weight"	"700"
-				"yres"	"1200 10000"
+				"yres"		"1200 10000"
 				"dropshadow"	"1"
 			}
 		}
@@ -947,13 +913,11 @@ Scheme
 		   "1"
 		   {
 				"name"  "HL2MP" // csd.ttf
-				// GMod: 64（HL2 原版是 32）。材质类的击杀图标——killicon.Add 注册的
-				// 图片图标，Lua 武器/插件都走这条——高度 = 这个值 * 0.75：
-				// GMod 64 -> 48px。原来是 32 -> 24px，所以在 GMod 里看着大、在我们这看着小
 				"tall"  "64"
 				"weight" "0"
 				"additive" "1"
 				"antialias" "1"
+				"custom" "1" [$OSX]
 		   }
 		}	
 		//Tony; argh. the only reason this is here is for the goddamned skull icon.
