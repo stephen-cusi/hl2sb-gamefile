@@ -284,7 +284,7 @@ local m_SelectedCategory = MAPCAT_ALL
 local m_PlayerCount     = 2      -- default per user requirement
 local m_PlayersExpanded = false
 
-local PLAYERS = { 1, 2, 4, 8, 16, 32, 64 }
+local PLAYERS = { 1, 2, 4, 8, 16, 32, 64, 128 }
 
 local function PlayerLabel( n )
     if ( n == 1 ) then return T( "HL2SB_SinglePlayer" ) end
