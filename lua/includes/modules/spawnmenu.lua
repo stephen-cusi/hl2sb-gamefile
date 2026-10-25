@@ -1,4 +1,3 @@
-if (spawnmenu && spawnmenu.GetTools) then return spawnmenu end
 
 local spawnmenu_engine = spawnmenu
 
@@ -109,7 +108,7 @@ function ActivateTool( strName, noCommand )
 				if ( istable( item ) && item.ItemName && item.ItemName == strName ) then
 
 					if ( !noCommand && item.Command && string.len( item.Command ) > 1 ) then
-						RunConsoleCommand( unpack( string.Explode( " ", item.Command ) ) )
+						RunConsoleCommand( unpack( string.Split( item.Command, " " ) ) )
 					end
 
 					local cp = controlpanel.Get( strName )

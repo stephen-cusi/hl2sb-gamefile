@@ -50,7 +50,7 @@ function PANEL:Setup( vars )
 		if ( self.VectorValue ) then
 			if ( isvector( self.VectorValue ) ) then
 				local vectorColor = self.VectorValue:ToColor()
-
+			
 				surface.SetDrawColor( vectorColor.r, vectorColor.g, vectorColor.b, vectorColor.a )
 			else
 				surface.SetDrawColor( self.VectorValue.r, self.VectorValue.g, self.VectorValue.b, self.VectorValue.a )

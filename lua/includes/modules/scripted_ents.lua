@@ -14,12 +14,6 @@ BaseClasses[ "anim" ] = "base_anim"
 BaseClasses[ "point" ] = "base_point"
 BaseClasses[ "brush" ] = "base_brush"
 BaseClasses[ "filter" ] = "base_filter"
--- HL2SB: GMod's nextbot base.  An addon normally says ENT.Base = "base_nextbot"
--- itself (SCP-096 does), but that only covers the Base field - this mapping is
--- what Register() uses when a script declares Type = "nextbot" and nothing else,
--- and without it every nextbot script logged
---     WARNING: Scripted entity <name> has an invalid base entity!
-BaseClasses[ "nextbot" ] = "base_nextbot"
 
 --[[---------------------------------------------------------
 	Name: TableInherit( t, base )
@@ -188,11 +182,6 @@ function Get( name, retval )
 		local base = Get( SEntList[ name ].Base )
 
 		if ( !base ) then
-			-- GMod reports this through Msg() only; it is NOT a Lua error and
-			-- must not reach the error collector.  It shows up here while the
-			-- scripts are still loading (a class registered from lua/autorun can
-			-- name a base that lua/entities has not reached yet); the registry is
-			-- rebuilt from OnLoaded() once every script has run.
 			Msg("ERROR: Trying to derive entity " .. tostring( name ) .. " from non existant entity " .. tostring( SEntList[ name ].Base ) .. "!\n" )
 		else
 			retval = TableInherit( retval, base )

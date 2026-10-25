@@ -212,20 +212,7 @@ end
 -- -- the engine hands out real IMaterials now (with GetColor for the GWEN
 -- skin's load-time atlas sampling, SetTexture/SetString/SetFloat/SetInt for
 -- the post-process stack).
-if ( CLIENT and C_Material ~= nil ) then
-	local C_Material = C_Material
-	function Material( name, words )
-		if ( words ~= nil ) then
-			local params = { "vertexlitgeneric", "nocull", "alphatest", "mips", "noclamp", "smooth", "ignorez" }
-			local str = ""
-			for k, v in ipairs( params ) do
-				str = str .. ( words[ v ] and "1" or "0" )
-			end
-			return C_Material( name, str )
-		end
-		return C_Material( name )
-	end
-end
+-- Material flags are handled by the original includes/util.lua wrapper.
 
 if ( surface.SetMaterial == nil ) then
 	function surface.SetMaterial( mat )

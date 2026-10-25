@@ -256,18 +256,3 @@ motionsensor.BuildSkeleton = function( translator, player, rotation )
 
 end
 
-
--- ===========================================================================
--- HL2SB (2026-10-16): the kinect-facing queries the reference binds engine
--- side (motionsensor.IsAvailable / IsActive / Start - consumed by
--- lua/autorun/properties/kinect_controller.lua, whose "motioncontrol_ragdoll"
--- property filter calls IsAvailable on every properties-menu build).  This
--- engine has no kinect device layer, so the honest answers are: never
--- available, never active, Start reports failure like the reference does on a
--- machine without the hardware.  With IsAvailable() false the property's
--- Filter hides the entry entirely, so Start/IsActive stay reachable only from
--- addon code that ignores the gate.
--- ===========================================================================
-motionsensor.IsAvailable = motionsensor.IsAvailable or function() return false end
-motionsensor.IsActive = motionsensor.IsActive or function() return false end
-motionsensor.Start = motionsensor.Start or function() return false end

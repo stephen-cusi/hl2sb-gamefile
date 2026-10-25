@@ -1,203 +1,273 @@
---[[---------------------------------------------------------------------------
-    HL2SB math extension.
 
-    GMod's math.lua is a large helper kitchen.  We port the subset that
-    HL2SB scripts (and the ported draw.lua) actually use, using HL2SB's Lua
-    5.1 style (no LuaJIT, no __unpack tricks).  Functions are added straight
-    onto the standard math table so existing HL2SB code keeps working.
+include( "math/ease.lua" )
 
-    These are the pieces draw.lua relies on (Round/Clamp) plus a few more
-    that are ubiquitous in GMod HUD/exposed-only code.
----------------------------------------------------------------------------]]
+math.tau = 2 * math.pi
 
-require( "math" )
+--[[---------------------------------------------------------
+	Name: DistanceSqr( low, high )
+	Desc: Squared Distance between two 2d points, use this instead of math.Distance as it is more cpu efficient.
+------------------------------------------------------------]]
+function math.DistanceSqr( x1, y1, x2, y2 )
+	local xd = x2 - x1
+	local yd = y2 - y1
+	return xd * xd + yd * yd
+end
 
-local math = math
+--[[---------------------------------------------------------
+	Name: Distance( low, high )
+	Desc: Distance between two 2d points
+------------------------------------------------------------]]
+function math.Distance( x1, y1, x2, y2 )
+	local xd = x2 - x1
+	local yd = y2 - y1
+	return math.sqrt( xd * xd + yd * yd )
+end
+math.Dist = math.Distance -- Backwards compatibility
 
-local floor   = math.floor
-local ceil    = math.ceil
-local abs     = math.abs
-local max     = math.max
-local min     = math.min
-local random  = math.random
-local huge    = math.huge
+--[[---------------------------------------------------------
+	Name: BinToInt( bin )
+	Desc: Convert a binary string to an integer number
+------------------------------------------------------------]]
+function math.BinToInt( bin )
+	return tonumber( bin, 2 )
+end
 
--------------------------------------------------------------------------------
--- Round(num, idp): GMod's exact extension (round half up, optional decimal
--- precision).  The earlier single-argument form rounded -0.5 to -1; GMod's
--- floor( num * mult + 0.5 ) / mult gives 0, and addon code (portalgun's
--- pitch comparisons) relies on the GMod answer.
--------------------------------------------------------------------------------
+--[[---------------------------------------------------------
+	Name: IntToBin( int )
+	Desc: Convert an integer number to a binary string (the string len will be a multiple of three)
+------------------------------------------------------------]]
+local intbin = {
+	["0"] = "000", ["1"] = "001", ["2"] = "010", ["3"] = "011",
+	["4"] = "100", ["5"] = "101", ["6"] = "110", ["7"] = "111"
+}
+
+function math.IntToBin( int )
+	local str = string.gsub( string.format( "%o", int ), "(.)", function ( d ) return intbin[ d ] end )
+	return str
+end
+
+--[[---------------------------------------------------------
+	Name: Clamp( in, low, high )
+	Desc: Clamp value between 2 values
+------------------------------------------------------------]]
+function math.Clamp( _in, low, high )
+	return math.min( math.max( _in, low ), high )
+end
+
+--[[---------------------------------------------------------
+	Name: Rand( low, high )
+	Desc: Random number between low and high
+-----------------------------------------------------------]]
+function math.Rand( low, high )
+	return low + ( high - low ) * math.random()
+end
+
+math.Max = math.max
+math.Min = math.min
+
+--[[---------------------------------------------------------
+	Name: EaseInOut(fProgress, fEaseIn, fEaseOut)
+	Desc: Provided by garry from the facewound source and converted
+			to Lua by me :p
+	Usage: math.EaseInOut(0.1, 0.5, 0.5) - all parameters should be between 0 and 1
+-----------------------------------------------------------]]
+function math.EaseInOut( frac, easeIn, easeOut )
+	if ( frac == 0 or frac == 1 ) then return frac end
+
+	if ( easeIn == nil ) then easeIn = 0 end
+	if ( easeOut == nil ) then easeOut = 1 end
+
+	local fSumEase = easeIn + easeOut
+
+	if ( fSumEase == 0 ) then return frac end
+	if ( fSumEase > 1 ) then
+		easeIn = easeIn / fSumEase
+		easeOut = easeOut / fSumEase
+	end
+
+	local fProgressCalc = 1 / ( 2 - easeIn - easeOut )
+
+	if ( frac < easeIn ) then
+		return ( ( fProgressCalc / easeIn ) * frac * frac )
+	elseif ( frac < 1 - easeOut ) then
+		return ( fProgressCalc * ( 2 * frac - easeIn ) )
+	else
+		frac = 1 - frac
+		return ( 1 - ( fProgressCalc / easeOut ) * frac * frac )
+	end
+end
+
+function math.calcBSplineN( i, k, t, tInc )
+	local knot = ( i - 3 ) * tInc
+
+	if ( k <= 1 ) then
+		if ( knot <= t and t < knot + tInc ) then
+			return 1
+		end
+
+		return 0
+	end
+
+	local count = i + k - 4
+	local len = count * tInc
+	local knots = len - knot
+
+	local nknot = k - 1
+	local ret = 0
+
+	if ( knots > 0 ) then
+		ret = ( t - knot ) * math.calcBSplineN( i, nknot, t, tInc ) / knots
+	end
+
+	local sb = nknot * tInc
+
+	if ( sb > 0 ) then
+		ret = ret + ( len + tInc - t ) * math.calcBSplineN( i + 1, nknot, t, tInc ) / sb
+	end
+
+	return ret
+end
+
+function math.BSplinePoint( frac, points, frac_max )
+	local len = #points
+	local tInc = frac_max / ( len - 3 )
+	frac = frac + tInc
+
+	local ret = Vector()
+	for i = 1, len do
+		ret:Add( math.calcBSplineN( i, 4, frac, tInc ) * points[ i ] )
+	end
+
+	return ret
+end
+
+--[[---------------------------------------------------------
+	Cubic hermite spline
+	p0, p1 - points; m0, m1 - tangents; frac - fraction along the curve (0-1)
+-----------------------------------------------------------]]
+function math.CHSpline( frac, p0, m0, p1, m1 )
+	if ( frac >= 1 ) then return p1 end
+	if ( frac <= 0 ) then return p0 end
+
+	local t2 = frac * frac
+	local t3 = frac * t2
+
+	return p0 * ( 2 * t3 - 3 * t2 + 1 ) +
+		m0 * ( t3 - 2 * t2 + frac ) +
+		p1 * ( -2 * t3 + 3 * t2 ) +
+		m1 * ( t3 - t2 )
+end
+
+-- Round to the nearest integer
 function math.Round( num, idp )
-  local mult = 10 ^ ( idp or 0 )
-  return floor( num * mult + 0.5 ) / mult
+	local mult = 10 ^ ( idp or 0 )
+	return math.floor( num * mult + 0.5 ) / mult
 end
 
--------------------------------------------------------------------------------
--- Truncate(num, idp): rounds towards zero, GMod's extension verbatim.
--------------------------------------------------------------------------------
+-- Rounds towards zero
 function math.Truncate( num, idp )
-  local mult = 10 ^ ( idp or 0 )
-  return ( num < 0 and ceil or floor )( num * mult ) / mult
+	local mult = 10 ^ ( idp or 0 )
+	return ( num < 0 and math.ceil or math.floor )( num * mult ) / mult
 end
 
--------------------------------------------------------------------------------
--- ApproachAngle(cur, target, inc): GMod's extension verbatim - approach along
--- the shortest angular difference (the portalgun re-centres camera roll with
--- it; plain Approach would sweep the long way round).
--------------------------------------------------------------------------------
-function math.ApproachAngle( cur, target, inc )
-  return math.Approach( cur, cur + math.AngleDifference( target, cur ), inc )
+function math.Approach( cur, target, inc )
+	if ( cur < target ) then
+		return math.min( cur + math.abs( inc ), target )
+	end
+
+	if ( cur > target ) then
+		return math.max( cur - math.abs( inc ), target )
+	end
+
+	return target
 end
 
--------------------------------------------------------------------------------
--- atan2(y, x): GMod is Lua 5.1 where this is a standard; Lua 5.4 folded it
--- into math.atan(y, x).  GMod addons call math.atan2 freely (the portalgun's
--- VectorAngles does), so alias it.
--------------------------------------------------------------------------------
-math.atan2 = math.atan
-
--------------------------------------------------------------------------------
--- Clamp(x, min, max)
--------------------------------------------------------------------------------
-function math.Clamp( x, mn, mx )
-  if ( mn == nil ) then mn = 0 end
-  if ( mx == nil ) then mx = 1 end
-  if ( x < mn ) then return mn end
-  if ( x > mx ) then return mx end
-  return x
+function math.Sign( num )
+	return ( num > 0 and 1 ) or ( num < 0 and -1 ) or 0
 end
 
--------------------------------------------------------------------------------
--- Sign(x) -> -1 / 0 / 1
--------------------------------------------------------------------------------
-function math.Sign( x )
-  if ( x > 0 ) then return 1 end
-  if ( x < 0 ) then return -1 end
-  return 0
-end
-
--------------------------------------------------------------------------------
--- Approach(x, target, step): move x toward target by at most step.
--------------------------------------------------------------------------------
-function math.Approach( x, target, step )
-  if ( x < target ) then
-    return min( x + step, target )
-  elseif ( x > target ) then
-    return max( x - step, target )
-  end
-  return target
-end
-
--------------------------------------------------------------------------------
--- NormalizeAngle(a) / AngleDifference(a, b) -- GMod's math extension
--- (garrysmod/lua/includes/extensions/math.lua:189).  The ported base-gamemode
--- animations.lua uses NormalizeAngle on the vehicle aim_yaw pose parameter;
--- without it that pose write died mid-frame.
--------------------------------------------------------------------------------
 function math.NormalizeAngle( a )
-  return ( a + 180 ) % 360 - 180
+	return ( a + 180 ) % 360 - 180
 end
 
 function math.AngleDifference( a, b )
-  local diff = math.NormalizeAngle( a - b )
-  if ( diff < 180 ) then
-    return diff
-  end
-  return diff - 360
+	local diff = math.NormalizeAngle( a - b )
+
+	if ( diff < 180 ) then
+		return diff
+	end
+
+	return diff - 360
 end
 
--------------------------------------------------------------------------------
--- Remap(x, in_min, in_max, out_min, out_max)
--------------------------------------------------------------------------------
-function math.Remap( x, inMin, inMax, outMin, outMax )
-  local t = ( x - inMin ) / ( inMax - inMin )
-  return outMin + ( outMax - outMin ) * t
+function math.ApproachAngle( cur, target, inc )
+	return math.Approach( cur, cur + math.AngleDifference( target, cur ), inc )
 end
 
--------------------------------------------------------------------------------
--- TimeFraction(start, end, current) -- GMod verbatim (extensions/math.lua).
--- Consumed by the ported panel animation system on every animated menu panel;
--- without it every derma SizeTo/ColorTo dies with
--- "attempt to call a nil value (field 'TimeFraction')".
--------------------------------------------------------------------------------
 function math.TimeFraction( start, _end, current )
-  return ( current - start ) / ( _end - start )
+	return ( current - start ) / ( _end - start )
 end
 
--------------------------------------------------------------------------------
--- EaseInOut(t) (0..1), a smoothstep-ish curve.
--------------------------------------------------------------------------------
-function math.EaseInOut( t )
-  if ( t <= 0 ) then return 0 end
-  if ( t >= 1 ) then return 1 end
-  return -0.5 * ( math.cos( t * math.pi ) - 1 )
+function math.Remap( value, inMin, inMax, outMin, outMax )
+	return outMin + ( ( ( value - inMin ) / ( inMax - inMin ) ) * ( outMax - outMin ) )
 end
 
--------------------------------------------------------------------------------
--- IsNearlyEqual(a, b, epsilon)
--------------------------------------------------------------------------------
-function math.IsNearlyEqual( a, b, epsilon )
-  epsilon = epsilon or 0.0001
-  return abs( a - b ) <= epsilon
+-- Snaps the provided number to the nearest multiple
+function math.SnapTo( num, multiple )
+	return math.floor( num / multiple + 0.5 ) * multiple
 end
 
-------------------------------------------------------------------------------
--- math.random( min, max ) that tolerates max < min
---
--- GMod's own shim does exactly this - "Before Lua 5.3 math.random(1, #emptyTable) would
--- return 1, but it errors now" (lua/includes/modules/gmod_compatibility/sh_init.lua:45-63,
--- which never loads in this fork) - by SWAPPING the bounds.
---
--- ⚠️ cod_c4 relies on it: the throw computes
---     weapons/seal6-c4/shared.lua:243  math.random( -100, -900 )
--- Stock Lua rejects that with "bad argument #1 to 'random' (interval is empty)", and because
--- the call sits in the middle of the throw timer the whole rest of the throw never ran:
--- no ApplyForceCenter / SetAngleVelocity (the charge dropped instead of flying - "无法粘住表面")
--- and, decisively, no `Owner.C4s[#Owner.C4s + 1] = ent` (line 254) - so the detonator's
--- StartExplosionChain found an empty list and nothing ever exploded ("无法引爆").
--- Logged as: [timer] ... seal6-c4\shared.lua:243: bad argument #1 to 'random' (interval is empty)
-if ( math.random ~= nil and math.__hl2sb_random_patched ~= true ) then
-  local originalRandom = math.random
+--[[---------------------------------------------------------
+	Name: CubicBezier( frac, p0, p1, p2, p3 )
+	Desc: Lerp point between points with cubic bezier
+-----------------------------------------------------------]]
+function math.CubicBezier( frac, p0, p1, p2, p3 )
+	local frac2 = frac * frac
+	local inv = 1 - frac
+	local inv2 = inv * inv
 
-  -- HL2SB (2026-09-22): Lua 5.4's math.random REJECTS float bounds ("number
-  -- has no integer representation"); GMod's 5.1 runtime silently truncated
-  -- them, and real scripts pass floats freely (cf_beast rolls
-  -- math.random(-dmg*0.25, 0)).  Floor both bounds like 5.1 did.
-  math.random = function( mn, mx )
-    if ( mn == nil ) then return originalRandom() end
-    if ( mx == nil ) then
-      return originalRandom( 1, math.floor( mn ) )
-    end
-    mn, mx = math.floor( mn ), math.floor( mx )
-    if ( mx < mn ) then
-      mn, mx = mx, mn
-    end
-    return originalRandom( mn, mx )
-  end
-
-  math.__hl2sb_random_patched = true
+	return inv2 * inv * p0 + 3 * inv2 * frac * p1 + 3 * inv * frac2 * p2 + frac2 * frac * p3
 end
 
--- HL2SB (2026-09-27): GMod's global LerpVector / LerpAngle (linear component
--- interpolation; GMod ships LerpVector C++-side, LerpAngle in its extensions).
--- The taunt camera (gamemodes/deathmatch/gamemode/taunt_camera.lua) lerps the
--- view origin/angles with these, and several extensions already call them.
-function LerpVector( t, from, to )
-  return Vector(
-    from.x + ( to.x - from.x ) * t,
-    from.y + ( to.y - from.y ) * t,
-    from.z + ( to.z - from.z ) * t
-  )
+--[[---------------------------------------------------------
+	Name: QuadraticBezier( frac, p0, p1, p2 )
+	Desc: Lerp point between points with quadratic bezier
+-----------------------------------------------------------]]
+function math.QuadraticBezier( frac, p0, p1, p2 )
+	local frac2 = frac * frac
+	local inv = 1 - frac
+	local inv2 = inv * inv
+
+	return inv2 * p0 + 2 * inv * frac * p1 + frac2 * p2
 end
 
-function LerpAngle( t, from, to )
-  return QAngle(
-    from.p + ( to.p - from.p ) * t,
-    from.y + ( to.y - from.y ) * t,
-    from.r + ( to.r - from.r ) * t
-  )
+--[[---------------------------------------------------------
+	Name: Factorial( num )
+	Desc: Calculate the factorial value of num
+-----------------------------------------------------------]]
+function math.Factorial( num )
+	if ( num < 0 ) then
+		return nil
+	elseif ( num < 2 ) then
+		return 1
+	end
+
+	local res = 1
+	for i = 2, num do
+		res = res * i
+	end
+
+	return res
 end
 
--- Load marker (console + ds_debug.log), for confirming the extension ran.
-print( "[HL2SB] math extension loaded" )
+--[[---------------------------------------------------------
+	Name: IsNearlyEqual( a, b, tolerance )
+	Desc: Checks if two floating point numbers are nearly equal
+-----------------------------------------------------------]]
+function math.IsNearlyEqual( a, b, tolerance )
+	if ( tolerance == nil ) then
+		tolerance = 1e-8
+	end
+
+	return math.abs( a - b ) <= tolerance
+end

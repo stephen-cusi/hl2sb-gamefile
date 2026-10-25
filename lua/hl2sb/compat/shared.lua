@@ -1,4 +1,5 @@
 include( "hl2sb/compat/gamemode.lua" )
+include( "hl2sb/compat/motionsensor.lua" )
 -- Shared native aliases and scripted-effect compatibility.
 
 if ( _E ~= nil ) then

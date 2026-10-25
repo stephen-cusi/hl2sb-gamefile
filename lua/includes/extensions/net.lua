@@ -1,29 +1,6 @@
---[[---------------------------------------------------------------------------
-    HL2SB net extension (GMod-compatible sugar).
 
-    Sits on top of the engine `net` library (game/shared/lua/lnet.cpp), which
-    provides the primitives net.Start / net.WriteInt/UInt/String/Bit/Float/
-    Double/Vector/Angle/Entity / net.Send / net.Broadcast (server) and
-    net.SendToServer / net.ReadInt/UInt/String/Bit/Float/Double/Vector/Angle/
-    Entity / ReadHeader (client).
-
-    Like the reference implementation, the receiving half is pure Lua:
-    net.Receive stores callbacks in net.Receivers (names lowercased) and the
-    default net.Incoming reads the 16-bit pooled id header, resolves the name
-    through util.NetworkIDToString and dispatches.  Both functions can be
-    overridden by scripts - the C side only ever calls net.Incoming.
-
-    This file adds the GMod-style helpers that are pure Lua: WriteBool/
-    ReadBool, WriteEntity/ReadEntity, WritePlayer/ReadPlayer, WriteType/
-    ReadType, WriteTable/ReadTable.  GMod-only global type predicates
-    (istable/isstring/isnumber/IsColor) are replaced with type() checks.
-
-    Loaded every level from lua/includes/extensions/.
------------------------------------------------------------------------------]]
-
-local net = net
-local type = type
-local tostring = tostring
+-- TODO: Hack. Move to where color is defined?
+TYPE_COLOR = 255
 
 net.Receivers = {}
 
@@ -58,216 +35,230 @@ function net.Incoming( len, client )
 
 end
 
---[[---------------------------------------------------------
-    WriteBool / ReadBool
-
-    WriteBool must NOT be an alias of WriteBit: the engine binding is
-    net_WriteBit(), which does luaL_checkint() on its argument, so passing a
-    Lua boolean fails with
-        bad argument #1 to 'WriteBit' (number expected, got boolean)
-    -- which is exactly what broke undo.Do_Undo() and therefore the whole undo
-    -- notification (net.Send was never reached, so the client never got
-    -- Undo_FireUndo).  GMod's WriteBool takes a boolean, so convert here.
------------------------------------------------------------]]
-function net.WriteBool( b )
-    net.WriteBit( b and 1 or 0 )
-end
+--
+-- Read/Write a boolean to the stream
+--
+net.WriteBool = net.WriteBit
 
 function net.ReadBool()
-    return net.ReadBit() == 1
+
+	return net.ReadBit() == 1
+
 end
 
---[[---------------------------------------------------------
-    WriteEntity / ReadEntity
-
-    Reference behavior (reference net.lua): the entity index goes over the
-    wire as an UNSIGNED MAX_EDICT_BITS value (net.WriteUInt/ReadUInt), not
-    through net.WriteInt's 32-bit signed default.  This branch's edict space
-    is 11 bits (public/const.h), mirroring how the reference uses 13.
------------------------------------------------------------]]
-local MAX_EDICT_BITS = 11
-
+--
+-- Read/Write an entity to the stream
+--
 function net.WriteEntity( ent )
-    net.WriteUInt( IsValid( ent ) and ent:entindex() or 0, MAX_EDICT_BITS )
+
+	if ( !IsValid( ent ) ) then
+		net.WriteUInt( 0, MAX_EDICT_BITS )
+	else
+		net.WriteUInt( ent:EntIndex(), MAX_EDICT_BITS )
+	end
+
 end
 
 function net.ReadEntity()
-    local i = net.ReadUInt( MAX_EDICT_BITS )
-    if not i or i <= 0 then return nil end
-    return ents and ents.GetByIndex and ents.GetByIndex( i ) or nil
+
+	local i = net.ReadUInt( MAX_EDICT_BITS )
+	if ( !i ) then return end
+
+	return Entity( i )
+
 end
 
---[[---------------------------------------------------------
-    WriteColor / ReadColor (r,g,b,a bytes)
------------------------------------------------------------]]
-function net.WriteColor( col, writeAlpha )
-    if writeAlpha == nil then writeAlpha = true end
 
-    local r, g, b, a
-    if type( col.r ) == "function" then
-        r, g, b, a = col.r, col.g, col.b, col.a
-    else
-        r, g, b, a = col.r, col.g, col.b, col.a
-    end
+--
+-- Read/Write a player to the stream
+--
 
-    net.WriteUInt( r or 255, 8 )
-    net.WriteUInt( g or 255, 8 )
-    net.WriteUInt( b or 255, 8 )
-    if writeAlpha then
-        net.WriteUInt( a or 255, 8 )
-    end
-end
-
-function net.ReadColor( readAlpha )
-    if readAlpha == nil then readAlpha = true end
-
-    local r = net.ReadUInt( 8 )
-    local g = net.ReadUInt( 8 )
-    local b = net.ReadUInt( 8 )
-    local a = readAlpha and net.ReadUInt( 8 ) or 255
-
-    return Color( r, g, b, a )
-end
-
---[[---------------------------------------------------------
-    WritePlayer / ReadPlayer (via WriteUInt/ReadUInt with MAX_PLAYER_BITS)
------------------------------------------------------------]]
-local MAX_PLAYER_BITS = 10
 function net.WritePlayer( ply )
-    net.WriteUInt( ( IsValid( ply ) and ply:IsPlayer() and ply:entindex() ) or 0, MAX_PLAYER_BITS )
+	net.WriteUInt( IsValid( ply ) and ply:IsPlayer() and ply:EntIndex() or 0, MAX_PLAYER_BITS )
 end
 
 function net.ReadPlayer()
-    local i = net.ReadUInt( MAX_PLAYER_BITS )
-    if i <= 0 then return nil end
-    return ents and ents.GetByIndex and ents.GetByIndex( i ) or nil
+	return Entity( net.ReadUInt( MAX_PLAYER_BITS ) )
 end
 
---[[---------------------------------------------------------
-    Type tags (mirror GMod's TypeID values for the common types)
------------------------------------------------------------]]
-local TYPE_NIL     = 0
-local TYPE_STRING  = 1
-local TYPE_NUMBER  = 2
-local TYPE_TABLE   = 3
-local TYPE_BOOL    = 4
-local TYPE_ENTITY  = 5
-local TYPE_VECTOR  = 6
-local TYPE_ANGLE   = 7
-local TYPE_COLOR   = 255
 
-local function TypeID( v )
-    local tv = type( v )
-    if tv == "nil" then return TYPE_NIL end
-    if tv == "string" then return TYPE_STRING end
-    if tv == "number" then return TYPE_NUMBER end
-    if tv == "boolean" then return TYPE_BOOL end
-    if tv == "table" then return TYPE_TABLE end
-    if tv == "userdata" then
-        -- entity / vector / angle / color userdata are distinguishable via
-        -- their metatable; treat anything else as nil-ish for safety.
-        return TYPE_ENTITY
-    end
-    return TYPE_NIL
+--
+-- Read/Write a color to/from the stream
+--
+function net.WriteColor( col, writeAlpha )
+	if ( writeAlpha == nil ) then writeAlpha = true end
+
+	assert( IsColor( col ), "net.WriteColor: color expected, got ".. type( col ) )
+
+	local r, g, b, a = col:Unpack()
+	net.WriteUInt( r, 8 )
+	net.WriteUInt( g, 8 )
+	net.WriteUInt( b, 8 )
+
+	if ( writeAlpha ) then
+		net.WriteUInt( a, 8 )
+	end
 end
 
-local function IsColor( v )
-    return type( v ) == "userdata" and getmetatable( v ) ~= nil and type( v.r ) == "function"
+function net.ReadColor( readAlpha )
+	if ( readAlpha == nil ) then readAlpha = true end
+
+	local r, g, b =
+		net.ReadUInt( 8 ),
+		net.ReadUInt( 8 ),
+		net.ReadUInt( 8 )
+
+	local a = 255
+	if ( readAlpha ) then a = net.ReadUInt( 8 ) end
+
+	return Color( r, g, b, a )
+
 end
 
-net.WriteVars = {
-    [TYPE_NIL]     = function( t, v ) net.WriteUInt( t, 8 ) end,
-    [TYPE_STRING]  = function( t, v ) net.WriteUInt( t, 8 ) net.WriteString( v ) end,
-    [TYPE_NUMBER]  = function( t, v ) net.WriteUInt( t, 8 ) net.WriteDouble( v ) end,
-    [TYPE_TABLE]   = function( t, v ) net.WriteUInt( t, 8 ) net.WriteTable( v ) end,
-    [TYPE_BOOL]    = function( t, v ) net.WriteUInt( t, 8 ) net.WriteBool( v ) end,
-    [TYPE_ENTITY]  = function( t, v ) net.WriteUInt( t, 8 ) net.WriteEntity( v ) end,
-    [TYPE_VECTOR]  = function( t, v ) net.WriteUInt( t, 8 ) net.WriteVector( v ) end,
-    [TYPE_ANGLE]   = function( t, v ) net.WriteUInt( t, 8 ) net.WriteAngle( v ) end,
-    [TYPE_COLOR]   = function( t, v ) net.WriteUInt( t, 8 ) net.WriteColor( v ) end,
-}
-
-function net.WriteType( v )
-    local typeid = IsColor( v ) and TYPE_COLOR or TypeID( v )
-    local wv = net.WriteVars[ typeid ]
-    if wv then return wv( typeid, v ) end
-    error( "net.WriteType: Couldn't write " .. type( v ) .. " (type " .. tostring( typeid ) .. ")" )
-end
-
-net.ReadVars = {
-    [TYPE_NIL]    = function() return nil end,
-    [TYPE_STRING] = function() return net.ReadString() end,
-    [TYPE_NUMBER] = function() return net.ReadDouble() end,
-    [TYPE_TABLE]  = function() return net.ReadTable() end,
-    [TYPE_BOOL]   = function() return net.ReadBool() end,
-    [TYPE_ENTITY] = function() return net.ReadEntity() end,
-    [TYPE_VECTOR] = function() return net.ReadVector() end,
-    [TYPE_ANGLE]  = function() return net.ReadAngle() end,
-    [TYPE_COLOR]  = function() return net.ReadColor() end,
-}
-
-function net.ReadType( typeid )
-    typeid = typeid or net.ReadUInt( 8 )
-    local rv = net.ReadVars[ typeid ]
-    if rv then return rv() end
-    error( "net.ReadType: Couldn't read type " .. tostring( typeid ) )
-end
-
---[[---------------------------------------------------------
-    WriteTable / ReadTable
------------------------------------------------------------]]
 local function HasCyclicReferences( tab )
-    local function check( t, visited )
-        if visited[ t ] then return true end
-        visited[ t ] = true
-        for k, v in pairs( t ) do
-            if type( k ) == "table" then
-                if check( k, visited ) then return true end
-            end
-            if type( v ) == "table" then
-                if check( v, visited ) then return true end
-            end
-        end
-        visited[ t ] = nil
-        return false
-    end
-    return check( tab, {} )
+	local function check( t, visited )
+		if ( visited[ t ] ) then return true end
+		visited[ t ] = true
+
+		for k, v in pairs( t ) do
+			if ( istable( k ) ) then
+				if ( check( k, visited ) ) then return true end
+			end
+			if ( istable( v ) ) then
+				if ( check( v, visited ) ) then return true end
+			end
+		end
+
+		visited[ t ] = nil
+
+		return false
+	end
+
+	local visited = {}
+	return check( tab, visited )
 end
 
+--
+-- Write a whole table to the stream
+-- This is less optimal than writing each
+-- item individually and in a specific order
+-- because it adds type information before each var
+--
 function net.WriteTable( tab, seq )
-    if HasCyclicReferences( tab ) then
-        error( "net.WriteTable: Cyclic table detected.", 2 )
-    end
 
-    if seq then
-        local len = #tab
-        net.WriteUInt( len, 32 )
-        for i = 1, len do
-            net.WriteType( tab[ i ] )
-        end
-    else
-        for k, v in pairs( tab ) do
-            net.WriteType( k )
-            net.WriteType( v )
-        end
-        net.WriteType( nil )
-    end
+	-- Check for cyclic references in the table. Trying to write such a table will cause a stack overflow,
+	-- So we display a more friendly error message instead.
+	if ( HasCyclicReferences( tab ) ) then
+		error( "net.WriteTable: Cyclic table detected. Cannot write tables with cyclic references.", 2 )
+	end
+
+	if ( seq ) then
+
+		local len = #tab
+		net.WriteUInt( len, 32 )
+
+		for i = 1, len do
+
+			net.WriteType( tab[ i ] )
+
+		end
+
+	else
+
+		for k, v in pairs( tab ) do
+
+			net.WriteType( k )
+			net.WriteType( v )
+
+		end
+
+		-- End of table
+		net.WriteType( nil )
+
+	end
+
 end
 
 function net.ReadTable( seq )
-    local tab = {}
-    if seq then
-        for i = 1, net.ReadUInt( 32 ) do
-            tab[ i ] = net.ReadType()
-        end
-    else
-        while true do
-            local k = net.ReadType()
-            if k == nil then break end
-            tab[ k ] = net.ReadType()
-        end
-    end
-    return tab
+
+	local tab = {}
+
+	if ( seq ) then
+
+		for i = 1, net.ReadUInt( 32 ) do
+
+			tab[ i ] = net.ReadType()
+
+		end
+
+	else
+
+		while true do
+
+			local k = net.ReadType()
+			if ( k == nil ) then break end
+
+			tab[ k ] = net.ReadType()
+
+		end
+
+	end
+
+	return tab
+
 end
 
-print( "[HL2SB] net extension loaded" )
+net.WriteVars =
+{
+	[TYPE_NIL]			= function ( t, v )	net.WriteUInt( t, 8 )								end,
+	[TYPE_STRING]		= function ( t, v )	net.WriteUInt( t, 8 )	net.WriteString( v )		end,
+	[TYPE_NUMBER]		= function ( t, v )	net.WriteUInt( t, 8 )	net.WriteDouble( v )		end,
+	[TYPE_TABLE]		= function ( t, v )	net.WriteUInt( t, 8 )	net.WriteTable( v )			end,
+	[TYPE_BOOL]			= function ( t, v )	net.WriteUInt( t, 8 )	net.WriteBool( v )			end,
+	[TYPE_ENTITY]		= function ( t, v )	net.WriteUInt( t, 8 )	net.WriteEntity( v )		end,
+	[TYPE_VECTOR]		= function ( t, v )	net.WriteUInt( t, 8 )	net.WriteVector( v )		end,
+	[TYPE_ANGLE]		= function ( t, v )	net.WriteUInt( t, 8 )	net.WriteAngle( v )			end,
+	[TYPE_MATRIX]		= function ( t, v ) net.WriteUInt( t, 8 )	net.WriteMatrix( v )		end,
+	[TYPE_COLOR]		= function ( t, v ) net.WriteUInt( t, 8 )	net.WriteColor( v )			end,
+}
+
+function net.WriteType( v )
+	local typeid = nil
+
+	if ( IsColor( v ) ) then
+		typeid = TYPE_COLOR
+	else
+		typeid = TypeID( v )
+	end
+
+	local wv = net.WriteVars[ typeid ]
+	if ( wv ) then return wv( typeid, v ) end
+
+	error( "net.WriteType: Couldn't write " .. type( v ) .. " (type " .. typeid .. ")" )
+
+end
+
+net.ReadVars =
+{
+	[TYPE_NIL]		= function ()	return nil end,
+	[TYPE_STRING]	= function ()	return net.ReadString() end,
+	[TYPE_NUMBER]	= function ()	return net.ReadDouble() end,
+	[TYPE_TABLE]	= function ()	return net.ReadTable() end,
+	[TYPE_BOOL]		= function ()	return net.ReadBool() end,
+	[TYPE_ENTITY]	= function ()	return net.ReadEntity() end,
+	[TYPE_VECTOR]	= function ()	return net.ReadVector() end,
+	[TYPE_ANGLE]	= function ()	return net.ReadAngle() end,
+	[TYPE_MATRIX]	= function ()	return net.ReadMatrix() end,
+	[TYPE_COLOR]	= function ()	return net.ReadColor() end,
+}
+
+function net.ReadType( typeid )
+
+	typeid = typeid or net.ReadUInt( 8 )
+
+	local rv = net.ReadVars[ typeid ]
+	if ( rv ) then return rv() end
+
+	error( "net.ReadType: Couldn't read type " .. typeid )
+
+end

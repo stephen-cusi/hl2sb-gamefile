@@ -1,5 +1,5 @@
 
-local ClassInfo = {}
+local ClassInfo = {} 
 
 ClassInfo[ "scene_manager" ]				= { ['save'] = false }
 ClassInfo[ "predicted_viewmodel" ]			= { ['save'] = false }
@@ -12,6 +12,7 @@ ClassInfo[ "info_player_start" ]			= { ['save'] = false }
 ClassInfo[ "ai_hint" ]						= { ['save'] = false }
 ClassInfo[ "ai_network" ]					= { ['save'] = false }
 ClassInfo[ "light" ]						= { ['save'] = false }
+ClassInfo[ "ai_network" ]					= { ['save'] = false }
 ClassInfo[ "env_tonemap_controller" ]		= { ['save'] = false }
 ClassInfo[ "path_corner" ]					= { ['save'] = false }
 ClassInfo[ "point_spotlight" ]				= { ['save'] = false }
@@ -30,14 +31,20 @@ ClassInfo[ "phys_constraintsystem" ]		= { ['save'] = false }
 ClassInfo[ "keyframe_rope" ]				= { ['save'] = false }
 ClassInfo[ "logic_auto" ]					= { ['save'] = false }
 ClassInfo[ "physics_npc_solver" ]			= { ['save'] = false }
+ClassInfo[ "env_sun" ]						= { ['save'] = false }
 ClassInfo[ "env_wind" ]						= { ['save'] = false }
+ClassInfo[ "env_fog_controller" ]			= { ['save'] = false }
 ClassInfo[ "infodecal" ]					= { ['save'] = false }
 ClassInfo[ "info_projecteddecal" ]			= { ['save'] = false }
 ClassInfo[ "info_node" ]					= { ['save'] = false }
 ClassInfo[ "info_map_parameters" ]			= { ['save'] = false }
 ClassInfo[ "info_ladder" ]					= { ['save'] = false }
+ClassInfo[ "path_corner" ]					= { ['save'] = false }
 ClassInfo[ "point_viewcontrol" ]			= { ['save'] = false }
+ClassInfo[ "scene_manager" ]				= { ['save'] = false }
 ClassInfo[ "shadow_control" ]				= { ['save'] = false }
+ClassInfo[ "sky_camera" ]					= { ['save'] = false }
+ClassInfo[ "soundent" ]						= { ['save'] = false }
 
 function gmsave.ShouldSaveEntity( ent, t )
 

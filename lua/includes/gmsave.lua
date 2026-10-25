@@ -6,7 +6,11 @@ if ( CLIENT ) then return end
 include( "gmsave/entity_filters.lua" )
 include( "gmsave/player.lua" )
 
+local g_WavSound = 1
+
 function gmsave.LoadMap( strMapContents, ply, callback )
+
+	-- TODO: Do this in engine before sending it to this function.
 
 	-- Strip off any crap before the start char..
 	local startchar = string.find( strMapContents, "\2" )
@@ -21,6 +25,8 @@ function gmsave.LoadMap( strMapContents, ply, callback )
 		strMapContents = string.sub( strMapContents, startchar )
 	end
 	strMapContents = strMapContents:reverse()
+
+	-- END TODO
 
 	local tab = util.JSONToTable( strMapContents )
 
@@ -40,9 +46,10 @@ function gmsave.LoadMap( strMapContents, ply, callback )
 
 			ply:SendLua( "hook.Run( \"OnSpawnMenuClose\" )" )
 
-			-- HL2SB: GMod cycles its own save_load1-4.wav here; those wavs ship
-			-- in GMod's content VPK, not ours.  HL2's bell plays the same role.
-			ply:SendLua( "surface.PlaySound( \"buttons/bell1.wav\" )" )
+			g_WavSound = g_WavSound + 1
+			if ( g_WavSound > 4 ) then g_WavSound = 1 end
+
+			ply:SendLua( string.format( "surface.PlaySound( \"garrysmod/save_load%d.wav\" )", g_WavSound ) )
 
 			gmsave.PlayerLoad( ply, tab.Player )
 

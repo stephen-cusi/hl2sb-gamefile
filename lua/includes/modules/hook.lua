@@ -1,423 +1,143 @@
---========== Copyleft © 2010, Team Sandbox, Some rights reserved. ===========--
---
--- Purpose: Hook implementation.
---
---===========================================================================--
-
+local gmod = gmod
 local pairs = pairs
--- HL2SB (2026-09-24): ipairs needed by the snapshot iteration in call()/Run()
--- - same module-env rule as `pairs` above (the 2026-09-22 `type` incident).
-local ipairs = ipairs
-local Warning = dbg.Warning
-local tostring = tostring
-local pcall = pcall
--- HL2SB (2026-09-28): xpcall for every callback site, with the handler below.
-local xpcall = xpcall
--- HL2SB (2026-09-22): `module( "hook" )` below REPLACES this file's globals
--- with the module table, so any standard global not captured here reads as
--- nil inside every function defined after it.  ReportHookError used `type`
--- uncaptured -- 4600+ "attempt to call a nil value (global 'type')" errors
--- per session, and the secondary failure turned ordinary hook errors into
--- unprotected panics (the sent_ball crash).
+local isfunction = isfunction
+local isstring = isstring
+local isnumber = isnumber
+local isbool = isbool
+local IsValid = IsValid
 local type = type
--- HL2SB (2026-09-26): the REAL globals table, for hook.Run's gamemode fallback.
--- module( "hook" ) below (no seeall) replaces this file's environment with the
--- module table and there is no __index fallback, so the raw name `_G` inside
--- the module body reads hook._G -- nil -- and every hook.Run threw
--- "attempt to index a nil value (global '_G')" (hook.lua:267, scripted_ents
--- registration + GM:HUDPaint's draw calls, 2026-09-26 session).  Same
--- module-env rule as `type` above.
-local globals = _G
--- HL2SB: Lua 5.4 moved unpack() into the table library.  The engine installs the
--- 5.1 alias as well, but keep this defensive so hook.lua works on either runtime.
-local unpack = unpack or table.unpack
-
--- HL2SB (2026-09-21): failed callbacks go to the process error collector
--- (luamanager.cpp) so the main-menu error viewer can group and count them;
--- the console Warning below stays exactly as it was.  The binding is optional:
--- an engine without it must not break the hook chain.
-local ReportError = hl2sb_reportluaerror
-local traceback = debug and debug.traceback or nil
-
-local function ReportHookError( strMessage )
-  -- HL2SB (2026-09-22): the ONLY reliable channel is the C collector -- some
-  -- realms/states have neither print nor Msg, and any fallback here raised a
-  -- SECOND error that swallowed the real one and flooded the logs.
-  if ( ReportError == nil ) then
-    return
-  end
-  local sTrace = strMessage
-  if ( traceback ~= nil ) then
-    local ok, sTb = pcall( traceback, strMessage, 2 )
-    if ( ok and type( sTb ) == "string" ) then sTrace = sTb end
-  end
-  pcall( ReportError, strMessage, sTrace )
-end
-
--- HL2SB (2026-09-28): xpcall message handler for hook callbacks.  A C
--- function that indexes a nil stack slot raises "attempt to index a nil
--- value" with NO file:line (C frames carry no line info), and a plain pcall
--- only sees the message after the unwind -- debug.traceback then has nothing
--- left to show.  That is how scp173's per-tick "SCP173_Think Failed:
--- attempt to index a nil value" stayed unlocatable for a whole session.
--- The handler runs on the LIVE stack, so the appended traceback names the C
--- frame and its Lua caller.
-local function HookErrorHandler( strMessage )
-  local s = tostring( strMessage )
-  if ( traceback == nil ) then return s end
-  local ok, sTb = pcall( traceback, "", 2 )
-  if ( ok and type( sTb ) == "string" and sTb ~= "" ) then
-    return s .. "\n" .. sTb
-  end
-  return s
-end
-
--- HL2SB: re-execution guard -- read this before touching anything below.
---
--- luasrc_dofolder() loads each file in lua/includes/modules as a PLAIN FILE, so
--- package.loaded is never populated for them.  A later require("hook") from
--- any script therefore finds no cached module and EXECUTES THIS FILE AGAIN.
---
--- Without the guard the second run reaches `local tHooks = {}` and rebinds
--- add/Run/call to that brand-new empty table, orphaning every hook registered
--- by the first run (timer.lua's client tick, timer.lua's Think, ...).
---
--- `hook.add` existing is the marker: only the body below installs it, so this
--- cannot fire on the first run.
-if ( _G.hook ~= nil and _G.hook.add ~= nil ) then
-	return _G.hook
-end
+local ErrorNoHaltWithStack = ErrorNoHaltWithStack
 
 module( "hook" )
 
-local tHooks = {}
-local tReturns = {}
+local Hooks = {}
 
--------------------------------------------------------------------------------
--- Purpose: Adds a hook to the given GameRules function
--- Input  : strEventName - Name of the internal GameRules method
---     	    strHookName - Name of the hook
---          pFn - pointer to function
--- Output :
--------------------------------------------------------------------------------
-function add( strEventName, strHookName, pFn )
-  tHooks[ strEventName ] = tHooks[ strEventName ] or {}
-  tHooks[ strEventName ][ strHookName ] = pFn
+--[[---------------------------------------------------------
+    Name: GetTable
+    Desc: Returns a table of all hooks.
+-----------------------------------------------------------]]
+function GetTable()
+	return Hooks
 end
 
--------------------------------------------------------------------------------
--- Purpose: Called by the engine to call a GameRules hook
--- Input  : strEventName - Name of the internal GameRules method
---          tGamemode - Table of the current gamemode
--- Output :
--------------------------------------------------------------------------------
--- HL2SB: the body below used to BE `call`.  It is a separate local function
--- only so that call() can wrap it in the same-event re-entrancy guard -- read
--- the comment on tCallChain before changing anything here.
-local function CallBody( strEventName, tGamemode, ... )
-  local tHooks = tHooks[ strEventName ]
-  if ( tHooks ~= nil ) then
-    -- Snapshot the id->fn list before iterating: hooks may add/remove entries
-    -- while they run (First Person Body's cl_body.Load removes itself from
-    -- Think the moment LocalPlayer() is valid, failed hooks are removed right
-    -- here), and Lua raises "invalid key to 'next'" when pairs() walks a table
-    -- whose keys vanish mid-iteration.  GMod's own hook library iterates a
-    -- copy the same way.
-    local tSnapshot = {}
-    for k, v in pairs( tHooks ) do
-      tSnapshot[ #tSnapshot + 1 ] = { k, v }
-    end
-    for _, tEntry in ipairs( tSnapshot ) do
-      local k, v = tEntry[ 1 ], tEntry[ 2 ]
-      if ( v == nil ) then
-        Warning( "Hook '" .. tostring( k ) .. "' (" .. tostring( strEventName ) .. ") tried to call a nil function!\n" )
-        tHooks[ k ] = nil
-        break
-      else
-        -- HL2SB (2026-09-27): GMod's entity-key semantics (its hook.lua:95-119).
-        -- A STRING key is a plain id: the callback gets the event args only.
-        -- A NON-string key is an entity/panel: still valid => passed as the
-        -- FIRST argument so hook.Add( name, ent, ent.Think ) self-binds;
-        -- invalid => the hook is dropped ("the object has become invalid").
-        -- CallBody used to run every callback args-only, which bound
-        -- gmod_hands' ViewModelChanged to the first EVENT argument (the
-        -- viewmodel) and let dead entity keys linger ("Hook 'NULL' ... Failed").
-        local bEntityKey = ( type( k ) ~= "string" )
-        local bDropKey = false
-        if ( bEntityKey ) then
-          local fnIsValid = globals.IsValid
-          bDropKey = ( fnIsValid ~= nil ) and ( not fnIsValid( k ) )
-        end
-        if ( bDropKey ) then
-          tHooks[ k ] = nil
-        elseif ( bEntityKey ) then
-          tReturns = { xpcall( v, HookErrorHandler, k, ... ) }
-        else
-          tReturns = { xpcall( v, HookErrorHandler, ... ) }
-        end
-        if ( not bDropKey ) then
-        if ( tReturns[ 1 ] == false ) then
-          Warning( "Hook '" .. tostring( k ) .. "' (" .. tostring( strEventName ) .. ") Failed: " .. tostring( tReturns[ 2 ] ) .. "\n" )
-          ReportHookError( tReturns[ 2 ] )
-          -- HL2SB (2026-09-25): keep erroring hooks - GMod re-reports the same
-          -- error every frame instead of removing them.  Removal here turned
-          -- ONE transient spawn-time failure (First Person Body's first Think,
-          -- empty LocalPlayer model) into permanent silent hook death.
-        elseif ( tReturns[ 2 ] ~= nil ) then
-          return unpack( tReturns, 2 )
-        end
-        end
-      end
-    end
-  end
-  if ( tGamemode ~= nil ) then
-    local fn = tGamemode[ strEventName ]
-    if ( fn == nil ) then
-      return nil
-    else
-      tReturns = { xpcall( fn, HookErrorHandler, tGamemode, ... ) }
-      if ( tReturns[ 1 ] == false ) then
-        Warning( "ERROR: GAMEMODE: '" .. tostring( strEventName ) .. "' Failed: " .. tostring( tReturns[ 2 ] ) .. "\n" )
-        ReportHookError( tReturns[ 2 ] )
-        tGamemode[ strEventName ] = nil
-        return nil
-      end
-      return unpack( tReturns, 2 )
-    end
-  end
+--[[---------------------------------------------------------
+    Name: Add
+    Args: string hookName, any identifier, function func
+    Desc: Add a hook to listen to the specified event.
+-----------------------------------------------------------]]
+function Add( event_name, name, func )
+
+	if ( !isstring( event_name ) ) then ErrorNoHaltWithStack( "bad argument #1 to 'Add' (string expected, got " .. type( event_name ) .. ")" ) return end
+	if ( !isfunction( func ) ) then ErrorNoHaltWithStack( "bad argument #3 to 'Add' (function expected, got " .. type( func ) .. ")" ) return end
+
+	local notValid = name == nil || isnumber( name ) or isbool( name ) or isfunction( name ) or !name.IsValid
+	if ( !isstring( name ) and notValid ) then ErrorNoHaltWithStack( "bad argument #2 to 'Add' (string expected, got " .. type( name ) .. ")" ) return end
+
+	if ( Hooks[ event_name ] == nil ) then
+		Hooks[ event_name ] = {}
+	end
+
+	Hooks[ event_name ][ name ] = func
+
 end
 
--------------------------------------------------------------------------------
--- HL2SB: re-entrancy guard -- read this before touching call() or CallBody().
---
--- A hook or a gamemode method may call hook.call() / hook.Run() for its OWN
--- event, and then the gamemode fallback above calls straight back into it:
---
---     hook.call(E) -> _GAMEMODE[E] -> hook.call(E) -> _GAMEMODE[E] -> ...
---
--- That recurses until the Lua stack blows up.  Measured on 2026-09-11: 11060
--- "hook.lua:78: stack overflow" lines in one session, which floods the log and
--- freezes the game solid (the main thread never gets back to pumping window
--- messages, so Windows reports "not responding").  It is easy to trigger by
--- accident because every engine -> Lua event goes through here, and this fork's
--- table.inherit() is a shallow COPY (lua/includes/extensions/table.lua), so a
--- gamemode table can end up holding a function that dispatches the same event
--- straight back.
---
--- Re-entering for the same event can never produce anything the first pass did
--- not already ask for: the registered hooks were consulted before the gamemode
--- fallback, and the fallback is the last thing CallBody does.
---
--- HL2SB (2026-10-08): flat refusal was too blunt.  NESTED dispatch of the same
--- event is legitimate and GMod allows it: any ents.Create() inside an
--- OnEntityCreated handler constructs the new entity right there and the engine
--- re-dispatches OnEntityCreated for it - a map's scripted-entity burst hits
--- this constantly, and every one of those nested dispatches was being dropped
--- (ds_debug.log 2026-10-08 09:01, "re-entered hook.call ... recursion refused"
--- during the vehicle spawn wave).  So the guard is now a DEPTH LIMIT instead:
--- finite nesting passes, a true runaway loop still dies at the limit with the
--- same once-per-event warning naming the event.
--------------------------------------------------------------------------------
-local tCallChain = {}   -- strEventName -> current nesting depth (number)
-local tReportedReentry = {}
 
-local HL2SB_MAX_HOOK_DEPTH = 16
+--[[---------------------------------------------------------
+    Name: Remove
+    Args: string hookName, identifier
+    Desc: Removes the hook with the given indentifier.
+-----------------------------------------------------------]]
+function Remove( event_name, name )
 
-function call( strEventName, tGamemode, ... )
-  -- HL2SB (2026-10-02): per-frame hot path.  The engine fires several hook
-  -- events per frame with NO registered hooks and NO gamemode method (the HUD
-  -- element poll "HudElementShouldDraw" alone is one dispatch per element per
-  -- frame).  CallBody answers nil for that case, but reaching it costs an
-  -- xpcall wrapper, a results-table allocation and the re-entrancy bookkeeping
-  -- below - pure garbage-collector churn on the render path.  Answer with no
-  -- results directly (that is how CallBody's empty answer reaches callers --
-  -- through the xpcall round-trip it arrives as ZERO results, not as a nil
-  -- value).  Exactly equivalent to CallBody: no snapshot is taken
-  -- when the event has no hooks, and a gamemode slot that is present but not
-  -- nil (even a non-function like false) still falls through to the full body
-  -- so the error report stays identical.
-  if ( tHooks[ strEventName ] == nil ) then
-    local fnGamemode = nil
-    if ( type( tGamemode ) == "table" ) then
-      fnGamemode = tGamemode[ strEventName ]
-    end
-    if ( fnGamemode == nil ) then
-      return  -- bare return: CallBody's empty answer reaches callers as NO results
-    end
-  end
+	if ( !isstring( event_name ) ) then ErrorNoHaltWithStack( "bad argument #1 to 'Remove' (string expected, got " .. type( event_name ) .. ")" ) return end
 
-  local nDepth = tCallChain[ strEventName ] or 0
-  if ( nDepth >= HL2SB_MAX_HOOK_DEPTH ) then
-    if ( not tReportedReentry[ strEventName ] ) then
-      tReportedReentry[ strEventName ] = true
-      Warning( "HL2SB: '" .. tostring( strEventName ) .. "' recursed past the depth limit (" ..
-               tostring( HL2SB_MAX_HOOK_DEPTH ) .. ") -- dispatch refused.  Something that handles this event " ..
-               "(a registered hook or the gamemode method) calls hook.call/hook.Run for it in a loop; " ..
-               "that used to blow the Lua stack and freeze the game.  Reported once per event.\n" )
-    end
-    return nil
-  end
+	local notValid = isnumber( name ) or isbool( name ) or isfunction( name ) or !name.IsValid
+	if ( !isstring( name ) and notValid ) then ErrorNoHaltWithStack( "bad argument #2 to 'Remove' (string expected, got " .. type( name ) .. ")" ) return end
 
-  -- pcall, not a bare call: if CallBody ever threw, the depth bookkeeping would
-  -- stay wrong and the event would drift toward the limit for the rest of the
-  -- level.  This also names the event in the error report, which the raw error
-  -- path could not.
-  tCallChain[ strEventName ] = nDepth + 1
-  local tRet = { xpcall( CallBody, HookErrorHandler, strEventName, tGamemode, ... ) }
-  if ( nDepth > 0 ) then
-    tCallChain[ strEventName ] = nDepth
-  else
-    tCallChain[ strEventName ] = nil
-  end
+	if ( !Hooks[ event_name ] ) then return end
 
-  if ( tRet[ 1 ] == false ) then
-    Warning( "ERROR: HOOK: '" .. tostring( strEventName ) .. "' Failed: " .. tostring( tRet[ 2 ] ) .. "\n" )
-    ReportHookError( tRet[ 2 ] )
-    return nil
-  end
+	Hooks[ event_name ][ name ] = nil
 
-  return unpack( tRet, 2 )
 end
 
--------------------------------------------------------------------------------
--- Purpose: Returns all of the registered hooks or only hooks pertaining to a
---          specific event
--- Input  : strEventName - Name of the internal GameRules method
--- Output : table
--------------------------------------------------------------------------------
-function gethooks( strEventName )
-  if ( strEventName ) then
-    return tHooks[ strEventName ]
-  end
-  return tHooks
+
+--[[---------------------------------------------------------
+    Name: Run
+    Args: string hookName, vararg args
+    Desc: Calls hooks associated with the hook name.
+-----------------------------------------------------------]]
+local currentGM
+
+function Run( name, ... )
+	if ( !currentGM ) then
+		currentGM = gmod and gmod.GetGamemode() or nil
+	end
+
+	return Call( name, currentGM, ... )
 end
 
--------------------------------------------------------------------------------
--- Purpose: Removes a hook from the list of registered hooks
--- Input  : strEventName - Name of the internal GameRules method
---          strHookName - Name of the hook
--- Output :
--------------------------------------------------------------------------------
-function remove( strEventName, strHookName )
-  -- GMod semantics: removing a hook for an event nobody ever registered is
-  -- silent (hl1sweps' Initialize does hook.Remove on events it does not know
-  -- are empty, once per weapon spawn).
-  if ( tHooks[ strEventName ] == nil ) then return end
-  if ( tHooks[ strEventName ][ strHookName ] ) then
-    tHooks[ strEventName ][ strHookName ] = nil
-  end
-end
 
--------------------------------------------------------------------------------
--- Purpose: Run the given hook (GMod-compatible hook.Run).
---          Calls every hook registered under strEventName in order and returns
---          the first non-nil result, exactly like GMod's hook.Run(name, ...).
---          This is the entry point most GMod addons use to fire callbacks, so
---          ported scripts calling hook.Run("PlayerSpawn", ply) keep working.
--- Input  : strEventName - Name of the hook
--- Output : first non-nil result, else nil
--------------------------------------------------------------------------------
-function Run( strEventName, ... )
-  local tHooks = tHooks[ strEventName ]
-  if ( tHooks ~= nil ) then
-    -- Snapshot the id->fn list before iterating: hooks may add/remove entries
-    -- while they run (First Person Body's cl_body.Load removes itself from
-    -- Think the moment LocalPlayer() is valid, failed hooks are removed right
-    -- here), and Lua raises "invalid key to 'next'" when pairs() walks a table
-    -- whose keys vanish mid-iteration.  GMod's own hook library iterates a
-    -- copy the same way.
-    local tSnapshot = {}
-    for k, v in pairs( tHooks ) do
-      tSnapshot[ #tSnapshot + 1 ] = { k, v }
-    end
-    for _, tEntry in ipairs( tSnapshot ) do
-      local k, v = tEntry[ 1 ], tEntry[ 2 ]
-      if ( v == nil ) then
-        Warning( "Hook '" .. tostring( k ) .. "' (" .. tostring( strEventName ) .. ") tried to call a nil function!\n" )
-        tHooks[ k ] = nil
-        break
-      else
-        -- HL2SB (2026-09-27): GMod's entity-key semantics (its hook.lua:95-119).
-        -- A STRING key is a plain id: the callback gets the event args only.
-        -- A NON-string key is an entity/panel: still valid => passed as the
-        -- FIRST argument so hook.Add( name, ent, ent.Think ) self-binds;
-        -- invalid => the hook is dropped ("the object has become invalid").
-        -- CallBody used to run every callback args-only, which bound
-        -- gmod_hands' ViewModelChanged to the first EVENT argument (the
-        -- viewmodel) and let dead entity keys linger ("Hook 'NULL' ... Failed").
-        local bEntityKey = ( type( k ) ~= "string" )
-        local bDropKey = false
-        if ( bEntityKey ) then
-          local fnIsValid = globals.IsValid
-          bDropKey = ( fnIsValid ~= nil ) and ( not fnIsValid( k ) )
-        end
-        if ( bDropKey ) then
-          tHooks[ k ] = nil
-        elseif ( bEntityKey ) then
-          tReturns = { xpcall( v, HookErrorHandler, k, ... ) }
-        else
-          tReturns = { xpcall( v, HookErrorHandler, ... ) }
-        end
-        if ( not bDropKey ) then
-        if ( tReturns[ 1 ] == false ) then
-          Warning( "Hook '" .. tostring( k ) .. "' (" .. tostring( strEventName ) .. ") Failed: " .. tostring( tReturns[ 2 ] ) .. "\n" )
-          ReportHookError( tReturns[ 2 ] )
-          -- HL2SB (2026-09-25): keep erroring hooks (GMod parity), see call().
-        elseif ( tReturns[ 2 ] ~= nil ) then
-          return unpack( tReturns, 2 )
-        end
-        end
-      end
-    end
-  end
+--[[---------------------------------------------------------
+    Name: Run
+    Args: string hookName, table gamemodeTable, vararg args
+    Desc: Calls hooks associated with the hook name.
+-----------------------------------------------------------]]
+function Call( name, gm, ... )
 
-  -- HL2SB (2026-09-25): GMod 的 hook.Run( name, ... ) 是
-  -- hook.Call( name, gmod.GetGamemode(), ... ) —— 注册钩子全部放行（且没有
-  -- 一个返回非 nil）之后，还要调用该事件的 GAMEMODE 方法。没有这段回退，
-  -- GMod base gamemode 自己的 GM:HUDPaint（cl_init.lua:83）调
-  -- hook.Run("HUDDrawPickupHistory") 永远到不了 GM:HUDDrawPickupHistory，
-  -- 拾取条就永远不画。必须用文件头捕获的 `globals`（真 _G）：module() 换掉
-  -- 了环境，裸 GAMEMODE/_G 在模块体内都是 nil（2026-09-26 的 267 行报错）。
-  local tGamemode = globals.GAMEMODE or globals._GAMEMODE
-  if ( tGamemode ~= nil ) then
-    local fn = tGamemode[ strEventName ]
-    if ( fn ~= nil ) then
-      tReturns = { xpcall( fn, HookErrorHandler, tGamemode, ... ) }
-      if ( tReturns[ 1 ] == false ) then
-        Warning( "ERROR: GAMEMODE: '" .. tostring( strEventName ) .. "' Failed: " .. tostring( tReturns[ 2 ] ) .. "\n" )
-        ReportHookError( tReturns[ 2 ] )
-      else
-        return unpack( tReturns, 2 )
-      end
-    end
-  end
+	--
+	-- Run hooks
+	--
+	local HookTable = Hooks[ name ]
+	if ( HookTable != nil ) then
 
-  return nil
-end
+		local a, b, c, d, e, f
 
--- ===========================================================================
--- GMod 大小写别名
---   GMod 的 hook 库是 hook.Add / hook.Remove / hook.Call / hook.GetTable。
---   HL2SB 原本只有小写的 add / remove / call（外加 Run）。GMod 自己的文件
---   （lua/includes/modules/undo.lua、gamemodes/*/cl_hudpickup.lua、
---   gmod_camera 等）全用大写形式，缺了就直接
---   "attempt to call a nil value (field 'Add')"。
---   Call 与 Run 的区别：GMod 的 Call 第一个参数是 gamemode 表，这里只需要
---   把它透传给 call()（同 add 的回调签名）。
---
---   ⚠️ 这里**绝不能**写成 `Add = Add or add`。本文件可能被 require 二次执行
---   （见文件顶部的守卫），那时 `Add` 字段已存在 —— 于是它会保留**第一次执行**
---   的那个函数，而那个函数闭包指向的 tHooks 早已被丢弃。结果就是：
---   hook.Add(...) 把钩子写进死表，hook.Run 在活表里查 —— 静默什么都不发生。
---   2026-09-11 的双表错位就是这么来的：hook.add 生效、hook.Add 全部失效，
---   拾取 HUD 怎么都不显示（`hook.GetTable("HUDDrawPickupHistory")` 为 nil，
---   而同一个文件里 hook.add 注册的 HudViewportPaint 在表里）。
---   remove/GetTable 同理，必须无条件指向本库自己的函数。
--- ===========================================================================
-Add       = add
-Remove    = remove
-GetTable  = gethooks
+		for k, v in pairs( HookTable ) do
 
-function Call( strEventName, tGamemode, ... )
-  return call( strEventName, tGamemode, ... )
+			if ( isstring( k ) ) then
+
+				--
+				-- If it's a string, it's cool
+				--
+				a, b, c, d, e, f = v( ... )
+
+			else
+
+				--
+				-- If the key isn't a string - we assume it to be an entity
+				-- Or panel, or something else that IsValid works on.
+				--
+				if ( IsValid( k ) ) then
+					--
+					-- If the object is valid - pass it as the first argument (self)
+					--
+					a, b, c, d, e, f = v( k, ... )
+				else
+					--
+					-- If the object has become invalid - remove it
+					--
+					HookTable[ k ] = nil
+				end
+			end
+
+			--
+			-- Hook returned a value - it overrides the gamemode function
+			--
+			if ( a != nil ) then
+				return a, b, c, d, e, f
+			end
+
+		end
+	end
+
+	--
+	-- Call the gamemode function
+	--
+	if ( !gm ) then return end
+
+	local GamemodeFunction = gm[ name ]
+	if ( GamemodeFunction == nil ) then return end
+
+	return GamemodeFunction( gm, ... )
+
 end

@@ -1,63 +1,3 @@
---[[---------------------------------------------------------------------------
-    HL2SB undo module (shared realm - GMod calls it a "lua shared module").
-
-    This file IS Garry's Mod's own lua/includes/modules/undo.lua.  The exported
-    surface is identical, function for function, byte for byte where the fork's
-    Lua can take it:
-
-        module table "undo", package.seeall:
-          client:  GetTable MakeUIDirty SetupUI
-                   net.Receive  "Undo_AddUndo" "Undo_FireUndo" "Undo_Undone"
-                   hook.Run( "OnUndo", name, customtext )
-                   hook.Add( "PopulateToolMenu", "Undo_RegisterToolMenu", ... )
-          server:  GetTable Create SetCustomUndoText AddEntity AddFunction
-                   ReplaceEntity SetPlayer Finish Do_Undo
-                   util.AddNetworkString x3
-                   saverestore.AddSaveHook / AddRestoreHook  ("UndoTable")
-                   concommand.Add  "undo" "gmod_undo" "gmod_undonum"
-                   hook.Run( "CanCreateUndo" / "PreUndo" / "PostUndo" / "CanUndo" )
-                   hook.Add( "EntityRemoved", "Undo_RemoveInvalidUndos", ... )
-
-    There is NO C++ side to undo anywhere in GMod: the win64/x86 lua_shared.dll
-    export tables (151 names, audited 2026-09-29) contain zero undo symbols, the
-    game DLLs contain no undo commands - the whole feature is this one file plus
-    the gamemode's GM:OnUndo popup (in THIS fork: gamemodes/deathmatch/gamemode/
-    cl_init.lua, the equivalent of GMod's sandbox/gamemode/cl_init.lua:46).
-
-    The only deviations from GMod's file (both invisible at the API surface):
-
-      1. Re-entrancy guard below.  lua/includes/modules/ is executed by
-         luasrc_dofolder, which does not write package.loaded, so a second
-         require("undo") would re-run this file and APPEND a second set of
-         net receivers (the engine's net.Receive appends) - one undo then
-         produces one OnUndo PER RECEIVER.  hook.lua and concommand.lua carry
-         the same guard for the same reason.
-
-      2. name[ 1 ] == "#"  ->  string.sub( name, 1, 1 ) == "#"
-         GLua sugar: GMod's Lua gives strings a 1-based __index; standard
-         Lua 5.4 does not.  Same test, same result.
-
-    Everything else - the validity checks (IsValid), the Remove loop, the
-    compaction recursion, the flag tables on concommand.Add - is GMod's code
-    running on primitives the fork now actually has (IsValid: real entity
-    method + safe NULL handling, unpack: gmod_compat alias, table.IsEmpty:
-    extensions/table.lua, continue: lexer extension, saverestore/controlpanel/
-    spawnmenu/language: present in lua/includes/modules/ and load-ordered
-    before this file).
-
-    The previous port of this file diverged from GMod in eight places (a
-    pcall-based UndoValid, a 0.25 s command de-duplication that ate legitimate
-    fast double undos, a pcall wrapper, an IsCarriedByPlayer veto that made
-    undo NOT behave like GMod, a vehicle-eject block the engine now does
-    itself in CPropVehicleDriveable::UpdateOnRemove, and client-side display
-    name re-translation in two net receivers).  All of them are gone.  If a
-    GMod undo behavior and this file disagree, this file wins and the other
-    side gets fixed.
------------------------------------------------------------------------------]]
-
-if ( _G.undo ~= nil and _G.undo.GetTable ~= nil ) then
-	return _G.undo
-end
 
 module( "undo", package.seeall )
 
@@ -126,8 +66,7 @@ if ( CLIENT ) then
 		local name = net.ReadString()
 
 		-- HACK: To support localization of "#prop_physics (models/path.mdl)"
-		-- HL2SB deviation 2: string.sub instead of GLua's name[1] indexing.
-		if ( string.sub( name, 1, 1 ) == "#" and string.find( name, " (", nil, true ) ) then
+		if ( name[ 1 ] == "#" and string.find( name, " (", nil, true ) ) then
 			local undoName, undoSecondary = string.match( name, "^(#.*) %((.*)%)$" )
 			if ( undoName and undoSecondary ) then
 				name = string.format( "%s (%s)", language.GetPhrase( undoName ), language.GetPhrase( undoSecondary ) )
@@ -181,7 +120,6 @@ if ( CLIENT ) then
 		MakeUIDirty()
 
 	end )
-
 
 	--[[---------------------------------------------------------
 		MakeUIDirty
@@ -630,15 +568,6 @@ local function CC_UndoNum( ply, command, args )
 
 end
 
--- HL2SB: server realm only.  GMod registers these on both realms, but its
--- engine routes the client bind to the server anyway; this engine's shared
--- command registry is first-come-first-served, so a client-side registration
--- would shadow the server one and the undo command then ran with a NULL or
--- empty player (undo.lua "UniqueID on bad self (NULL entity)" spam and a dead
--- key).  Server-only keeps every route (host bind, forwarded client command,
--- the gmod_undonum DoClick) resolving to the issuing player.
-if SERVER then
-	concommand.Add( "undo",			CC_UndoLast, nil, "", { FCVAR_DONTRECORD } )
-	concommand.Add( "gmod_undo",	CC_UndoLast, nil, "", { FCVAR_DONTRECORD } )
-	concommand.Add( "gmod_undonum",	CC_UndoNum, nil, "", { FCVAR_DONTRECORD } )
-end
+concommand.Add( "undo",			CC_UndoLast, nil, "", { FCVAR_DONTRECORD } )
+concommand.Add( "gmod_undo",	CC_UndoLast, nil, "", { FCVAR_DONTRECORD } )
+concommand.Add( "gmod_undonum",	CC_UndoNum, nil, "", { FCVAR_DONTRECORD } )

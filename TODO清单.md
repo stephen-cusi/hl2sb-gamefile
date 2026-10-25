@@ -395,3 +395,36 @@ hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移�
 ### 2026-10-25 用户复测与提交范围
 
 用户反馈本轮载具问题已基本修复，授权提交两个仓库的现有有效改动。GameUI及其开局设置配套文件仍由另一会话进行，排除提交；运行数据、插件安装目录与临时诊断文件不提交。完整因果定位保留现有诊断，不将基本修复写成所有场景全部验证。
+
+
+### 2026-10-25 Original Lua migration: first integrated batch
+
+- [x] Rechecked D:/tmp/lua_compare_20261025/REPORT.md against the current Steam installation. Of its 54 modified paths, 39 now match original GMod content, preserving repository line endings for submission. This is an integrated batch, not completion of the entire migration.
+- [x] Restored 17 VGUI controls plus autorun/menubar, including original label input, category traversal, color controls, model panel, slider, frame and spawn icon behavior. Existing fingerposer/fingervar changes from another session were preserved.
+- [x] Restored original math/ease, list, cleanup, scripted_ents, markup, menubar, effects, spawnmenu, undo, weapons, javascript utility and save filters. Added original gmsave/physics. Runtime compatibility lives separately in hl2sb/compat/core_modules.lua.
+- [x] Restored original draw, killicon, halo, hook and concommand. Legacy spellings live in compat/dispatch.lua and compat/drawing.lua. Native bootstrap loads type helpers before modules capture them, installs legacy dispatch aliases immediately, filters client modules from the server and defers notification until Derma is ready. Native tables are distinguished from completed Lua modules; failed loads remain retryable.
+- [x] Moved the unchanged notification implementation to original includes/modules/notification.lua and removed the duplicate includes/notification.lua path. Kept original motionsensor.lua; unavailable Kinect queries remain explicit compatibility stubs.
+- [x] Restored original net extension. Native code publishes type/capacity constants before loading it, preserves double floating-point bits instead of truncating to int64, and supplies row-major 4x4 matrix IO. Vector:ToTable now returns the original numeric array, so original vector.lua no longer needs its Lua replacement.
+- [x] Added original overlay, sobel, stereoscopy, sunbeams and texturize. Existing motion_blur lazy initialization remains pending native texture initialization work.
+- [x] Fixed the small menu startup errors: ConVar and real Material constructors are registered before original Lua captures them. Menu-owned ConVars survive map teardown and are released or transferred at menu shutdown. Native AddConsoleCommand, requested flags and autocomplete now support original concommand.lua.
+- [x] Tests: original file syntax; original math/ease, font/glyph measurement, hook veto/return shape/error retention, console dispatch/aliases, undo/cleanup, five postprocess scripts and net tables/colors. Extracted actual native loader linked against the Lua runtime passes realm split, native-table extension, repeated require, failed retry, stack balance and original dispatch initialization. Extracted native double/matrix functions pass floating-point bit and matrix-order checks. Rendering, network transport and VGUI interaction are isolated in these tests.
+- [x] Modified native TUs passed compilation; client/server build passed. DLL/PDB deployed directly to D:/srceng/hl2sb/bin with four SHA256 matches. No game launch, no commit/push, no resulttxt. Earlier residue-probe edits were retained separately and are not a confirmed residue fix.
+
+#### Remaining migration work
+
+- [ ] Entity/Player/Weapon original extensions: reconcile original DT/NW proxy and callback ownership with the existing native instance tables; validate SetupHands initialization order and remove obsolete player/weapon shims only after their native consumers agree.
+- [ ] Widget original module: implement and validate whitelist/output trace behavior and CMoveData:KeyWasDown before removing the current hover workaround.
+- [ ] Native render extension helpers, complete original utility/team modules, base variable editor EditValue, sandbox spawn/cleanup contracts and weapon_base animation/AI contracts still require migration. Current original-files count does not include them as complete.
+- [ ] Four postprocess paths remain disabled: bokeh_dof needs resolved-depth/NeedsDepthPass support; dof needs a real DOFModeHack consumer; frame_blend needs GetRenderTargetEx/GetMoBlurTex1 and safe native texture initialization; super_dof needs render.Spin. Existing/new native evidence is indexed for reuse.
+- [ ] Coordinate lowercase file names with actual include paths and Linux/Android lookup behavior; do not rename VGUI files alone while original vgui_base.lua still names uppercase paths.
+- [ ] CEF/HTML/JS, SteamAPI-dependent main-menu/workshop/social paths and Kinect hardware support remain explicitly unsupported or stubbed. Custom local game UI, diagnostics and unrelated campaign/deathmatch content are not wholesale deleted. TTT is outside this migration.
+- [ ] Full restart and in-game verification required for Q/C/TAB, text entry, undo, NPC spawning, weapon switching, model/hands and multiplayer net messages. Offline contracts are not a gameplay pass.
+
+### 2026-10-26 Lua 5.4 migration startup regression
+
+- [x] Read the 01:23-01:24 hl2sb session logs. Menu util.lua aborted because Angle was unavailable. Both game realms loaded hook.lua before util.lua, permanently capturing nil type helpers; extension registration and init.lua subsequently failed, including hands initialization and runtime entity class copies.
+- [x] Publish Angle alongside QAngle in the native constructor registration. Load util.lua and the original hook module once in native state initialization, before extension scans, with legacy dispatch aliases installed immediately. Remove the two unconditional map-entry hook reloads. Original GMod Lua and installed addons remain unchanged in this repair.
+- [x] Offline regression reproduces both old initialization failures and passes the corrected order using the actual util/hook/concommand/table modules, compatibility aliases, original hands Initialize and sky entity Think. Native translation units compile; client/server build passes in 40.705 seconds.
+- [x] Directly deployed client/server DLL and matching PDB files to D:/srceng/hl2sb/bin; all four SHA256 hashes match. Evidence: D:/tmp/lua_compare_20261025/deployment_startup_fix_20261026.json and startup_regression_20261026.lua. No game launch, commit, push or resulttxt.
+- [x] User confirmed the startup regression is fixed after testing. Broader migration verification remains tracked above.
+- [x] Removed the temporary viewmodel residue C++ instrumentation and manual Lua probe at the user's request. Retained unrelated diagnostics and runtime data outside the commit scope.

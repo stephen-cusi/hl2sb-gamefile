@@ -1,7 +1,8 @@
 -- Shared libraries are prepared by the native bootstrap before this entry.
 -- Keep original modules separate from fork-specific compatibility.
 
-include( "util.lua" )
+-- Native bootstrap loads util.lua before the original dispatch modules.
+include( "hl2sb/compat/core_modules.lua" )
 include( "util/sql.lua" )
 include( "drive/drive_base.lua" )
 include( "drive/drive_noclip.lua" )
@@ -16,7 +17,7 @@ if ( CLIENT and surface and vgui ) then
 	include( "vgui_base.lua" )
 	include( "vgui_extra.lua" )
 	include( "util/tooltips.lua" )
-	include( "notification.lua" )
+	require( "notification" )
 	include( "util/javascript_util.lua" )
 	include( "util/workshop_files.lua" )
 	include( "util/model_database.lua" )
