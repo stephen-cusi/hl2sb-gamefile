@@ -387,14 +387,4 @@ function SWEP:FireAnimationEvent( pos, ang, event, options )
 
 end
 
---[[---------------------------------------------------------
-	HL2SB port shim (2026-10-16).  The reference tool framework globs
-	SWEP.Folder (stool.lua:146: file.Find( SWEP.Folder .. "/stools/*.lua",
-	"LUA" )).  GMod stamps SWEP.Folder on every Lua weapon; this fork's
-	weapon loader stamps SWEP.__folder instead
-	(game/shared/lua/luamanager.cpp:3287 -> "weapons/<class>"), so the
-	field is seeded here and stool.lua stays verbatim.
------------------------------------------------------------]]
-SWEP.Folder = SWEP.__folder or "weapons/gmod_tool"
-
 include( "stool.lua" )

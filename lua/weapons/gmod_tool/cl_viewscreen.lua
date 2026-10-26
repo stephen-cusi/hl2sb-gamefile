@@ -15,27 +15,6 @@ surface.CreateFont( "GModToolScreen", {
 
 local function DrawScrollingText( text, y, texwide )
 
-	-- HL2SB port adaptation (2026-10-16): the reference relies on the engine
-	-- resolving a leading "#" localization token for BOTH calls it makes with
-	-- the string.  This fork's surface.GetTextSize does exactly that
-	-- (public/lua/vgui/LISurface.cpp binding: "A leading '#' is a
-	-- localization token: resolve the phrase first and measure the localized
-	-- text"), but surface.DrawText here is GMod's name for DrawPrintText,
-	-- which converts the ANSI string as-is (lua/includes/extensions/
-	-- gmod_surface.lua: surface.DrawText = surface.DrawPrintText).  Resolving
-	-- the token once, up front, keeps the measured width and the drawn string
-	-- identical instead of drawing a literal "#tool.rope.name".
-	-- Look the phrase up by its key WITHOUT the leading '#': the language module
-	-- resolves "tool.rope.name" from resource/localization/<lang>/tool.properties
-	-- (this tree ships en/zh-cn/zh-tw), while passing the '#tool.rope.name' form
-	-- makes it look for a key that includes the '#' and return the argument
-	-- unchanged - which is exactly the literal token the screen showed.
-	if ( string.sub( text, 1, 1 ) == "#" ) then
-		local sKey = string.sub( text, 2 )
-		local sPhrase = language.GetPhrase( sKey )
-		if ( sPhrase != nil and sPhrase != "" ) then text = sPhrase end
-	end
-
 	local w, h = surface.GetTextSize( text )
 	w = w + 64
 
@@ -64,15 +43,6 @@ end
 		screen's rendertarget texture.
 -----------------------------------------------------------]]
 function SWEP:RenderScreen()
-	-- HL2SB port adaptation (2026-10-16): GMod's global GetRenderTarget is an
-	-- engine binding there; this fork answers it from Lua on top of
-	-- render.CreateNamedRenderTarget (lua/includes/extensions/client/render.lua).
-	-- If the texture could not be created while this weapon script loaded
-	-- (material system not ready yet), retry on the first drawn frame
-	-- instead of pushing a NULL render target every frame.
-	if ( !RTTexture ) then RTTexture = GetRenderTarget( "GModToolgunScreen", TEX_SIZE, TEX_SIZE ) end
-	if ( !RTTexture ) then return end
-
 
 	-- Set the material of the screen to our render target
 	matScreen:SetTexture( "$basetexture", RTTexture )

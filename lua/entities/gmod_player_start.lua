@@ -46,8 +46,7 @@ function ENT:KeyValue( key, value )
 
 		for i = 15, 0, -1 do
 
-			-- HL2SB: GLua (5.1) still had math.pow; standard 5.4 does not.
-			local bit = 2 ^ i
+			local bit = math.pow( 2, i )
 
 			-- Quick bit if bitwise math to figure out if the spawnflags
 			-- represent red/blue/green or yellow.
