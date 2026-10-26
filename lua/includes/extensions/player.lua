@@ -5,16 +5,6 @@ local entity = FindMetaTable( "Entity" )
 -- Return if there's nothing to add on to
 if ( !meta ) then return end
 
--- HL2SB: capture the engine's own C++ __index (CBasePlayer___index) BEFORE the
--- override below replaces it, and chain to it first.  It reads the engine
--- fields AND the per-entity Lua field table - the same table the C++ __newindex
--- writes.  Without this chain, a custom field written to a player
--- (cod_c4's Owner.C4s, any addon's ply.Whatever) could never be read back:
--- the GetTable() fallback at the bottom only answers it when GetTable() really
--- is GetRefTable, and with the old GetClassname alias that call returned a
--- STRING whose metatable lookup answered nil for every key.
-local EngineIndex = meta.__index
-
 --
 -- Entity index accessor. This used to be done in engine, but it's done in Lua now because it's faster
 --
@@ -27,30 +17,17 @@ function meta:__index( key )
 	if ( val ~= nil ) then return val end
 
 	--
-	-- Engine fields + the per-entity Lua field table (C++ CBasePlayer___index)
-	--
-	if ( EngineIndex ~= nil ) then
-		local ok, engineVal = pcall( EngineIndex, self, key )
-		if ( ok and engineVal ~= nil ) then return engineVal end
-	end
-
-	--
 	-- Search the entity metatable
 	--
 	local entval = entity[key]
 	if ( entval ~= nil ) then return entval end
 
 	--
-	-- Search the entity table.  Guarded: GetTable is an alias the compat layer
-	-- installs, and if it is missing (or still aliased to a non-table source)
-	-- indexing through it must stay silent rather than abort the lookup.
+	-- Search the entity table
 	--
-	local getTable = entity.GetTable
-	if ( getTable ~= nil ) then
-		local ok, tab = pcall( getTable, self )
-		if ( ok and istable( tab ) ) then
-			return tab[ key ]
-		end
+	local tab = entity.GetTable( self )
+	if ( tab ) then
+		return tab[ key ]
 	end
 
 	return nil
@@ -206,12 +183,7 @@ function meta:AllowFlashlight( bAble ) self.m_bFlashlight = bAble end
 function meta:CanUseFlashlight() return self.m_bFlashlight == true end
 
 -- A function to set up player hands, so coders don't have to copy all the code everytime.
--- Call this in PlayerSpawn hook.
--- HL2SB (2026-09-27): GetHands is the ENGINE binding now (the replicated
--- m_hHands handle, GMod's reference semantics) -- the old Lua shim used to
--- shadow it on this very metatable and answer the always-nil m_hHandsEntity
--- field forever.  The base spawn chain calls this after PlayerSetModel
--- (gamemodes/base/gamemode/init.lua, included live by deathmatch's init.lua).
+-- Call this in PlayerSpawn hook
 function meta:SetupHands( spec_ply )
 
 	local oldhands = self:GetHands()
@@ -221,12 +193,8 @@ function meta:SetupHands( spec_ply )
 
 	local hands = ents.Create( "gmod_hands" )
 	if ( IsValid( hands ) ) then
-		-- This fork's ents.Create defers ENT:Initialize to :Spawn() (GMod
-		-- initializes at create time), so Spawn runs first and DoSetup's
-		-- AttachToViewmodel (SetMoveType MOVETYPE_NONE + EF_BONEMERGE onto the
-		-- viewmodel) is the final word either way.
-		hands:Spawn()
 		hands:DoSetup( self, spec_ply )
+		hands:Spawn()
 	end
 
 end
@@ -334,59 +302,4 @@ function player.GetBySteamID64( ID )
 	end
 
 	return false
-end
-------------------------------------------------------------------------------
--- HL2SB (2026-10-08): GMod-name conveniences the base gamemode calls.
---
---   StripWeapons    - GMod binding does not exist here; the engine spelling
---                     is RemoveAllItems( true ) (drop everything + hull).
---   Spectate        - alias of the engine's StartObserverMode binding.
---   UnSpectate      - alias of StopObserverMode.
---   Kill            - the engine only ships KillSilent; aliasing is a
---                     semantic shortcut (no suicide death notice) that keeps
---                     team-change paths from erroring.  Revisit when the
---                     death-notice chain gets its parity round.
-------------------------------------------------------------------------------
-
-if ( meta.StripWeapons == nil ) then
-	function meta:StripWeapons()
-		self:RemoveAllItems( true )
-	end
-end
-
-if ( meta.Spectate == nil ) then
-	meta.Spectate = meta.StartObserverMode
-end
-
-if ( meta.UnSpectate == nil ) then
-	meta.UnSpectate = meta.StopObserverMode
-end
-
-if ( meta.Kill == nil ) then
-	function meta:Kill()
-		self:KillSilent()
-	end
-end
-
-if ( meta.GetDrivingEntity == nil ) then
-	function meta:GetDrivingEntity()
-		return nil
-	end
-end
-
-if ( meta.IsDrivingEntity == nil ) then
-	function meta:IsDrivingEntity()
-		return false
-	end
-end
-
-if ( meta.GetDrivingMode == nil ) then
-	function meta:GetDrivingMode()
-		return 0
-	end
-end
-
-if ( meta.SetDrivingEntity == nil ) then
-	function meta:SetDrivingEntity( ent, modeid )
-	end
 end

@@ -7,7 +7,6 @@ include( "util/sql.lua" )
 include( "drive/drive_base.lua" )
 include( "drive/drive_noclip.lua" )
 include( "gmsave.lua" )
-include( "hl2sb/compat/weapon_registry.lua" )
 
 if ( CLIENT and surface and vgui ) then
 

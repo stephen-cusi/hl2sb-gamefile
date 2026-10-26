@@ -1,31 +1,45 @@
---========== Copyleft © 2010, Team Sandbox, Some rights reserved. ===========--
+
+AddCSLuaFile()
+
+local meta		= FindMetaTable( "Weapon" )
+local entity	= FindMetaTable( "Entity" )
+
+-- Return if there's nothing to add on to
+if ( !meta ) then return end
+
 --
--- Purpose: Extends the weapon type.
+-- Entity index accessor. This used to be done in engine, but it's done in Lua now because it's faster
 --
---===========================================================================--
+function meta:__index( key )
 
-_R.CBaseCombatWeapon.__WeaponSound = _R.CBaseCombatWeapon.WeaponSound
-local WeaponSound = _R.CBaseCombatWeapon.WeaponSound
-local gpGlobals = gpGlobals
+	--
+	-- Search the metatable. We can do this without dipping into C, so we do it first.
+	--
+	local val = meta[key]
+	if ( val != nil ) then return val end
 
--- HACKHACK: We override this here, because for some reason scripted weapons
--- don't properly play weapon sounds in singleplayer
-function _R.CBaseCombatWeapon.WeaponSound( self, sound_type, soundtime )
-  if ( _CLIENT ) then
-    return
-  end
-  
-  -- Only the player fires this way so we can cast
-  local pPlayer = self:GetOwner();
+	--
+	-- Search the entity metatable
+	--
+	local val = entity[key]
+	if ( val != nil ) then return val end
 
-  -- if ( gpGlobals.maxClients() > 1 ) then
-  --   WeaponSound( self, sound_type, soundtime );
-  -- else
-    local shootsound = self:GetShootSound( sound_type );
-    if ( ToBaseEntity( pPlayer ) ~= NULL ) then
-      pPlayer:EmitSound( shootsound ); 
-    else
-      self:EmitSound( shootsound ); 
-    end
-  -- end
+	--
+	-- Search the entity table
+	--
+	local tab = entity.GetTable( self )
+	if ( tab != nil ) then
+		local val = tab[ key ]
+		if ( val != nil ) then return val end
+	end
+
+	--
+	-- Legacy: sometimes use self.Owner to get the owner.. so lets carry on supporting that stupidness
+	-- This needs to be retired, just like self.Entity was.
+	--
+	if ( key == "Owner" ) then return entity.GetOwner( self ) end
+	
+	return nil
+	
 end
+

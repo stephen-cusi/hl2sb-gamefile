@@ -1,24 +1,3 @@
---[[----------------------------------------------------------------------------
-    Sandbox: Player 元表扩展
-
-    逐字移植 GMod gamemodes/sandbox/gamemode/player_extension.lua。
-    这是沙盒上限体系的**本体**：sbox_max<type> 的读取（CheckLimit）、
-    计数（GetCount / AddCount）、超限提示（LimitHit）全在这里，
-    GMod 的生成命令最后都落到 CheckLimit / AddCount 上。
-
-    工具枪（constraint/light/button 等）直接调 ply:CheckLimit/AddCount；
-    生成菜单的载具/道具/NPC/SENT 走 gamemode 层：
-        GM:PlayerSpawn<Type>   -> LimitReachedProcess -> ply:CheckLimit  (前置放行)
-        GM:PlayerSpawned<Type> -> ply:AddCount                            (后置计数)
-    见同目录 player.lua。
-
-    两处分叉适配（引擎 API 差异，行为等价）：
-      1. 本分叉的 Entity:CallOnRemove( id, fn ) 只回传 ( ent, id )，不转发
-         可变参数（GMod 的签名是 CallOnRemove( id, fn, ... )）。计数刷新
-         回调因此用闭包捕获 ply/countType，不依赖尾参转发。
-      2. CLIENT 分支的 GetNWInt 读取保持不变；计数是靠 SetNWInt 同步给
-         客户端的，生成菜单在客户端就能先拦一道。
-------------------------------------------------------------------------------]]
 
 local meta = FindMetaTable( "Player" )
 
@@ -139,22 +118,13 @@ function meta:AddCount( str, ent )
 		-- Update count (for client)
 		QueueUpdateCounts( self, str )
 
-		-- Update count on deletion.  GMod forwards ( ply, str, uid ) as trailing
-		-- CallOnRemove arguments; this fork's CallOnRemove answers ( ent, id )
-		-- only, so the same data rides in the closure.
-		local owner, countType = self, str
-		ent:CallOnRemove( "GetCountUpdate", function()
-			if ( !IsValid( owner ) ) then
-				owner = player.GetByUniqueID( key )
-			end
+		-- Update count on deletion
+		ent:CallOnRemove( "GetCountUpdate", function( ent, ply, countType, uid )
+			if ( !IsValid( ply ) ) then ply = player.GetByUniqueID( uid ) end
+			if ( !IsValid( ply ) ) then QueueUpdateCleanup( uid, countType ) return end
 
-			if ( !IsValid( owner ) ) then
-				QueueUpdateCleanup( key, countType )
-				return
-			end
-
-			QueueUpdateCounts( owner, countType )
-		end )
+			QueueUpdateCounts( ply, countType )
+		end, self, str, key )
 
 	end
 
@@ -175,27 +145,40 @@ end
 if ( SERVER ) then
 
 	function meta:AddCleanup( type, ent )
+
 		cleanup.Add( self, type, ent )
+
 	end
 
 	function meta:LimitHit( str )
+
+		-- Prevent spamming the same limit hit message within the same tick
+		if ( self.__lastLimitHit && self.__lastLimitHit == str && self.__lastLimitHitTime && engine.TickCount() == self.__lastLimitHitTime ) then return end
+
 		self:SendLua( string.format( "hook.Run('LimitHit',%q)", str ) )
+		self.__lastLimitHitTime = engine.TickCount()
+		self.__lastLimitHit = str
+
 	end
 
 	function meta:SendHint( str, delay )
+
 		self.Hints = self.Hints or {}
 		if ( self.Hints[ str ] ) then return end
 
 		self:SendLua( string.format( "hook.Run('AddHint',%q,%d)", str, delay ) )
 		self.Hints[ str ] = true
+
 	end
 
 	function meta:SuppressHint( str )
+
 		self.Hints = self.Hints or {}
 		if ( self.Hints[ str ] ) then return end
 
 		self:SendLua( string.format( "hook.Run('SuppressHint',%q)", str ) )
 		self.Hints[ str ] = true
+
 	end
 
 end

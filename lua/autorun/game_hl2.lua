@@ -1,47 +1,20 @@
---[[--------------------------------------------------------------------------
-	game_hl2.lua  --  GMod's lua/autorun/game_hl2.lua, ported.
-
-	This is the STOCK spawnmenu registry: the Half-Life 2 ammo / items / weapons
-	that GMod's Entities + Weapons tabs are built from.  The fork's Entities tab
-	reads list.Get( "SpawnableEntities" ) and the Weapons tab reads
-	weapons.GetList(), so the two ADD_* helpers below also route the weapons
-	through weapons.Register (the fork's CollectWeapons reads the WeaponList
-	weapons.Register fills, not the raw list).
-
-	Adaptations from GMod's file, all forced by this fork:
-	  * PrintName: GMod registers "#weapon_stunstick" style TOKENS.  The fork
-	    used to store readable names because nothing resolved the tokens; the
-	    menu now resolves them through language.GetPhrase against GMod's
-	    resource/localization/<lang>/entities.properties (the mod ships the
-	    files), so the GMod token form is back -- every stock name follows the
-	    UI language, like GMod.
-	  * language.FormatPhrase / localization packs do not exist here, so no
-	    "#spawnmenu.category.ammo_items" SubCategory -- everything lands in the
-	    "Half-Life 2" category, like GMod's without the language pack.
-	  * IsMounted( "hl1" / "portal" ) blocks kept: this fork answers false and
-	    they skip themselves.
-	  * `return NULL` in the dupe functions: NULL is nil here, which is what
-	    those failure paths need (a falsy, invalid entity).
-----------------------------------------------------------------------------]]
 
 local Category = ""
+local SubCategory = ""
 
--- the fork's list.lua spells GetForEdit/Get but not GMod's GetEntry
-local listGetEntry = list.GetEntry or function( listid, name )
-	local t = list.Get( listid )
-	if ( t ~= nil ) then return t[ name ] end
-	return nil
-end
-
+-- This is basically dupliacator.GenericDuplicatorFunction, but calls the relevant hooks
+-- Move this all to commands.lua?
 local function ADD_ITEM_DUPEFUNC( ply, data )
-	if ( IsValid( ply ) && gamemode.Call( "PlayerSpawnSENT", ply, data.Class ) == false ) then return NULL end
+	if ( IsValid( ply ) && !gamemode.Call( "PlayerSpawnSENT", ply, data.Class ) ) then return NULL end
 
 	local ent = ents.Create( data.Class )
-	if ( !IsValid( ent ) ) then return NULL end
+	if ( !IsValid( ent ) ) then return NULL end -- Must've hit edict limit
 
+	-- Remove certain fields we do not want dupes to manipulate
 	data.Model = nil
 
-	local entTable = listGetEntry( "SpawnableEntities", data.EntityName )
+	-- Restore the keyvalues
+	local entTable = list.GetEntry( "SpawnableEntities", data.EntityName )
 	if ( entTable && entTable.ClassName == data.Class && entTable.KeyValues ) then
 		for k, v in pairs( entTable.KeyValues ) do
 			ent:SetKeyValue( k, v )
@@ -51,14 +24,18 @@ local function ADD_ITEM_DUPEFUNC( ply, data )
 	duplicator.DoGeneric( ent, data )
 
 	ent:Spawn()
+
+	--duplicator.DoGenericPhysics( ent, ply, data )
+
 	ent:Activate()
 
 	ent.EntityName = data.EntityName
 
+	-- For hacked combine mines, they reset their skin
 	if ( data.Skin ) then ent:SetSkin( data.Skin ) end
 
 	if ( IsValid( ply ) ) then
-		if ( ent.SetCreator ) then ent:SetCreator( ply ) end
+		ent:SetCreator( ply )
 		gamemode.Call( "PlayerSpawnedSENT", ply, ent )
 	end
 
@@ -66,22 +43,26 @@ local function ADD_ITEM_DUPEFUNC( ply, data )
 end
 
 local function ADD_WEAPON_DUPEFUNC( ply, data )
-	if ( IsValid( ply ) && gamemode.Call( "PlayerSpawnSWEP", ply, data.Class, listGetEntry( "Weapon", data.Class ) ) == false ) then return NULL end
+	if ( IsValid( ply ) && !gamemode.Call( "PlayerSpawnSWEP", ply, data.Class, list.GetEntry( "Weapon", data.Class ) ) ) then return NULL end
 
 	local ent = ents.Create( data.Class )
-	if ( !IsValid( ent ) ) then return NULL end
+	if ( !IsValid( ent ) ) then return NULL end -- Must've hit edict limit
 
+	-- Remove certain fields we do not want dupes to manipulate
 	data.Model = nil
 
 	duplicator.DoGeneric( ent, data )
 
 	ent:Spawn()
+
+	--duplicator.DoGenericPhysics( ent, ply, data )
+
 	ent:Activate()
 
 	ent.EntityName = data.EntityName
 
 	if ( IsValid( ply ) ) then
-		if ( ent.SetCreator ) then ent:SetCreator( ply ) end
+		ent:SetCreator( ply )
 		gamemode.Call( "PlayerSpawnedSWEP", ply, ent )
 	end
 
@@ -90,14 +71,7 @@ end
 
 local function ADD_ITEM( class, offset, extras, classOverride )
 
-	local base = {
-		PrintName    = "#" .. ( classOverride or class ),
-		ClassName    = class,
-		Category     = Category,
-		NormalOffset = offset or 32,
-		DropToFloor  = true,
-		Author       = "VALVe",
-	}
+	local base = { PrintName = "#" .. ( classOverride or class ), ClassName = class, Category = Category, NormalOffset = offset or 32, DropToFloor = true, Author = "VALVe" }
 	list.Set( "SpawnableEntities", classOverride or class, table.Merge( base, extras or {} ) )
 	duplicator.RegisterEntityClass( class, ADD_ITEM_DUPEFUNC, "Data" )
 
@@ -105,50 +79,46 @@ end
 
 local function ADD_WEAPON( class )
 
-	local t = {
-		ClassName = class,
-		PrintName = "#" .. class,
-		Category  = Category,
-		Author    = "VALVe",
-		Spawnable = true,
-	}
-	list.Set( "Weapon", class, t )
-
-	-- weapons.Register fills WeaponList (what weapons.GetList arrays up) AND
-	-- the list.Get( "Weapon" ) registry the sandbox give path reads.
-	if ( weapons ~= nil and weapons.Register ~= nil ) then
-		weapons.Register( t, class )
-	end
-
+	list.Set( "Weapon", class, { ClassName = class, PrintName = "#" .. ( class ), Category = Category, Author = "VALVe", Spawnable = true } )
 	duplicator.RegisterEntityClass( class, ADD_WEAPON_DUPEFUNC, "Data" )
 
 end
 
+local function ADD_NPC_WEAPON( class )
+
+	list.Add( "NPCUsableWeapons", { class = class, title = "#" .. class, category = Category } )
+
+end
+
 Category = "Half-Life 2"
+SubCategory = "#spawnmenu.category.ammo_items"
 
 -- Ammo
-ADD_ITEM( "item_ammo_ar2", -8 )
-ADD_ITEM( "item_ammo_ar2_large", -8 )
+ADD_ITEM( "item_ammo_ar2", -8, { SubCategory = SubCategory } )
+ADD_ITEM( "item_ammo_ar2_large", -8, { SubCategory = SubCategory } )
 
-ADD_ITEM( "item_ammo_pistol", -4 )
-ADD_ITEM( "item_ammo_pistol_large", -4 )
+ADD_ITEM( "item_ammo_pistol", -4, { SubCategory = SubCategory } )
+ADD_ITEM( "item_ammo_pistol_large", -4, { SubCategory = SubCategory } )
 
-ADD_ITEM( "item_ammo_357", -4 )
-ADD_ITEM( "item_ammo_357_large", -4 )
+ADD_ITEM( "item_ammo_357", -4, { SubCategory = SubCategory } )
+ADD_ITEM( "item_ammo_357_large", -4, { SubCategory = SubCategory } )
 
-ADD_ITEM( "item_ammo_smg1", -2 )
-ADD_ITEM( "item_ammo_smg1_large", -2 )
+ADD_ITEM( "item_ammo_smg1", -2, { SubCategory = SubCategory } )
+ADD_ITEM( "item_ammo_smg1_large", -2, { SubCategory = SubCategory } )
 
-ADD_ITEM( "item_ammo_smg1_grenade", -10 )
-ADD_ITEM( "item_ammo_crossbow", -10 )
-ADD_ITEM( "item_box_buckshot", -10 )
-ADD_ITEM( "item_ammo_ar2_altfire", -2 )
-ADD_ITEM( "item_rpg_round", -10 )
+ADD_ITEM( "item_ammo_smg1_grenade", -10, { SubCategory = SubCategory } )
+ADD_ITEM( "item_ammo_crossbow", -10, { SubCategory = SubCategory } )
+ADD_ITEM( "item_box_buckshot", -10, { SubCategory = SubCategory } )
+ADD_ITEM( "item_ammo_ar2_altfire", -2, { SubCategory = SubCategory } )
+ADD_ITEM( "item_rpg_round", -10, { SubCategory = SubCategory } )
+
+-- Dynamic materials; gives player what he needs most (health, shotgun ammo, suit energy, etc)
+-- ADD_ITEM( "item_dynamic_resupply" )
 
 -- Items
-ADD_ITEM( "item_battery", -4 )
-ADD_ITEM( "item_healthkit", -8 )
-ADD_ITEM( "item_healthvial", -4 )
+ADD_ITEM( "item_battery", -4, { SubCategory = SubCategory } )
+ADD_ITEM( "item_healthkit", -8, { SubCategory = SubCategory } )
+ADD_ITEM( "item_healthvial", -4, { SubCategory = SubCategory } )
 ADD_ITEM( "item_suitcharger" )
 ADD_ITEM( "item_healthcharger" )
 ADD_ITEM( "item_suit", 0 )
@@ -161,7 +131,7 @@ ADD_ITEM( "grenade_helicopter", 4 )
 
 ADD_ITEM( "weapon_striderbuster" )
 
--- Weapons (GMod's game_hl2.lua order)
+-- Weapons
 ADD_WEAPON( "weapon_physcannon" )
 ADD_WEAPON( "weapon_stunstick" )
 ADD_WEAPON( "weapon_frag" )
@@ -175,18 +145,10 @@ ADD_WEAPON( "weapon_slam" )
 ADD_WEAPON( "weapon_smg1" )
 ADD_WEAPON( "weapon_ar2" )
 ADD_WEAPON( "weapon_357" )
+--ADD_WEAPON( "weapon_alyxgun" )
+--ADD_WEAPON( "weapon_annabelle" )
 
-Category = "#spawnmenu.category.other"
-ADD_WEAPON( "weapon_physgun" )
-
--- NPC Weapons (GMod's game_hl2.lua): the list the spawn menu's NPC-weapon picker
--- and the server-side validity check (commands.lua InternalSpawnNPC) both read.
--- GMod keys these by the weapon class; the title is the same "#class" token the
--- rest of the menu resolves through language.GetPhrase.
-local function ADD_NPC_WEAPON( class )
-	list.Add( "NPCUsableWeapons", { class = class, title = "#" .. class, category = "Half-Life 2" } )
-end
-
+-- NPC Weapons
 ADD_NPC_WEAPON( "weapon_pistol" )
 ADD_NPC_WEAPON( "weapon_357" )
 ADD_NPC_WEAPON( "weapon_smg1" )
@@ -198,3 +160,52 @@ ADD_NPC_WEAPON( "weapon_annabelle" )
 ADD_NPC_WEAPON( "weapon_crossbow" )
 ADD_NPC_WEAPON( "weapon_stunstick" )
 ADD_NPC_WEAPON( "weapon_crowbar" )
+
+if ( IsMounted( "hl1" ) or IsMounted( "hl1mp" ) ) then
+	Category = "Half-Life: Source"
+
+	ADD_WEAPON( "weapon_snark" )
+	ADD_WEAPON( "weapon_handgrenade" )
+	ADD_WEAPON( "weapon_mp5_hl1" )
+	ADD_WEAPON( "weapon_hornetgun" )
+	ADD_WEAPON( "weapon_satchel" )
+	ADD_WEAPON( "weapon_tripmine" )
+	ADD_WEAPON( "weapon_crossbow_hl1" )
+	ADD_WEAPON( "weapon_357_hl1" )
+	ADD_WEAPON( "weapon_rpg_hl1" )
+	ADD_WEAPON( "weapon_shotgun_hl1" )
+	ADD_WEAPON( "weapon_glock_hl1" )
+	ADD_WEAPON( "weapon_gauss" )
+	ADD_WEAPON( "weapon_egon" )
+	ADD_WEAPON( "weapon_crowbar_hl1" )
+
+	ADD_ITEM( "ammo_crossbow", 0 )
+	ADD_ITEM( "ammo_gaussclip", 0 )
+	ADD_ITEM( "ammo_glockclip", 0 )
+	ADD_ITEM( "ammo_mp5clip", 0 )
+	ADD_ITEM( "ammo_9mmbox", 0, { Information = "Gives ammo for the MP5 and Glock." } )
+	ADD_ITEM( "ammo_mp5grenades", 0 )
+	ADD_ITEM( "ammo_357", 0 )
+	ADD_ITEM( "ammo_rpgclip", 0 )
+	ADD_ITEM( "ammo_buckshot", 0 )
+
+	-- Can't be physgunned
+	--ADD_ITEM( "xen_plantlight", -16 )
+
+	ADD_NPC_WEAPON( "weapon_357_hl1" )
+	ADD_NPC_WEAPON( "weapon_mp5_hl1" )
+	ADD_NPC_WEAPON( "weapon_glock_hl1" )
+	ADD_NPC_WEAPON( "weapon_shotgun_hl1" )
+end
+
+if ( IsMounted( "portal" ) ) then
+	Category = "Portal"
+
+	ADD_ITEM( "prop_glados_core", 32, { KeyValues = { CoreType = 0, DelayBetweenLines = 0.4 }, PrintName = "#prop_glados_core_curiosity" } )
+	ADD_ITEM( "prop_glados_core", 32, { KeyValues = { CoreType = 1, DelayBetweenLines = 0.1 } }, "prop_glados_core_anger" )
+	ADD_ITEM( "prop_glados_core", 32, { KeyValues = { CoreType = 2, DelayBetweenLines = 0.1 } }, "prop_glados_core_crazy" )
+	ADD_ITEM( "prop_glados_core", 32, { KeyValues = { CoreType = 3 } }, "prop_glados_core_morality" )
+end
+
+Category = "#spawnmenu.category.other"
+ADD_WEAPON( "weapon_physgun" )
