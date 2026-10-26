@@ -2,6 +2,7 @@
 -- Load after native modules and before original Derma and addon registration.
 if ( rawget( _G, "HL2SB_CoreModulesReady" ) ) then return end
 _G.HL2SB_CoreModulesReady = true
+include( "hl2sb/compat/binary_modules.lua" )
 
 -- These globals are native in GMod. Keep them outside its math extension.
 if ( LerpVector == nil ) then

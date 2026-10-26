@@ -1,23 +1,6 @@
 
 -- We don't want this to run in menu state, and render.GetAmbientLightColor doesn't exist in menu state
 if ( !render || !render.GetAmbientLightColor ) then return end
---[[---------------------------------------------------------
-	Name: GetRenderTarget( name, width, height )
-	Desc: GMod's global helper -- returns the named render target
-	      texture, creating it the first time.  GMod's own doc comment
-	      in gmod_tool/cl_viewscreen.lua:7 spells the contract:
-	      "GetRenderTarget returns the texture if it exists, or creates
-	      it if it doesn't".  This fork's engine binding with the same
-	      create-or-find semantics is render.CreateNamedRenderTarget
-	      (game/client/lua/lrender.cpp), so the global is answered on
-	      top of it -- the reference file calls it unqualified.
------------------------------------------------------------]]
-function GetRenderTarget( name, wide, tall )
-
-	return render.CreateNamedRenderTarget( name, wide, tall )
-
-end
-
 
 --[[---------------------------------------------------------
   Short aliases for stencil constants
@@ -94,51 +77,6 @@ function render.SetColorMaterialIgnoreZ()
 	render.SetMaterial( matColorIgnoreZ )
 end
 
--- HL2SB (2026-10-16): render.DrawBox( pos, angles, mins, maxs, color ) -- the
--- wireframe-widget cube of the GMod bone tool (lua/entities/widget_base.lua
--- OverlayRender) needs it, and this engine binds no box primitive.  GMod's
--- render.DrawBox is a FILLED box (its separate render.DrawWireframeBox is the
--- outline one; the binding at client.dll 0x1800bddf0 submits a 36-vertex --
--- 12 triangles, 6 quads -- mesh through the currently bound material).
---
--- Implemented here as the six faces through render.DrawQuadEasy, each face
--- drawn twice (front + back normal) because DrawQuadEasy is single-sided and
--- the caller's material decides culling: the widget's cube must be visible
--- from inside as well as outside, and both callers bind an unlit color
--- material whose two-sidedness is not guaranteed.
-local function DrawBoxFace( center, normal, wide, tall, color )
-	render.DrawQuadEasy( center, normal, wide, tall, color, 0 )
-	render.DrawQuadEasy( center, -normal, wide, tall, color, 0 )
-end
-
-function render.DrawBox( position, angles, mins, maxs, color )
-
-	position = position or vector_origin
-	angles = angles or angle_zero
-	mins = mins or Vector( -1, -1, -1 )
-	maxs = maxs or Vector( 1, 1, 1 )
-	color = color or color_white
-
-	local fwd = angles:Forward()
-	local right = angles:Right()
-	local up = angles:Up()
-
-	local size = maxs - mins
-
-	-- +x / -x faces: normal along right; the plane spans fwd (size.y) by up (size.z)
-	DrawBoxFace( position + right * maxs.x, right, size.y, size.z, color )
-	DrawBoxFace( position + right * mins.x, right, size.y, size.z, color )
-
-	-- +y / -y faces: normal along fwd; the plane spans right (size.x) by up (size.z)
-	DrawBoxFace( position + fwd * maxs.y, fwd, size.x, size.z, color )
-	DrawBoxFace( position + fwd * mins.y, fwd, size.x, size.z, color )
-
-	-- +z / -z faces: normal along up; the plane spans right (size.x) by fwd (size.y)
-	DrawBoxFace( position + up * maxs.z, up, size.x, size.y, color )
-	DrawBoxFace( position + up * mins.z, up, size.x, size.y, color )
-
-end
-
 local mat_BlurX			= Material( "pp/blurx" )
 local mat_BlurY			= Material( "pp/blury" )
 local tex_Bloom1		= render.GetBloomTex1()
@@ -202,18 +140,6 @@ function cam.Start3D( pos, ang, fov, x, y, w, h, znear, zfar )
 
 end
 
--- HL2SB (2026-09-22): the shim shipped Start2D/Start3D but never their
--- closers.  halo.lua's PostDrawEffects pass calls cam.Start3D() then
--- cam.End3D(); with End3D missing every halo frame PUSHED a 3D view onto the
--- renderer's view stack and never popped it -- the stack leaked one level per
--- frame, the view matrices drifted, and rendering (animations, muzzle flashes,
--- tracers) went visibly wrong game-wide.
--- HL2SB (2026-10-20): the closers are engine functions now, and they are
--- TYPED (cam.End2D / cam.End3D, matching GMod's library): an unbalanced
--- closer only affects its own kind instead of swallowing the other kind's
--- view.  The old Lua wrappers folded both into cam.End, which is exactly the
--- cross-poisoning shape - do not bring them back.
-
 local matFSB = Material( "pp/motionblur" )
 
 function render.DrawTextureToScreen( tex )
@@ -267,12 +193,4 @@ function render.Model( tbl, ent )
 		ent:Remove()
 	end
 
-end
-
--- HL2SB (2026-10-02) GMod compat: capability query used by GMod's
--- lua/postprocess/toytown.lua (and stock addons) before drawing.  This fork
--- is DX9-class only, which already satisfies the pixel-shader 2.0 bar, so
--- the answer is always true.
-function render.SupportsPixelShaders_2_0()
-	return true
 end
