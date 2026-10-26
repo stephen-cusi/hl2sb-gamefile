@@ -1,4 +1,6 @@
 
+AddCSLuaFile()
+
 SWEP.ViewModel = Model( "models/weapons/c_arms_animations.mdl" )
 SWEP.WorldModel = Model( "models/MaxOfS2D/camera.mdl" )
 
