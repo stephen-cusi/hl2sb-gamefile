@@ -723,103 +723,10 @@ if ( EntityMeta.GetShootPos == nil and EntityMeta.EyePos != nil ) then
 	Msg( "[HL2SB]   Entity:GetShootPos shim added (EyePos alias, non-player entities)\n" )
 end
 
--- ---------------------------------------------------------------------------
--- HL2SB (2026-10-16): the bone-widget support set.
---
--- The GMod bone-manipulation tool (lua/autorun/properties/bone_manipulate.lua
--- + the ported lua/entities/widget_*.lua) needs five entity methods this fork
--- never bound, plus two methods whose absence would break the widget chain at
--- the first tick.  Reference behaviour is from the GMod win64 server.dll
--- (Ghidra, 2026-10-16):
---
---   Entity:SetLocalPos( vec )            server.dll 0x1801A0160 -- the local
---       origin setter; this fork binds the same setter as SetLocalOrigin.
---   Entity:FollowBone( ent, bone )       server.dll 0x18018C0D0 -- sets the
---       entity's move parent to `ent`, stores `bone` in the parent-attachment
---       byte and sets EF_FOLLOWBONE; the engine then keeps the child at the
---       parent's BONE transform.  This fork's parented transform reads
---       ATTACHMENTS (not bones) and no engine code ever dispatches a
---       CalcAbsolutePosition callback, so the bone transform is tracked here
---       instead: a per-frame ENT:Think re-seats the child on the bone.
---   Entity:BoneLength( bone )            server.dll FUN_18018A5D0/18018A380 --
---       the distance between the bone and its parent bone (0 when the parent
---       index is < 1, reference behaviour).
---   Entity:BoneHasFlag( bone, flag )     server.dll 0x18018A200 -- reads the
---       studio bone flags.  This fork binds no bone-flag reader, so the only
---       flag the widget layer asks for (BONE_USED_BY_VERTEX_LOD0, used to
---       skip non-deform bones) answers true and everything else false; an
---       engine binding is the clean fix, recorded in the session report.
---   Entity:EnableCustomCollisions()      server.dll 0x18018B740 -- reference:
---       AddSolidFlags( FSOLID_CUSTOMRAYTEST | FSOLID_CUSTOMBOXTEST ).
---   Entity:IsWorld() -- bound on the server realm only; the client answered
---       nil for a perfectly valid world entity.
---   Entity:ManipulateBone{Position,Angles,Scale} / GetManipulateBone*
---       exist on the CLIENT realm only (lc_baseanimating.cpp); the widget
---       drag calls them from the SERVER (widget_bonemanip's OnArrowDragged
---       returns early on CLIENT by design).  Until the engine grows the
---       server-side implementation (and bone-manip replication), the server
---       answers the defaults and accepts writes as no-ops -- the same shape
---       this tree already uses for ManipulateBoneAngles
---       (lbaseentity_shared.cpp "accepted and ignored"), so the drag path
---       degrades quietly instead of raising every tick.  A one-time message
---       names the gap.
---
--- The bone-manip widgets also read back the bone index with
--- Entity:GetParentAttachment(), which this fork already binds.
--- ---------------------------------------------------------------------------
-
--- HL2SB: the bone readers live on the CBaseAnimating metatable, not on the
--- CBaseEntity one FindMetaTable("Entity") answers -- an animating entity's
--- userdata resolves both (its __index chains through CBaseAnimating), but a
--- guard reading them off EntityMeta directly would always be nil.
-local BoneCapableMeta = FindMetaTable( "CBaseAnimating" )
-
+-- Legacy spelling alias; bone tracking and widget input are native.
 if ( EntityMeta.SetLocalPos == nil and EntityMeta.SetLocalOrigin != nil ) then
 	EntityMeta.SetLocalPos = EntityMeta.SetLocalOrigin
 	Msg( "[HL2SB]   Entity:SetLocalPos shim added (SetLocalOrigin alias)\n" )
-end
-
-if ( EntityMeta.BoneLength == nil and BoneCapableMeta ~= nil
-	and BoneCapableMeta.GetBonePosition ~= nil and BoneCapableMeta.GetBoneParent ~= nil ) then
-	function EntityMeta:BoneLength( bone )
-		-- Reference: the parent index the studio header carries; anything
-		-- below 1 answers 0 (server.dll FUN_18018A380).
-		local parent = self:GetBoneParent( bone )
-
-		if ( parent == nil or parent < 1 ) then return 0 end
-
-		local pos = self:GetBonePosition( bone )
-		local parentPos = self:GetBonePosition( parent )
-
-		if ( pos == nil or parentPos == nil ) then return 0 end
-
-		return pos:Distance( parentPos )
-	end
-
-	Msg( "[HL2SB]   Entity:BoneLength shim added (bone-to-parent distance)\n" )
-end
-
-if ( EntityMeta.BoneHasFlag == nil ) then
-	function EntityMeta:BoneHasFlag( bone, flag )
-		-- No bone-flag reader is bound on this fork (engine gap, reported).
-		-- The widget layer asks only for BONE_USED_BY_VERTEX_LOD0 to skip
-		-- non-deform bones; answering true for it keeps every deform bone
-		-- selectable, which is the observable GMod behaviour for the bones
-		-- that matter.
-		if ( flag == BONE_USED_BY_VERTEX_LOD0 or flag == 0x400 ) then return true end
-
-		return false
-	end
-
-	Msg( "[HL2SB]   Entity:BoneHasFlag shim added (LOD0 approximation, engine gap)\n" )
-end
-if ( EntityMeta.EnableCustomCollisions == nil and EntityMeta.AddSolidFlags != nil ) then
-	function EntityMeta:EnableCustomCollisions()
-		-- Reference: FSOLID_CUSTOMRAYTEST | FSOLID_CUSTOMBOXTEST.
-		self:AddSolidFlags( 3 )
-	end
-
-	Msg( "[HL2SB]   Entity:EnableCustomCollisions shim added (solid flags 3)\n" )
 end
 
 if ( EntityMeta.IsWorld == nil ) then
@@ -830,61 +737,6 @@ if ( EntityMeta.IsWorld == nil ) then
 	end
 
 	Msg( "[HL2SB]   Entity:IsWorld shim added (entindex 0), client realm\n" )
-end
-
-if ( EntityMeta.FollowBone == nil and EntityMeta.SetParent != nil
-	and BoneCapableMeta ~= nil and BoneCapableMeta.GetBonePosition ~= nil ) then
-	function EntityMeta:FollowBone( ent, bone )
-		if ( !IsValid( ent ) ) then return end
-
-		-- The reference stores -1 for a missing bone; GetParentAttachment
-		-- then answers that, and the widget's bone checks (<= 0) bail out.
-		bone = math.floor( tonumber( bone ) or -1 )
-
-		self:SetParent( ent, bone )
-
-		-- Re-seat this entity on the parent's bone every time it thinks.
-		-- One closure per entity, installed once (the field read/write go
-		-- through the entity's __index/__newindex: instance fields first).
-		if ( self.m_bHL2SBFollowsBone == nil ) then
-			self.m_bHL2SBFollowsBone = true
-
-			-- HL2SB: keep the script's own Think (widget_bone sets its size
-			-- from the parent's bone length there) and run the follow after
-			-- it, so the size and the seat stay in step.
-			local fnScriptThink = self.Think
-
-			self.Think = function( me, ... )
-				if ( fnScriptThink != nil ) then
-					fnScriptThink( me, ... )
-				end
-
-				local parent = me:GetParent()
-
-				if ( !IsValid( parent ) ) then return true end
-
-				local boneIndex = me:GetParentAttachment()
-
-				if ( boneIndex == nil or boneIndex < 0 ) then return true end
-
-				local pos, ang = parent:GetBonePosition( boneIndex )
-
-				if ( pos != nil ) then
-					me:SetPos( pos )
-				end
-
-				if ( ang != nil ) then
-					me:SetAngles( ang )
-				end
-
-				-- true = "a NextThink is already set": the engine re-arms
-				-- as soon as possible, which is what a bone follower needs.
-				return true
-			end
-		end
-	end
-
-	Msg( "[HL2SB]   Entity:FollowBone shim added (parent + per-tick bone follow)\n" )
 end
 
 -- ---------------------------------------------------------------------------
@@ -940,25 +792,6 @@ do
 		end
 
 		Msg( "[HL2SB]   runtime SENT classes -> entity module resync installed\n" )
-	end
-end
-
--- ---------------------------------------------------------------------------
--- GMod's player-side widget accessors (lua/includes/modules/widget.lua calls
--- them every PlayerTick on both realms).  Stored as instance fields, the same
--- shape the dormant gmod_compatibility/sh_init.lua used.
--- ---------------------------------------------------------------------------
-do
-	local PlayerMeta = FindMetaTable( "Player" )
-
-	if ( PlayerMeta != nil and PlayerMeta.GetHoveredWidget == nil ) then
-
-		function PlayerMeta.SetHoveredWidget( self, widget ) self.__hl2sbHoveredWidget = widget end
-		function PlayerMeta.GetHoveredWidget( self ) return self.__hl2sbHoveredWidget end
-		function PlayerMeta.SetPressedWidget( self, widget ) self.__hl2sbPressedWidget = widget end
-		function PlayerMeta.GetPressedWidget( self ) return self.__hl2sbPressedWidget end
-
-		Msg( "[HL2SB]   Player:Set/GetHoveredWidget + Set/GetPressedWidget shims added\n" )
 	end
 end
 
