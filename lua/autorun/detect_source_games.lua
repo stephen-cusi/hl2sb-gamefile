@@ -99,6 +99,13 @@ if ( not _G.HL2SB_DetectedGames ) then
     -- Msg is a game-realm global (lsrcinit.cpp), not a language builtin; the menu
     -- realm has no such name.  print is there in both.
     local say = Msg or print
+    -- hl2sb_dev_msgs (client.dll) gates the per-boot detection listing.
+    local cvDev = nil
+    if ( GetConVar ~= nil ) then
+        local ok, cv = pcall( GetConVar, "hl2sb_dev_msgs" )
+        if ( ok and cv ~= nil ) then cvDev = cv end
+    end
+    if ( cvDev == nil or cvDev:GetInt() == 0 ) then return end
     say( "[HL2SB] Detected " .. #_G.HL2SB_DetectedGames .. " sibling Source game(s)\n" )
     for _, g in ipairs( _G.HL2SB_DetectedGames ) do
         say( "  - " .. g.folder .. " (" .. g.name .. ", appid " .. g.appId .. ")\n" )
