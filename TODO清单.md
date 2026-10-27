@@ -413,7 +413,7 @@ hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移�
 #### Remaining migration work
 
 - [ ] Entity/Player/Weapon original extensions: reconcile original DT/NW proxy and callback ownership with the existing native instance tables; validate SetupHands initialization order and remove obsolete player/weapon shims only after their native consumers agree.
-- [ ] Widget original module: implement and validate whitelist/output trace behavior and CMoveData:KeyWasDown before removing the current hover workaround.
+- [x] Widget original module: native whitelist/output reuse, TestCollision dispatch and KeyWasDown implemented; original widget.lua restored. Offline original-script interaction passes; live editor acceptance remains below.
 - [ ] Native render extension helpers, complete original utility/team modules, base variable editor EditValue, sandbox spawn/cleanup contracts and weapon_base animation/AI contracts still require migration. Current original-files count does not include them as complete.
 - [ ] Four postprocess paths remain disabled: bokeh_dof needs resolved-depth/NeedsDepthPass support; dof needs a real DOFModeHack consumer; frame_blend needs GetRenderTargetEx/GetMoBlurTex1 and safe native texture initialization; super_dof needs render.Spin. Existing/new native evidence is indexed for reuse.
 - [ ] Coordinate lowercase file names with actual include paths and Linux/Android lookup behavior; do not rename VGUI files alone while original vgui_base.lua still names uppercase paths.
@@ -457,3 +457,213 @@ hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移�
 - [x] Offline regression executes the actual C++ main-view/input bindings and unchanged original PropertiesClick/GetHovered path. It reproduces a miss with the old offscreen-view alias, opens the property menu with stable main-view coordinates, and preserves ordinary-UI/non-right-button gates. This is a dependency-level reproduction; the user's actual VGUI click target and live renderer remain unverified.
 - [x] Changed C++ translation units compile; client/server build passes in35.437 seconds. Matching DLL/PDB deployed directly with four SHA256 matches, recorded at D:/tmp/context_tooltip_20261026/deployment.json. No game launch, follow-up commit/push or resulttxt.
 - [x] User confirmed the context-menu and hover information fixes on2026-10-26 and authorized submission. Broader migration work remains tracked separately.
+
+### 2026-10-26 Bone widget crash and native interaction
+
+- [x] Matched the10:02 full dump to deployed modules. Removed the single-matrix SetupBones output buffer that overwrote the server stack. Parent bone cache now covers vertex bones for followers; invalid indices/model and bone0 are handled.
+- [x] Corrected transform callback ordering after ordinary absolute composition; balanced Lua stack, per-entity-chain recursion guard, main-thread gate and component fallback. Added effects transport width and follower/descendant invalidation.
+- [x] Restored byte-identical original widget.lua with native trace whitelist/output reuse, TestCollision, KeyWasDown, widget EHANDLE state, BoneLength and client removal lifecycle. Removed superseded widget shims. Seven original widget/property files verified against GMod.
+- [x] Actual-body offline regressions pass, including original widget input, nested traces,10000 absent callbacks, errors and parent bone boundaries. Changed TUs compile; scoped header rebuild succeeded in24.614s. Direct client/server DLL+PDB deployed and four SHA256 pairs verified.
+- [x] Reused reverse indices and archived the two missing current native callback bodies. Evidence, exact source/reverse locations, tests and deployment: D:/tmp/widget_review_20261026/REVIEW.md. No game launch, commit/push or resulttxt.
+- [ ] User full restart and live acceptance: immediate bone points without moving the NPC, correct animated positions, click/release opens axes, move/rotate/scale, removal and map reload. Offline fixture isolates engine broadphase/rendering and does not verify this step.
+
+
+### 2026-10-26 Prop context properties: fire and missing options
+
+- [x] Read current session logs and original property filters. Remove already works and is outside the defect scope. Reused GLM's unarchived matching server functions, checked the existing evidence index, and archived the captures with version hashes. Captured the missing current client class getter with Ghidra.
+- [x] Native physics props now retain their canonical client map class independently of the inherited prediction datamap. This makes the unchanged original Keep Upright and Gravity exact-class filters work. Data-less server props keep their original identity instead of a temporary override conversion. Model/state/permission restrictions remain in the original Lua.
+- [x] Removed the obsolete flammable-propdata gate from native prop Ignite. Both Entity and Animating bindings now require duration, accept optional radius, and pass the reference NPC-only/designer flags. Failed flame creation cannot dereference a missing light-effect entity.
+- [x] Seven property/module Lua files are byte-identical to the installed GMod originals and were not edited. Actual native constructor/class getter reproduces the old missing-option path and restores original menu filters. Extracted actual fire bindings, base fire implementation and prop override pass original Ignite/Extinguish receive callbacks for100 cycles, radius/default/required-argument cases, NPC ignition veto and failed flame creation. Renderer, transport and physics services are isolated in this offline test.
+- [x] All four modified C++ translation units compile successfully.
+- [x] Final client/server build succeeded in39.082s; client/server DLL and matching PDB directly deployed to D:/srceng/hl2sb/bin with four SHA256 matches.
+- [ ] User live verification after full restart: ordinary and no-propdata props offer Keep Upright/Gravity, ignition shows fire and switches to Extinguish, toggles/Keep Upright act correctly, and existing Remove remains usable. No game launch, commit/push or resulttxt in this round.
+
+Evidence: D:/tmp/context_properties_fix_20261026.
+
+
+### 2026-10-26 Context properties live regression: cursor, fire and upright
+
+- [x] Read the22:44-22:47 session logs first. Keep Upright fails at original keep_upright.lua:41 because native PhysObj:GetAngles is absent. Previous menu-filter tests did not exercise the full constraint creation or the real native extinguish body.
+- [x] Added native PhysObj:GetAngles with one Angle return, using GetPosition(NULL,angles), and retained original property/constraint Lua unchanged. Full original constraint.lua and Keep Upright Receive paths complete25 create/remove cycles with angle/body/limit assignment and cleanup state in an isolated native-services fixture. Actual physics solver behavior remains a live check.
+- [x] Replaced the inherited inline Extinguish flag-only implementation with the native flame-removal lifecycle: remove attached flame, clear its effect handle and clear FL_ONFIRE. Existing virtual slot is unchanged. The original Ignite/Extinguish Receive callbacks now exercise the extracted real Extinguish implementation for100 cycles and verify all created flame objects are removed, including sound/lifecycle service boundaries.
+- [x] Current GMod CAI_BaseNPC/CNPC_Citizen/CNPC_CombineS vtables share AllowedToIgnite=true; corrected our base default from false to true. Explicit subtype overrides and the existing virtual ignition gate remain. Added four current server functions to the archive/index. An older named Ghidra project did not match current bytes and was discarded; the actual copied binary was imported fresh.
+- [x] Unified native property-click and world-hover rays with the same screen projection and stable player view. Removed the click-only extra aspect-ratio FOV scaling; offscreen renders no longer change the world-hover projection. Actual native input callback plus original PropertiesClick/GetHovered and Keep Upright/Gravity filters opens the correct menu away from the center crosshair in the regression fixture; ordinary UI/capture/non-right-button gates remain.
+- [x] Modified C++ translation units compile. Removed628 stale consuming game objects for the two changed server headers using include closure and mtime, preserving engine/library outputs. Client/server build succeeded in2m22.183s. No class layout or virtual-slot changes.
+- [x] Matching client/server DLL and PDB directly deployed to D:/srceng/hl2sb/bin with four SHA256 pairs verified.
+- [ ] User live verification after full restart: hover/right-click away from crosshair, ignite/extinguish ordinary props and citizens/NPCs, Keep Upright create/remove and actual physical response. Offline tests isolate VGUI hit testing, network transport, renderer and solver; they are not a live gameplay pass.
+
+Evidence: D:/tmp/context_properties_round2_20261026. Original Lua unchanged. No game launch, commit/push or resulttxt.
+
+
+### 2026-10-27 Removal crash and entity-drive follow-up
+
+- [x] User confirms extinguishing now works. Read the23:14 session and matching crash dump: service-side PlayerThink dereferenced null game rules, with entity_remove targeting index0. Deployed fault instructions match the dump. Original GMod excludes world from IsValid and protects world/player/core entities from Lua Remove; corrected these native contracts instead of adding a crash-site null guard. Original properties/remove.lua remains unchanged.
+- [x] Separated MoveData move angles from entity angles. Movement hooks now preserve script edits to move data instead of overwriting them from an unchanged command snapshot; only SetupMove receives a user command. FinishMove takeover retains previous-predicted-origin bookkeeping.
+- [x] Local driven entities now enter the existing prediction history and release only prediction owned by the drive state. Target changes and controller removal clean up that ownership. Removing a driven entity/player stops the drive while its handles are still valid.
+- [x] Routed entity-driving animation to the original GM:PlayerDriveAnimate. Native Player:SetRenderAngles/GetRenderAngles now use animation-owned orientation on both realms; server no longer falls through to the legacy absolute-angle shim. The server accessor is nonvirtual; no layout or vtable change.
+- [x] Changed translation units compile. Cleared41 stale game objects consuming the server HL2MP header, then client/server build succeeded in26.787s. Client/server DLL and PDB directly deployed to D:/srceng/hl2sb/bin; four SHA256 pairs match deployment.json.
+- [x] Stopped adding/running native tests when the user requested immediate deployment. Original-Lua/native dependency checks already completed before that request; they do not establish live VGUI, rendering, network or physics acceptance.
+- [ ] User full restart and verification: remove ordinary/Keep Upright props, right-click empty world, drive forward/up/rotate/zoom, E exit, remove driven target, death/respawn and visible remote-control pose. The reported remote camera distance and jitter still require live confirmation.
+
+Evidence: D:/tmp/remove_drive_20261026. No game launch, commit/push or resulttxt.
+
+
+### 2026-10-27 Native extension migration: Util and Render
+
+- [x] Restored byte-identical installed GMod extensions/util.lua and extensions/client/render.lua. Platform-specific binary-module paths remain separately in hl2sb/compat/binary_modules.lua; original player_auth owns GetUserGroups.
+- [x] Corrected native TableToKeyValues root handling, scalar conversion, recursive-table rejection, escape propagation and error cleanup. Added native ordered Key/Value conversion, case preservation independent of the engine key symbol pool, duplicate-key handling and TimerCycle in milliseconds. Existing UI-only converters remain separate.
+- [x] Added native global GetRenderTarget with the reference format/depth/flags and no-value failure path. Added render.DrawBox using native oriented mesh utilities/current material and hardware-backed SupportsPixelShaders_2_0. The current-target render.GetRenderTarget remains distinct.
+- [x] Reused existing render-target evidence and archived ten newly captured current GMod functions with index entries. Native TUs compile; client/server build succeeded in23.461s. Directly deployed DLL/PDB to D:/srceng/hl2sb/bin with four SHA256 matches. No headers changed, so no object cleanup was needed.
+- [x] Stopped additional native tests on user instruction and deployed immediately. Earlier dependency checks are not live renderer/network/engine validation.
+- [ ] User full restart and live test: menu/spawnlists, saving/loading KeyValues-backed settings, tool screen/render targets, widget boxes and ordinary HUD/material drawing.
+- [ ] Entity/Player/Weapon extensions and TTT team/observer contracts remain pending. Their original-file replacement requires native instance/data-table/lifecycle work; this batch does not mark them complete.
+
+Evidence: D:/tmp/native_extensions_20261027. No game launch, commit/push or resulttxt.
+
+
+### 2026-10-27 Original Entity helpers and Sandbox counters
+
+- [x] User confirmed the Util/Render batch works. Submitted only that batch as engine614106f6 and contentfb403e6; unrelated viewmodel edits, runtime data and thirdparty remain outside the commits. No push.
+- [x] Restored the unchanged Entity helper section from current GMod at hl2sb/original/entity_helpers.lua: GetVar/SetVar, creator/constraint helpers, removal callbacks and PhysWake. The original section uses the actual instance table and forwards callback arguments; removed the private native GetVar/SetVar accessors and the old weak-table callback shim. Existing obsolete private-variable lookup helpers remain for the separate metatable migration; no new values are written there by these APIs.
+- [x] Added native ProtectedCall with required function, trailing argument forwarding, error reporting, discarded callback results and one success boolean. Current GMod body captured with Ghidra and archived/indexed. This is also used by original duplicator code.
+- [x] Restored byte-identical current Sandbox player_extension.lua, including original removal-count callback arguments and same-tick limit-notification deduplication. Existing engine TickCount is available in both realms.
+- [x] Changed native TUs compile; client/server build succeeded in19.900s. Matching DLL/PDB directly deployed to D:/srceng/hl2sb/bin and four SHA256 pairs verified. No headers changed and no object cleanup needed. No native tests run for this batch, per user instruction.
+- [ ] User full restart/live test: spawn/delete/undo props and constraints, watch object counts fall on removal, cleanup, duplicator copy/paste and addon removal callbacks.
+- [ ] Full Entity data tables, metatable ownership, Player/Weapon extensions and TTT team/observer contracts remain pending. This batch restores original helper behavior, not all Entity extensions.
+
+Evidence: D:/tmp/entity_helpers_20261027. No game launch, second-batch commit/push or resulttxt.
+
+
+### 2026-10-27 World tooltip line overlap
+
+- [x] User narrowed this round to text overlap; balloon/TNT investigation stopped without changes. Deferred the three independent content migrations and restored only those own edits from hash-verified pre-edit snapshots.
+- [x] Original draw.DrawText expects adjacent empty matches from string.gmatch to advance lines. Lua5.4 suppressed those matches. Captured actual installed GMod string iterator with Ghidra, archived/indexed it, and restored its empty-match progression in lua/src/lstrlib.c. Original draw/worldtip Lua unchanged.
+- [x] Single TU compilation and lua_shared build succeeded. Directly deployed lua_shared.dll and matching PDB to D:/srceng/bin with SHA256 verification. No headers changed, native tests, game launch, commit/push or resulttxt.
+- [ ] Full restart and user verification of multiline TNT/other world tooltips. Balloon/TNT behavior remains unresolved and outside this repair.
+
+
+### 2026-10-27 Original stock content and logical-entity validity
+
+- [x] Read the latest 02:35-02:52 session logs before editing. Two Lua failures were recorded: Keep Upright asserted that its constraint system was valid, and the wheel tool indexed a boolean returned by constraint.Motor. No fresh hook iteration exception appeared in this session. Sound precache and a missing env_explosion kill icon warning remain separate observations.
+- [x] Restored byte-identical installed GMod lua/autorun/game_hl2.lua, weapon_fists.lua at the existing shared.lua loader path, and Sandbox camera_flash.lua at the existing effect loader path. Current spawnmenu consumes list Weapon directly, and the required damage, force-scale and dynamic-light APIs are present. Original Lua unchanged.
+- [x] Corrected native server Entity:IsValid and Remove to compare with the actual world entity instead of rejecting every entity with edict index zero. CLogicalEntity has no network edict, so the old test rejected phys_constraintsystem and phys_hinge, causing both recorded constraint failures. Client handling remains unchanged. Original constraint/tool Lua unchanged.
+- [x] Reused archived current IsValid and removal bodies. Captured and archived current IsWorld separately to verify its distinct contract; retained its existing index-based behavior rather than conflating it with IsValid. No public headers changed.
+- [x] Single TU compilation passed; client/server build succeeded in33.308s. Directly deployed matching DLL/PDB to D:/srceng/hl2sb/bin and verified four SHA256 pairs. No native tests, game launch, commit/push or resulttxt.
+- [ ] User full restart/live verification: stock spawnmenu weapons/items, fist draw/attack/combo/holster, camera effects, Keep Upright create/remove/undo and wheel attachment/control. Native source review and compilation do not establish live physics/rendering acceptance.
+- [ ] Balloon/TNT repair remains paused by user instruction. Full Entity/Player/Weapon extensions and TTT remain tracked as pending; this batch does not complete those migrations.
+
+Evidence: D:/tmp/original_content_resume_20261027.
+
+
+### 2026-10-27 Original Player extension and migration inventory
+
+- [x] Read the latest 03:03-03:13 session logs first. No Lua traceback/assertion/type error is recorded; the prior constraint-system and wheel errors did not recur. User confirms balloon rope/attachment and delayed/key-triggered TNT now work. The shared IsValid correction explains why native logical constraints were previously rejected; the TNT causal chain was not separately captured.
+- [x] Restored byte-identical installed lua/includes/extensions/player.lua. Removed the custom pcall-based engine lookup, guarded table lookup, reordered SetupHands and obsolete method fallbacks. Native StripWeapons/Kill/Spectate/drive bindings already exist and remain authoritative; original client Player extension is unchanged.
+- [x] Native startup now publishes missing public CBaseAnimating methods onto Player while preserving its own methods and metamethods. Original Player lookup can reach animation APIs without calling the legacy native __index first. Entity:GetTable accepts nil/stale entities with no values, validates the entity family before handle access, and retains the actual per-instance table for live entities.
+- [x] Apply scripted anim type defaults once, before script setup; do not replace state configured between Create and Spawn. This preserves the original SetupHands order (DoSetup then Spawn), including viewmodel parenting/MOVETYPE_NONE. Reused the archived native GetTable, StripWeapons and scripted Spawn evidence; no new binary behavior was inferred from method names.
+- [x] Three changed translation units compile; client/server final build succeeded in20.006s. Matching DLL/PDB directly deployed to D:/srceng/hl2sb/bin with four SHA256 pairs verified. No public headers changed, no object cleanup/native tests/game launch/commit/push/resulttxt.
+- [x] Created D:/srceng/GMod迁移清单.md with current original-file comparisons, moved-path mappings, completed batches, pending native contracts, deferred CEF/Steam APIs and live verification limits. Full Entity/DT, Weapon legacy base and TTT remain incomplete.
+- [ ] User full restart/live verification: hands visible after spawn/respawn, normal weapon/animation/model methods, custom Player fields, context/player model UI, freeze/godmode and ordinary prop/constraint creation/removal/undo.
+- [ ] Remaining log warnings tracked separately: base_anim fallback registration, debug shaders, transient SkyPaint proxy registration and gmod_dynamite kill icon. They are not marked fixed or treated as Lua exceptions.
+
+Evidence: D:/tmp/player_extension_migration_20261027.
+
+
+### 2026-10-27 Native generic-for traversal compatibility
+
+- [x] User reports the Player batch appears normal. Read fresh03:35-03:36 logs: one client invalid-key error from next inside original hook.lua:95. The exact hook name/callback/table mutation is not captured by this traceback; no claim that a particular addon caused it.
+- [x] Reused the current matching GMod Lua runtime project and captured public lua_next, internal table traversal and VM native-next preparation. They preserve invalid-key errors for public next while specialized native loops track a private slot cursor. Captures archived/indexed with installed binary SHA256.
+- [x] User pointed to opglua. Read D:/tmp/glua/glua-src/src/lj_tab.c, lj_parse.c, vm_x64.dasc, vm_arm64.dasc and lib_base.c; their native iterator/table/nil-control check and positional scan agree with the binary. Reference tree remains read-only.
+- [x] Adapted the existing Lua5.4 interpreter: one/two-result native next loops starting with nil control and no close object use a private per-loop cursor. Callback removal/rehashing no longer requires finding the previous key again. Ordinary next, pairs return identity, custom iterators, nonnil starting keys and real close objects retain the existing call path. This does not promise stable/exhaustive traversal when arbitrary insertions rehash a table, nor identical LuaJIT hash order.
+- [x] Original hook.lua content matches except line endings; Player extension matches byte-for-byte. Neither Lua file was edited. No snapshot/pcall wrapper, global invalid-key suppression, table-layout change or header modification.
+- [x] Changed C translation units compile; lua_shared build succeeded in3.584s. Direct DLL/PDB deployment to D:/srceng/bin; both SHA256 pairs match. No native tests, game launch, commit/push or resulttxt. This is a runtime prerequisite batch; Weapon/Entity/TTT migration remains pending.
+- [ ] User full restart/live verification: map entry and reload, hands/weapon change, hook-driven addon and menu behavior; confirm the reported invalid-key traceback does not recur. Compilation is not a live reproduction or acceptance result.
+
+Evidence: D:/tmp/next_iteration_20261027. opglua sources referenced read-only and recorded by path/hash.
+
+
+### 2026-10-27 Original Weapon extension and registry migration
+
+- [x] Read latest03:52-03:56 logs first. No Lua exception or invalid-next traceback is recorded; user also reports the iteration error appears gone. Existing shader/base_anim/SkyPaint warnings remain separate and are not marked fixed.
+- [x] Restored byte-identical installed includes/extensions/weapon.lua. Native animation methods are published onto Weapon while preserving its own methods/metamethods, using the same inheritance bridge already verified for Player. Removed the old server-only WeaponSound Lua override; native WeaponSound already has prediction/owner recipient filtering and the correct optional sound-time argument.
+- [x] Native weapon loading now creates fresh class definitions with Primary/Secondary tables and metadata; it does not copy default base methods over a derived class before its declared Base can be resolved. Registration and instance binding use unchanged original weapons.Register/Get/GetStored. Native factories are created only when GetStored contains the exact definition, including registration vetoes and ClassNameOverride.
+- [x] The post-load native callback now invokes both original scripted_ents.OnLoaded and weapons.OnLoaded, allowing original baseclass.Set to populate weapon base tables. It previously only called the entity module despite its comment naming both.
+- [x] Retired five obsolete Lua files: the singular weapon module, its sync shim, and the three old weapon_hl2mpbase_scriptedweapon scripts. Removed the shim include. No installed addon Lua references to these old APIs/base names were found. Native C++ factory/class remains; only the obsolete Lua implementation was removed.
+- [x] Weapon/Entity aliases are seeded on the instance before setup; removed duplicate early SetupDataTables dispatch. The existing accessor factory is installed before the single remaining setup call and Initialize follows it. This does not complete original InstallDataTable/typed-DT migration; the customized weapon_base remains a separate pending batch.
+- [x] Reused archived native WeaponSound and SetupDataTables evidence; original weapons/Weapon Lua directly specifies registration, inheritance and lookup contracts. No new binary-function implementation was introduced and no headers changed. Source snapshots/reference hashes/diffs and logs are retained in this batch evidence directory.
+- [x] Three changed translation units compile; final client/server build succeeded in19.744s. DLL/PDB directly deployed to D:/srceng/hl2sb/bin; four SHA256 pairs match. No native tests, game launch, commit/push or resulttxt.
+- [ ] User full restart/live verification: spawnmenu weapon categories and giving weapons, fists/toolgun/camera, addon primary/secondary/reload/holster, draw/sound/owner fields, declared base methods and camera/network variables. Compilation and static dependency checks do not establish live prediction/network/render acceptance.
+
+Evidence: D:/tmp/weapon_registry_migration_20261027. Migration inventory updated at D:/srceng/GMod迁移清单.md.
+
+
+### 2026-10-27 Original weapon UI/AI mapping and texture shim removal
+
+- [x] Previous migration submission completed: engine10f42bd25 and content731b4e9 pushed to box-experiment. Other-session viewmodel/finger panels and runtime/addon files were excluded. Those commits also include the earlier approved Util/Render batch in pushed history.
+- [x] Read the latest logs first; no recorded Lua exception or invalid-next error. Existing base_anim/shader/SkyPaint warnings remain separate. Latest Weapon registry batch has not been claimed fully live-verified merely because the logs are quiet.
+- [x] Restored byte-identical current weapon_base/cl_init.lua and ai_translations.lua. This removes custom material-icon/pcall fallbacks, restores original translated Purpose/Instructions and passes world-model draw flags. All123 ACT names used by original AI mapping are registered by the native activity enum provider. AI file restoration alone does not prove native NPC weapon behavior is complete.
+- [x] Added native surface.GetTextureID using DrawGetTextureId first, create/bind only on miss, with original binding flags; surface.SetTexture is native. Reused indexed surface.GetTextureID.c and surface.SetTexture.c rather than repeating prior captures.
+- [x] Removed the gmod_surface.lua texture lookup wrapper, SetTexture alias and private __textureNames cache. Native weapon-selection numeric icons now use the real surface texture dictionary. String/Material icon paths remain in the existing HUD integration. Other surface shims remain pending and were not silently marked migrated.
+- [x] Two changed C++ translation units compile; final client/server build succeeded in22.659s. Matching DLL/PDB directly deployed to D:/srceng/hl2sb/bin with four SHA256 matches. No public headers changed, native tests, game launch, commit/push or resulttxt this batch.
+- [ ] User full restart/live verification: weapon selection icons and information bubble, translated Purpose/Instructions, tool-screen textures, menus after map reload and weapon world-model rendering. Original GetTextureID caches through the native dictionary; actual renderer and level lifecycle require live confirmation.
+- [ ] weapon_base/shared.lua, sh_anim.lua and server init.lua remain pending. Server NPC burst/rest custom callbacks and their native readers need separate behavior verification before removing those Lua adapters. DT/NetworkVar and CallOnClient are also still pending.
+
+Evidence: D:/tmp/weapon_ui_migration_20261027. Local migration list updated at D:/srceng/GMod迁移清单.md.
+
+
+### 2026-10-27 Original weapon server base and NPC result contracts
+
+- [x] Checked latest logs before changes; no Lua traceback, invalid-key, assertion or bad-argument errors recorded. No live acceptance inferred beyond the user's prior reports.
+- [x] Restored byte-identical installed weapon_base/init.lua. Deleted its added GetNPCBurstSettings/GetNPCRestTimes adapters, redundant capability fallbacks and flat legacy defaults. Native capability enums and capitalized weapon-info readers already exist. Original accessors remain exactly as supplied.
+- [x] Located current CWeaponSWEP RTTI primary vtable and slots340-344, captured the five native getters and grouped burst/rest helpers with Ghidra. Native behavior accepts the whole numeric group, otherwise uses burst1/1/base fire rate and rest0.3/0.6. Removed per-field success/clamps from our readers and preserve the caller's full Lua stack on all outcomes. No destructive lua_pop(gettop) remains in these five methods.
+- [x] Archived/indexed all seven functions with installed server binary hash under D:/tmp/dec/server.dll. Old unrelated version-specific callback-name mappings were not used as current address evidence. Reference raw slots and bodies retained in this batch directory.
+- [x] Changed translation unit compiles; client/server build succeeded in46.933s. DLL/PDB directly deployed to D:/srceng/hl2sb/bin, four SHA256 pairs match. Previous weapon UI/texture changes are retained. No headers/layout/virtual slots changed and no object cleanup required.
+- [x] Checked compat/includes/base tree for replacement NPC wrapper definitions; none remain. Original init.lua is unchanged. No native tests, game launch, commit/push or resulttxt.
+- [ ] User full restart/live test: NPC-equipped addon weapons, firing bursts and rest timing, custom numeric callbacks and ordinary player weapons. The actual NPC regulator/network/prediction behavior remains unverified in-game.
+- [ ] weapon_base/shared.lua and sh_anim.lua, hold-type storage, complete Entity/typed DT and CallOnClient remain pending. This batch does not claim complete SWEP parity.
+
+Evidence: D:/tmp/weapon_npc_migration_20261027. Migration list updated at D:/srceng/GMod迁移清单.md.
+
+
+### 2026-10-27 Original hold-type mapping and native state
+
+- [x] Read fresh07:51-07:53 logs first: no Lua exception recorded. User explicitly says NPC firing is not smooth and later clarifies only native weapons are installed/tested. This is NOT accepted as a passing NPC cadence test and is not attributable to the prior scripted-weapon callbacks. Native AI shot-regulator/cadence remains an unresolved report.
+- [x] Restored byte-identical original weapon_base/sh_anim.lua. Removed custom HoldType family/fallback/m_acttable builders and Lua SetHoldType/GetHoldType from the still-partial shared.lua. Original AI/player activity maps now own translation. No compat/includes hold-type shadowing definitions remain.
+- [x] Reused archived binding and captured current native scripted setter, constructor, application/copy helper and change-detection fragment. Scripted setter ignores empty names, retains the original case and80-byte bounded storage; application dispatches original SetWeaponHoldType on state change. Base/SMG1 native slot380 is empty; retained that stock behavior instead of inventing a native-weapon pose setter. New captures are archived/indexed with installed server SHA256.
+- [x] Added native scripted hold-type network string and nonvirtual accessors; client/server update original mapping on initialization and before active/animation work. GetHoldType reads native state rather than a mutable class field. No virtual slot inserted. Per-instance update guard prevents mapping recursion. Native weapons retain their existing activity-based getter and empty setter.
+- [x] Changed C++ translation units compile. Header consumer closure contains9 source files; removed10 stale game objects by mtime, preserving unrelated engine/library outputs. Client/server final build succeeded in21.731s. Direct DLL/PDB deployment to hl2sb/bin verified four SHA256 pairs. No native tests, game launch, commit/push or resulttxt.
+- [ ] User full restart/live verification: toolgun/fists/camera and addon hold types in third person, idle/walk/crouch/jump/swim/fire/reload, late-joining remote players and runtime hold-type changes. Native solver/network/render acceptance not established by compilation.
+- [ ] Native NPC firing continuity remains pending. Full shared.lua replacement, DT/NetworkVar, CallOnClient, TTT and entity registry migration remain pending. This batch does not claim to fix native NPC shooting.
+
+Evidence: D:/tmp/weapon_holdtype_migration_20261027; scoped cleanup and deployment manifests included.
+
+- [x] Final original-file dependency audit found ACT_MP_SWIM_IDLE absent. Reused NativeEnumerations.Current20261026.c for the reference name; added native name-based private activity registration without shifting the fork's shared enum IDs. All35 names in original sh_anim.lua now have native providers. Its numeric ID is fork-specific, so exact numeric GMod activity-ID parity is not claimed. Added lsrcinit.cpp single-TU compilation, rebuilt and redeployed final DLL/PDB with four verified hashes (21.731s).
+
+
+## 2026-10-27 持枪动画与自定义世界模型回归修复
+
+- 修复上轮原版 sh_anim.lua 迁移遗漏的枚举算术前提：19 个持枪家族按 idle/walk/run/crouch/crouchwalk/attack/reload/jump/swim idle/swim 连续排列；删除只覆盖普通姿态的临时结果转换。保留全部 273 个活动名称和 Portal 之后的枚举编号。原版 sh_anim.lua、插件 Lua 均未改。
+- Entity 和 Animating 两个 DrawModel 绑定现在让脚本武器走虚绘制入口及原版 DrawWorldModel；嵌套 self:DrawModel 由已有绘制作用域回落模型，避免绕过 WElements。复用已归档的原生 Entity.DrawModel 行为，并核对当前安装版 C_WeaponSWEP 绘制入口。
+- 删除初始化/装备时引擎往实例表写 Owner 的旧代码。原版 Weapon.__index 的 Owner 回退现在由原生 Entity.GetOwner 按实际武器持有者回答；插件明确写入的字段保留。动画事件接收者改为武器 userdata。
+- 客户端 SetPos/SetAngles 使用原生父子感知的绝对变换，GetAngles 返回绝对角度；移除直接相减欧拉角的错误路径。相关 GetOwner/SetPos/SetAngles/GetAngles 及绘制参考已归档到 D:/tmp/dec/client.dll，并更新 index。
+- ai_activity.h 按包含闭包和 mtime 精确清理 1212 个 game 对象，未全清 build，未删除引擎/库对象；逐项回验这些对象已重编。随后源文件改动仅做增量构建。单 TU 编译及 client/server 构建通过，DLL/PDB 直接部署并核对四对 SHA256，见 deployment.json。
+- 未启动游戏、未运行 native test、未提交推送、未生成 resulttxt。可视结果待用户完整重启后验证：AWP 落地与镜子/第三人称的自定义世界模型、工具枪蹲伏、各持枪姿态。编译和静态核对不代表游戏内显示已确认。原生 NPC 射击连续性仍是独立未解决项。
+
+证据：D:/tmp/weapon_animation_regression_20261027。
+
+
+## 2026-10-27 AWP 世界模型零体积修复
+
+- 用户确认姿态修复有效，但 AWP 世界模型仍只有影子。本次日志无相关 Lua 异常。
+- 定位到原生 Matrix 绑定：Matrix() 默认零矩阵，Scale 只返回新矩阵而不修改 self。插件原样执行 Matrix():Scale 后把原矩阵交给 RenderMultiply，可见骨骼基向量全部归零。
+- 核对当前 GMod 原生构造器/Scale 与三层数学辅助函数：无参数/nil 构造单位矩阵；Scale 原地后乘缩放矩阵，零返回。修正 public/lua/mathlib/lvmatrix.cpp 两处，插件和原版 Lua 零改动，无头文件修改、无对象清理。
+- 单 TU 和 client/server 增量构建通过，直接复制 DLL/PDB 并核对四对 SHA256，见 D:/tmp/awp_matrix_20261027/deployment.json。未启动游戏、未运行 native test、未提交推送；实际世界显示待用户完整重启复测。
+
+
+## 2026-10-27 AWP 自定义世界模型与物理位置脱节
+
+- 用户确认模型已可见，但物理枪拖动时只有影子移动，释放后才重新对齐；攻击也看不到模型弹飞。
+- 新日志无对应 Lua 异常。插件 DrawWorldModel 通过武器 GetBoneMatrix 读右手世界位置；隐藏基础模型后，旧绘制入口不再保证基础模型骨骼刷新。GetBoneMatrix 按已归档原生行为仅读取缓存，不能改成全局强制 SetupBones。
+- 在客户端脚本武器外层 DrawWorldModel 回调前调用已有 SetupBones，保持嵌套模型绘制回落和原版插件不变。只改 c_basecombatweapon.cpp，无头文件变化、无对象清理。单 TU 和增量构建通过，直接部署 DLL/PDB 并核四对 SHA256。
+- 未启动游戏、未运行 native test、未提交推送。待用户完整重启验证拖动/旋转/受击时的模型同步；现有服务端武器 TraceAttack/OnTakeDamage/VPhysicsTakeDamage 施力链保留，不能仅凭视觉停留判断物理力没执行。日志另有零伤害力提示，尚无触发武器或实体关联证据，本轮不猜测修改全局施力逻辑。
+- 参考核查已归档并更新 index，证据 D:/tmp/awp_physics_follow_20261027。

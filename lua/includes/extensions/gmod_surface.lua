@@ -66,34 +66,7 @@ end
 -- Textures
 -- ===========================================================================
 
-if ( surface.SetTexture == nil ) then
-	surface.SetTexture = surface.DrawSetTexture
-end
-
-surface.__textureNames = surface.__textureNames or {}
-
-if ( surface.GetTextureID == nil ) then
-	function surface.GetTextureID( path )
-		local id = surface.CreateNewTextureID()
-		path = tostring( path )
-		-- DrawSetTextureFile( id, path, hardwareFilter, forceReload )
-		surface.DrawSetTextureFile( id, path, 1, false )
-		surface.__textureNames[id] = path
-		return id
-	end
-else
-	-- Wrap whatever already provides GetTextureID so the weapon-selection HUD
-	-- can resolve the classic NUMBER form of SWEP.WepSelectIcon
-	-- (SWEP.WepSelectIcon = surface.GetTextureID("killicon/x")) back to a
-	-- material name.  C++ reads this table in
-	-- weapon_hl2mpbase_scriptedweapon.cpp GetWepSelectIcon().
-	local _GetTextureID = surface.GetTextureID
-	function surface.GetTextureID( path )
-		local id = _GetTextureID( path )
-		surface.__textureNames[id] = tostring( path )
-		return id
-	end
-end
+-- Texture lookup and binding are native; no Lua name cache is required.
 
 -- ===========================================================================
 -- Text placement and text drawing -- GMod's names for the ISurface ones.

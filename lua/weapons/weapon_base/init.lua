@@ -1,4 +1,4 @@
--- Server-side entry for the weapon_base SWEP.
+
 AddCSLuaFile( "cl_init.lua" )
 AddCSLuaFile( "ai_translations.lua" )
 AddCSLuaFile( "sh_anim.lua" )
@@ -8,25 +8,9 @@ include( "ai_translations.lua" )
 include( "sh_anim.lua" )
 include( "shared.lua" )
 
--- HL2SB: the engine reads the flat lowercase keys (weight / autoswitchto /
--- autoswitchfrom) in InitScriptedWeapon, but prefers the GMod-cased fields
--- when they exist (Slot/Weight/AutoSwitchTo/AutoSwitchFrom).  Keep the flat
--- defaults for anything that does not override them.
-SWEP.weight			= SWEP.weight or 5
-SWEP.autoswitchto	= 1
-SWEP.autoswitchfrom	= 1
-
 SWEP.Weight			= 5		-- Decides whether we should switch from/to this
 SWEP.AutoSwitchTo	= true	-- Auto switch to if we pick it up
 SWEP.AutoSwitchFrom	= true	-- Auto switch from if you pick up a better weapon
-
--- NPC capability bits.  The values match this engine's
--- bits_CAP_WEAPON_RANGE_ATTACK1 family (basecombatcharacter.h); the AI's
--- CapabilitiesGet() consumer tests those exact bits.
-if ( CAP_WEAPON_RANGE_ATTACK1 == nil ) then CAP_WEAPON_RANGE_ATTACK1 = 0x2000 end
-if ( CAP_WEAPON_RANGE_ATTACK2 == nil ) then CAP_WEAPON_RANGE_ATTACK2 = 0x4000 end
-if ( CAP_WEAPON_MELEE_ATTACK1 == nil ) then CAP_WEAPON_MELEE_ATTACK1 = 0x0800 end
-if ( CAP_WEAPON_MELEE_ATTACK2 == nil ) then CAP_WEAPON_MELEE_ATTACK2 = 0x1000 end
 
 --[[---------------------------------------------------------
 	Name: OnRestore
@@ -66,6 +50,7 @@ end
 function SWEP:EquipAmmo( newOwner )
 end
 
+
 --[[---------------------------------------------------------
 	Name: OnDrop
 	Desc: Weapon was dropped
@@ -102,7 +87,7 @@ function SWEP:NPCShoot_Secondary( shootPos, shootDir )
 end
 
 --[[---------------------------------------------------------
-	Name: NPCShoot_Primary
+	Name: NPCShoot_Secondary
 	Desc: NPC tried to fire primary attack
 -----------------------------------------------------------]]
 function SWEP:NPCShoot_Primary( shootPos, shootDir )
@@ -117,22 +102,3 @@ AccessorFunc( SWEP, "fNPCMaxBurst",		"NPCMaxBurst" )
 AccessorFunc( SWEP, "fNPCFireRate",		"NPCFireRate" )
 AccessorFunc( SWEP, "fNPCMinRestTime",	"NPCMinRest" )
 AccessorFunc( SWEP, "fNPCMaxRestTime",	"NPCMaxRest" )
-
---[[---------------------------------------------------------
-	Name: GetNPCBurstSettings
-	Desc: How an NPC uses this weapon: min/max bullets per burst and the
-		delay between shots (seconds).  Backs the AccessorFunc fields
-		above; unset fields come back nil and the engine keeps its own
-		defaults for them.
------------------------------------------------------------]]
-function SWEP:GetNPCBurstSettings()
-	return self:GetNPCMinBurst(), self:GetNPCMaxBurst(), self:GetNPCFireRate()
-end
-
---[[---------------------------------------------------------
-	Name: GetNPCRestTimes
-	Desc: Min/max time an NPC rests between bursts (seconds).
------------------------------------------------------------]]
-function SWEP:GetNPCRestTimes()
-	return self:GetNPCMinRest(), self:GetNPCMaxRest()
-end

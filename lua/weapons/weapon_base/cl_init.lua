@@ -1,31 +1,24 @@
--- Client-side entry for the weapon_base SWEP.
+
 include( "ai_translations.lua" )
 include( "sh_anim.lua" )
 include( "shared.lua" )
 
-SWEP.Slot				= 0					-- Slot in the weapon selection menu
-SWEP.SlotPos			= 10				-- Position in the slot
-SWEP.bucket				= SWEP.bucket or 0	-- HL2SB engine key (read from the flat table)
-SWEP.bucket_position	= SWEP.bucket_position or 10
-SWEP.DrawAmmo			= true				-- Should draw the default HL2 ammo counter
-SWEP.DrawCrosshair		= true				-- Should draw the default crosshair
-SWEP.DrawWeaponInfoBox	= true				-- Should draw the weapon info box
-SWEP.BounceWeaponIcon	= true				-- Should the weapon icon bounce?
-SWEP.SwayScale			= 1.0				-- The scale of the viewmodel sway
-SWEP.BobScale			= 1.0				-- The scale of the viewmodel bob
+SWEP.Slot				= 0						-- Slot in the weapon selection menu
+SWEP.SlotPos			= 10					-- Position in the slot
+SWEP.DrawAmmo			= true					-- Should draw the default HL2 ammo counter
+SWEP.DrawCrosshair		= true					-- Should draw the default crosshair
+SWEP.DrawWeaponInfoBox	= true					-- Should draw the weapon info box
+SWEP.BounceWeaponIcon	= true					-- Should the weapon icon bounce?
+SWEP.SwayScale			= 1.0					-- The scale of the viewmodel sway
+SWEP.BobScale			= 1.0					-- The scale of the viewmodel bob
 
--- RENDERGROUP_OPAQUE comes from the compatibility enumerations when present;
--- assigning nil is harmless, so no guard needed beyond that.
 SWEP.RenderGroup		= RENDERGROUP_OPAQUE
 
 -- Override this in your SWEP to set the icon in the weapon selection
-SWEP.WepSelectIcon		= 0
-SWEP.SpeechBubbleLid	= 0
+SWEP.WepSelectIcon		= surface.GetTextureID( "weapons/swep" )
 
-if ( surface.GetTextureID ~= nil ) then
-	pcall( function() SWEP.WepSelectIcon = surface.GetTextureID( "weapons/swep" ) end )
-	pcall( function() SWEP.SpeechBubbleLid = surface.GetTextureID( "gui/speech_lid" ) end )
-end
+-- This is the corner of the speech bubble
+SWEP.SpeechBubbleLid	= surface.GetTextureID( "gui/speech_lid" )
 
 --[[---------------------------------------------------------
 	You can draw to the HUD here - it will only draw when
@@ -40,15 +33,9 @@ end
 -----------------------------------------------------------]]
 function SWEP:DrawWeaponSelection( x, y, wide, tall, alpha )
 
-	-- Set us up the texture.  WepSelectIcon is either a texture id (number)
-	-- or a Material() userdata; each has its own surface binding
-	-- (SetTexture / SetMaterial).
+	-- Set us up the texture
 	surface.SetDrawColor( 255, 255, 255, alpha )
-	if ( type( self.WepSelectIcon ) == "number" ) then
-		surface.SetTexture( self.WepSelectIcon )
-	else
-		pcall( surface.SetMaterial, self.WepSelectIcon )
-	end
+	surface.SetTexture( self.WepSelectIcon )
 
 	-- Lets get a sin wave to make it bounce
 	local fsin = 0
@@ -76,9 +63,6 @@ end
 function SWEP:PrintWeaponInfo( x, y, alpha )
 
 	if ( self.DrawWeaponInfoBox == false ) then return end
-	-- markup / draw / language are GMod modules; this base still draws the
-	-- bubble when one of them is missing, just without the parsed text.
-	if ( markup == nil or draw == nil or draw.RoundedBox == nil ) then return end
 
 	if ( self.InfoMarkup == nil ) then
 		local title_color = "<color=230,230,230,255>"
@@ -87,8 +71,8 @@ function SWEP:PrintWeaponInfo( x, y, alpha )
 		local str = "<font=HudSelectionText>"
 		if ( self.Author != "" ) then str = str .. title_color .. "#entityinfo.author</color>\t" .. text_color .. self.Author .. "</color>\n" end
 		if ( self.Contact != "" ) then str = str .. title_color .. "#entityinfo.contact</color>\t" .. text_color .. self.Contact .. "</color>\n\n" end
-		if ( self.Purpose != "" ) then str = str .. title_color .. "#entityinfo.purpose</color>\n" .. text_color .. self.Purpose .. "</color>\n\n" end
-		if ( self.Instructions != "" ) then str = str .. title_color .. "#entityinfo.instructions</color>\n" .. text_color .. self.Instructions .. "</color>\n" end
+		if ( self.Purpose != "" ) then str = str .. title_color .. "#entityinfo.purpose</color>\n" .. text_color .. language.GetPhrase( self.Purpose ) .. "</color>\n\n" end
+		if ( self.Instructions != "" ) then str = str .. title_color .. "#entityinfo.instructions</color>\n" .. text_color .. language.GetPhrase( self.Instructions ) .. "</color>\n" end
 		str = str .. "</font>"
 
 		self.InfoMarkup = markup.Parse( str, 250 )
@@ -146,7 +130,6 @@ end
 --[[---------------------------------------------------------
 	Name: TranslateFOV
 	Desc: Allows the weapon to translate the player's FOV (clientside)
-	      (the engine dispatches this one directly)
 -----------------------------------------------------------]]
 function SWEP:TranslateFOV( current_fov )
 
@@ -160,7 +143,7 @@ end
 -----------------------------------------------------------]]
 function SWEP:DrawWorldModel( flags )
 
-	self:DrawModel()
+	self:DrawModel( flags )
 
 end
 
@@ -170,7 +153,7 @@ end
 -----------------------------------------------------------]]
 function SWEP:DrawWorldModelTranslucent( flags )
 
-	self:DrawModel()
+	self:DrawModel( flags )
 
 end
 
@@ -190,6 +173,12 @@ end
 		 returning anything but a vector indicates that you want the default action
 -----------------------------------------------------------]]
 function SWEP:GetTracerOrigin()
+
+--[[
+	local ply = self:GetOwner()
+	local pos = ply:EyePos() + ply:EyeAngles():Right() * -5
+	return pos
+--]]
 
 end
 

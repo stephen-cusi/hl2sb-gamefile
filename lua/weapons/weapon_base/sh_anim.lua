@@ -1,102 +1,86 @@
 
---[[--------------------------------------------------------------------
-    sh_anim.lua  --  GMod parity layer for the hold type system.
-
-    GMod's sh_anim.lua builds self.ActivityTranslate (ACT_MP_* generic ->
-    ACT_HL2MP_*_<holdtype>) and the GMod engine translates activities
-    through it.  HL2SB's engine instead consumes the weapon's m_acttable
-    directly (CBaseCombatWeapon::ActivityOverride), and shared.lua's
-    SetHoldType() builds that table.
-
-    This file keeps GMod's entry points working:
-      * SetWeaponHoldType( t )  routes to SetHoldType( t ) in shared.lua
-        (called at runtime, so include order does not matter).
-      * TranslateActivity( act ) answers from m_acttable, and also fills
-        self.ActivityTranslate for scripts that read GMod's table.
-----------------------------------------------------------------------]]
-
 local ActIndex = {
-	[ "pistol" ]	= "PISTOL",
-	[ "smg" ]		= "SMG1",
-	[ "grenade" ]	= "GRENADE",
-	[ "ar2" ]		= "AR2",
-	[ "shotgun" ]	= "SHOTGUN",
-	[ "rpg" ]		= "RPG",
-	[ "physgun" ]	= "PHYSGUN",
-	[ "crossbow" ]	= "CROSSBOW",
-	[ "melee" ]		= "MELEE",
-	[ "slam" ]		= "SLAM",
-	[ "normal" ]	= nil,
-	[ "fist" ]		= "FIST",
-	[ "melee2" ]	= "MELEE2",
-	[ "passive" ]	= "PASSIVE",
-	[ "knife" ]		= "KNIFE",
-	[ "duel" ]		= "DUEL",
-	[ "camera" ]	= "CAMERA",
-	[ "magic" ]		= "MAGIC",
-	[ "revolver" ]	= "REVOLVER",
+	[ "pistol" ]		= ACT_HL2MP_IDLE_PISTOL,
+	[ "smg" ]			= ACT_HL2MP_IDLE_SMG1,
+	[ "grenade" ]		= ACT_HL2MP_IDLE_GRENADE,
+	[ "ar2" ]			= ACT_HL2MP_IDLE_AR2,
+	[ "shotgun" ]		= ACT_HL2MP_IDLE_SHOTGUN,
+	[ "rpg" ]			= ACT_HL2MP_IDLE_RPG,
+	[ "physgun" ]		= ACT_HL2MP_IDLE_PHYSGUN,
+	[ "crossbow" ]		= ACT_HL2MP_IDLE_CROSSBOW,
+	[ "melee" ]			= ACT_HL2MP_IDLE_MELEE,
+	[ "slam" ]			= ACT_HL2MP_IDLE_SLAM,
+	[ "normal" ]		= ACT_HL2MP_IDLE,
+	[ "fist" ]			= ACT_HL2MP_IDLE_FIST,
+	[ "melee2" ]		= ACT_HL2MP_IDLE_MELEE2,
+	[ "passive" ]		= ACT_HL2MP_IDLE_PASSIVE,
+	[ "knife" ]			= ACT_HL2MP_IDLE_KNIFE,
+	[ "duel" ]			= ACT_HL2MP_IDLE_DUEL,
+	[ "camera" ]		= ACT_HL2MP_IDLE_CAMERA,
+	[ "magic" ]			= ACT_HL2MP_IDLE_MAGIC,
+	[ "revolver" ]		= ACT_HL2MP_IDLE_REVOLVER
 }
 
 --[[---------------------------------------------------------
 	Name: SetWeaponHoldType
-	Desc: GMod's entry point.  The m_acttable build lives in
-	      shared.lua:SetHoldType -- that is the table this engine reads.
+	Desc: Sets up the translation table, to translate from normal
+			standing idle pose, to holding weapon pose.
 -----------------------------------------------------------]]
 function SWEP:SetWeaponHoldType( t )
 
-	t = string.lower( t or "normal" )
+	t = string.lower( t )
+	local index = ActIndex[ t ]
 
-	-- Fill GMod's ActivityTranslate for scripts that read it.  The engine
-	-- itself does not consume this table; nothing here can break drawing.
-	self.ActivityTranslate = {}
-
-	local suffix = ActIndex[ t ]
-	if ( suffix ~= nil and ACT_HL2MP_IDLE ~= nil ) then
-		local index = _G[ "ACT_HL2MP_IDLE_" .. suffix ]
-		local T = function( key, value )
-			if ( key ~= nil and value ~= nil ) then
-				self.ActivityTranslate[ key ] = value
-			end
-		end
-
-		T( ACT_MP_STAND_IDLE,					index )
-		T( ACT_MP_WALK,							index and index + 1 )
-		T( ACT_MP_RUN,							index and index + 2 )
-		T( ACT_MP_CROUCH_IDLE,					index and index + 3 )
-		T( ACT_MP_CROUCHWALK,					index and index + 4 )
-		T( ACT_MP_ATTACK_STAND_PRIMARYFIRE,		index and index + 5 )
-		T( ACT_MP_ATTACK_CROUCH_PRIMARYFIRE,	index and index + 5 )
-		T( ACT_MP_RELOAD_STAND,					index and index + 6 )
-		T( ACT_MP_RELOAD_CROUCH,				index and index + 6 )
-		T( ACT_MP_JUMP,							index and index + 7 )
-		T( ACT_RANGE_ATTACK1,					index and index + 8 )
-		T( ACT_MP_SWIM_IDLE,					index and index + 8 )
-		T( ACT_MP_SWIM,							index and index + 9 )
-
-		-- "normal" jump animation doesn't exist
-		if ( t == "normal" ) then
-			T( ACT_MP_JUMP, ACT_HL2MP_JUMP_SLAM )
-		end
+	if ( index == nil ) then
+		Msg( "SWEP:SetWeaponHoldType - ActIndex[ \"" .. t .. "\" ] isn't set! (defaulting to normal)\n" )
+		t = "normal"
+		index = ActIndex[ t ]
 	end
 
-	return self:SetHoldType( t )
+	self.ActivityTranslate = {}
+	self.ActivityTranslate[ ACT_MP_STAND_IDLE ]					= index
+	self.ActivityTranslate[ ACT_MP_WALK ]						= index + 1
+	self.ActivityTranslate[ ACT_MP_RUN ]						= index + 2
+	self.ActivityTranslate[ ACT_MP_CROUCH_IDLE ]				= index + 3
+	self.ActivityTranslate[ ACT_MP_CROUCHWALK ]					= index + 4
+	self.ActivityTranslate[ ACT_MP_ATTACK_STAND_PRIMARYFIRE ]	= index + 5
+	self.ActivityTranslate[ ACT_MP_ATTACK_CROUCH_PRIMARYFIRE ]	= index + 5
+	self.ActivityTranslate[ ACT_MP_RELOAD_STAND ]				= index + 6
+	self.ActivityTranslate[ ACT_MP_RELOAD_CROUCH ]				= index + 6
+	self.ActivityTranslate[ ACT_MP_JUMP ]						= index + 7
+	self.ActivityTranslate[ ACT_RANGE_ATTACK1 ]					= index + 8 -- Is this right? Is this for NPCs?
+	self.ActivityTranslate[ ACT_MP_SWIM_IDLE ]					= index + 8
+	self.ActivityTranslate[ ACT_MP_SWIM ]						= index + 9
+
+	-- "normal" jump animation doesn't exist
+	if ( t == "normal" ) then
+		self.ActivityTranslate[ ACT_MP_JUMP ] = ACT_HL2MP_JUMP_SLAM
+	end
+
+	self:SetupWeaponHoldTypeForAI( t )
 
 end
 
+-- Default hold pos is the pistol
+SWEP:SetWeaponHoldType( "pistol" )
+
 --[[---------------------------------------------------------
-	Name: TranslateActivity
-	Desc: Answers from the engine-facing m_acttable so scripts that ask
-	      (and the AI path) get the same translation the engine uses.
+	Name: weapon:TranslateActivity()
+	Desc: Translate a player's Activity into a weapon's activity
+		 	So for example, ACT_HL2MP_RUN becomes ACT_HL2MP_RUN_PISTOL
+			Depending on how you want the player to be holding the weapon
 -----------------------------------------------------------]]
 function SWEP:TranslateActivity( act )
 
-	local rows = self.m_acttable
-	if ( rows ) then
-		for i = 1, #rows do
-			if ( rows[ i ][ 1 ] == act ) then
-				return rows[ i ][ 2 ]
-			end
+	if ( self:GetOwner():IsNPC() ) then
+		if ( self.ActivityTranslateAI[ act ] ) then
+			return self.ActivityTranslateAI[ act ]
 		end
+		return -1
+	end
+
+	if ( self.ActivityTranslate[ act ] != nil ) then
+		return self.ActivityTranslate[ act ]
 	end
 
 	return -1
