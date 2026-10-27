@@ -667,3 +667,133 @@ Evidence: D:/tmp/weapon_holdtype_migration_20261027; scoped cleanup and deployme
 - 在客户端脚本武器外层 DrawWorldModel 回调前调用已有 SetupBones，保持嵌套模型绘制回落和原版插件不变。只改 c_basecombatweapon.cpp，无头文件变化、无对象清理。单 TU 和增量构建通过，直接部署 DLL/PDB 并核四对 SHA256。
 - 未启动游戏、未运行 native test、未提交推送。待用户完整重启验证拖动/旋转/受击时的模型同步；现有服务端武器 TraceAttack/OnTakeDamage/VPhysicsTakeDamage 施力链保留，不能仅凭视觉停留判断物理力没执行。日志另有零伤害力提示，尚无触发武器或实体关联证据，本轮不猜测修改全局施力逻辑。
 - 参考核查已归档并更新 index，证据 D:/tmp/awp_physics_follow_20261027。
+
+
+## 2026-10-27 原版 util 入口与共享查询
+
+- 开始前读取新版 agentmd 与 redll/README.txt。redll 默认旧参考路径和工程与实际 Steam 二进制不同；本批保留其提取/归档流程，通过明确配置复用已匹配当前 Steam client 的 current_client 工程。最初手工提取的已有结果直接归档，没有再重复提取。
+- 最新 09:54 至 09:56 日志无 Lua traceback；仍有电棍声音未预缓存、零伤害力等独立警告，本批未猜测修复。
+- lua/includes/util.lua 整文件恢复实际 GMod 原版，逐字节哈希一致。engine.GetGames 的客户端已有本地挂载枚举移至共享原生实现，并补服务端注册，移除原版 IsMounted 外面的缺函数兜底。
+- player.GetByID 双端原生注册，按实体索引查询；当前客户端函数/实体列表辅助函数和服务端绑定/玩家索引链已核对。删除 util.lua 与 gmod_globals.lua 两份旧包装。原版 player.GetBySteamID 等保持原样。
+- GetGames 只枚举现有支持的八种本地内容挂载，不宣称完整 Steam depot/账号系统。installed 表示发现本地挂载，owned 返回 false，表示未查询账号所有权；mounted 独立取本地挂载状态。原版 IsMounted 只消费 mounted。完整 depot 管理与在线所有权暂缓。
+- 未改头文件，不清 .o。四个 cpp 的单 TU 编译通过，client/server 构建 23.112 秒；直接部署 DLL/PDB，四对 SHA256 通过。未启动游戏、未运行 native test、未提交推送、未生成 resulttxt。其他会话及运行数据未动。
+- 证据：D:/tmp/util_entry_migration_20261027；新取证位于 D:/tmp/redll/client.dll 和 server.dll，已更新索引与语义说明。旧 D:/tmp/dec 已不存在，不再引用它作为当前归档位置。
+- 原生 NPC 射击连续性仍独立待查。本批不是该问题的修复。
+- 用户新增交付要求：以后每批附快速验证步骤、可粘贴命令及预期结果。
+
+本批快速验证：完整退出后重启，进入本地地图，在控制台逐行执行。
+
+```text
+lua_run print(IsMounted("hl2"), IsMounted(220), IsMounted("__missing__"))
+lua_run_cl print(IsMounted("hl2"), IsMounted(220), IsMounted("__missing__"))
+lua_run local p=player.GetAll()[1] print(player.GetByID(p:EntIndex())==p, IsValid(player.GetByID(0)), IsValid(player.GetByID(99999)))
+lua_run_cl print(player.GetByID(LocalPlayer():EntIndex())==LocalPlayer(), IsValid(player.GetByID(0)), IsValid(player.GetByID(99999)))
+```
+
+预期前两行均 true true false，后两行均 true false false，无 Lua 报错。若客户端命令提示 sv_allowcslua 为 0，在本地测试服务器设 sv_allowcslua 1 后重试。再快速检查 Q 菜单的原生 NPC、武器列表和生成；不要把控制台查询成功当作全部挂载资源/玩法已经验证。
+
+
+## 2026-10-27 Wiki 与当前原生挂载层修正
+
+- 本轮先复查原始 Wiki 快照、上轮 GetGames/GetByID 取证和当前日志。最近日志仍为 09:54-09:56，无新 Lua traceback；没有据此声称真实游戏行为已通过。
+- 通过新版 redll.py 首次导入实际 Steam filesystem_stdio.dll 的哈希匹配副本，归档构造器、Steam 安装路径查询、订阅/安装状态初始化、正常与 fallback 挂载及配置保存九个函数。已回填语义和索引。首次直接导入路径含括号使批处理失败，改用外部证据目录的同哈希副本，不改 Steam 原文件。
+- 替换八项旧目录表，按当前原生构造器保留完整 31 项清单、标题、应用编号与额外内容目录。HL2/Episodes 为一个条目；不再人为多列 episodic/ep2/lostcoast。原版 IsMounted 的名称别名保持原样。
+- GetGames 现在只读查询。游戏浏览 PathID 在启动和 Lua filesystem 增删 GAME 挂载时刷新，查询不再调用 AddSearchPath。注册浏览 PathID 时设置 request-only，移除已取消的旧别名，并去重。未改变第三方 addons 内容。
+- 路径判断不再按任意子串命中：排除 addons/download/workshop；普通内容按精确目录和 gameinfo 识别，DLC/额外目录验证同级主游戏目录；sourceengine fallback 只认完整 content_<folder>.vpk 或 content_<folder>_dir.vpk 名称。两个 Insurgency 条目借 gameinfo 的 app ID 消除同目录歧义，无法证明身份则不报已识别。
+- installed 与 mounted 分离：本地安装目录即使未挂载也可报告 installed。现有 Steam 上下文可用的构建按当前原生链查询 owned=BIsSubscribedApp、installed=owned&&BIsAppInstalled&&非空GetAppInstallDir，挂载结果再受这两个状态约束。本机 DISABLE_STEAM=1，因此 owned 仍按用户允许的外部能力边界返回 false 占位；本地 mounted 独立反映内容可用性。该独立运行模式与 GMod 账号完整模式存在明确边界，不宣称所有权或 Steam 库扫描已实现。Steam-enabled 分支未运行验证。
+- GetByID 复用上一批当前客户端/服务端绑定及辅助查找证据，不重复逆向、不加 Wiki 未证明的 +1 或 UserID 转换；现实现保持玩家槽位查找与 NULL 失败结果。Wiki connectionID 一词不作为改变已证实二进制行为的依据，真实连接事件编号关系不作未经实测的保证。
+- 仅修改 lsrcinit.cpp、mountaddons.cpp、lfilesystem.cpp，无头文件改动，不清 .o。三个 cpp 单 TU 通过；最终 client/server 构建 20.502 秒。直接部署 client/server DLL/PDB 并记录四对 SHA256。未启动游戏、未运行 native test、未提交推送、未生成 resulttxt。
+- 证据 D:/tmp/getgames_wiki_fix_20261027；归档 D:/tmp/redll/filesystem_stdio.dll/_index.txt。原版 util.lua 与其他原版/插件 Lua 本轮均未改动。NPC 原生射击节奏仍是独立未解决项。
+
+快速验证：完整退出重启后进入本地地图，控制台执行：
+
+```text
+lua_run print(#engine.GetGames(), IsMounted("hl2"), IsMounted("ep2"), IsMounted("__missing__"))
+lua_run_cl print(#engine.GetGames(), IsMounted("hl2"), IsMounted("ep2"), IsMounted("__missing__"))
+lua_run_cl local p=LocalPlayer() print(player.GetByID(p:EntIndex())==p, IsValid(player.GetByID(0)), IsValid(player.GetByID(99999)))
+```
+
+本机挂载不变时，前两行应为 31 true true false，后一行 true false false。再到 Q 菜单的游戏分类打开 HL2，确认模型列表可浏览、图标仍能生成。字段排查可用 lua_run PrintTable(engine.GetGames())；当前无 Steam 模式 owned=false 不代表已确认用户未购买。
+
+
+## 2026-10-27 Entity DT 原生槽与原版安装器
+
+- 本批完成 DT 数据链，不宣称完整 Entity 拓展或完整 weapon_base/shared.lua 已原版化。后者仍有 LastShootTime、CallOnClient 和其他旧基类内容待迁移。
+- 联网已核对冒号路径 Entity:NetworkVar、SetDTFloat、GetDTFloat、NetworkVarNotify、ENTITY:SetupDataTables。最初点号页面 404 已纠正。VDC 的 Prediction/Networking_Entities 返回 Anubis 验证页，未当作已读资料；另取 ValveSoftware/source-sdk-2013 官方 c_baseentity.cpp 与 dt_recv.cpp 对照。网页快照及来源清单在证据目录。
+- 复用旧索引作定位，当前版本函数表重新核实后取证双端 28 个 DT 绑定，并补客户端接收表、六类型/四字符串接收代理和 Lua 派发辅助函数。当前表布局双端均 name/signature/function/0，不能按旧版 server 布局选错槽。新版 redll 已支持 _new；本批显式选择已匹配 Steam 的工程，早期旧命令标签产生的来源注释已按实际工程 SHA256/MD5 更正。
+- 实体自身保存 Bool/Float/Int/Vector/Angle/Entity 各32槽、String四槽，直接接入 BaseEntity SendTable/RecvTable、预测描述及存档描述。Int 按32位转换，Float按32位存储，字符串511字节上限，Entity用完整弱句柄。类型互相独立；索引按原生截断，越界 getter 回槽0、setter不写。NULL及参数错误不再被 DT 方法的旧 false 空桩吞掉，其他 NULL shim 未在本轮全局重写。
+- 原版 DTVar_ReceiveProxyGL / InstallDataTable / editvariable 接收部分以未修改函数原文并入已有 original/entity_helpers.lua；variable_edit.lua 整文件恢复原版。SENT、SWEP 初始化改为实例绑定后 InstallDataTable -> SetupDataTables -> Initialize；原版 player_manager 自己的 InstallDataTable 调用保留。没有声称旧实体工厂和所有 OnEntityCreated 顺序都已重构。
+- 原版 Lua 负责 NetworkVar/Notify/Element、自动槽位、self.dt、KeyName/Edit、复制和编辑数据。客户端接收代理只在值变化时于写入前派发原版通知，Lua命名setter仍保留原版相同值也通知的行为。
+- 删除旧 Lua DT/NW 路由块和武器 NetworkVar/nwseed/nwrequest；停止发布旧私有 C++ 声明工厂。NW/NW2 的既有通路未删；共享文件中耦合的旧私有静态辅助代码尚未整体清理，但不再由本批声明链调用。
+- 载具 Bool/Float/String slot3 也读取实际 DT 槽；旧 C++ 私有载具字段暂保留同步镜像，兼容既有输入路径。车辆/座椅类名输入同步写DT String3，避免旧64字节字段限制原生512字节槽。原版 Vehicle Lua 不改。
+- 两个公共实体头改变布局，未新增或移动 virtual。按真实引用闭包和 client/server 任务变体精准清理对象，非整目录删除；最终1280个唯一对象全部回验新于两个头。清单包含 public/lua 对象以及同一共享源码的两端变体。首次清单1075项，后补205项，其中199项仍旧；没有在清理不完整时部署。compile_commands.json 不完整记录两端变体，不能只清其中列出的单个 .o。
+- 修改 cpp 单 TU 通过，布局构建4m28.700s，补遗漏变体50.963s，最终增量21.961s。client/server DLL/PDB直接部署并四对SHA256通过。未启动游戏、未运行 native test、未提交推送、未生成 resulttxt。内容仓addons、运行数据和另一会话改动未动。
+- 开始时读取到10:55的日志片段；收尾时原日志文件已不在原位置，已记录缺失，不将旧片段冒充最终游戏验证。具体日志缺失和部署哈希见 verification.json/deployment.json。
+- 本批证据 D:/tmp/entity_dt_migration_20261027；双端新取证 D:/tmp/redll/client.dll、server.dll，索引与语义已回填。原生NPC射击连续性仍未在本轮处理。
+
+快速验证：必须完整退出并重启，进图后先装备 GMod 相机武器。在停止缩放/旋转后分别执行，两个端的 Zoom/Roll 数值应一致：
+
+```text
+lua_run local w=player.GetAll()[1]:GetActiveWeapon() print(w:GetClass(),w:GetZoom(),w:GetRoll())
+lua_run_cl local w=LocalPlayer():GetActiveWeapon() print(w:GetClass(),w:GetZoom(),w:GetRoll())
+```
+
+再检查拳头攻击、气球 Force 调整、可编辑实体/天空参数、载具 Ctrl 与滚轮。原来的 nwseed 请求日志应消失。不要仅凭入口存在或两项数字一致就认定所有插件/预测/PVS已实测完成。
+
+可选的隔离底层探针，只在控制台手动执行；生成一只测试箱子，不覆盖玩家或已有武器的数据槽：
+
+```text
+lua_run local p=player.GetAll()[1] DTProbe=ents.Create("prop_physics") DTProbe:SetModel("models/props_junk/wood_crate001a.mdl") DTProbe:SetPos(p:GetShootPos()+p:GetAimVector()*80) DTProbe:Spawn() DTProbe:SetDTInt(31,12345) DTProbe:SetDTFloat(31,12.5) DTProbe:SetDTString(3,string.rep("a",600)) print(DTProbe:EntIndex(),DTProbe:GetDTFloat(31),#DTProbe:GetDTString(3))
+lua_run_cl for _,e in ipairs(ents.FindByClass("prop_physics")) do if e:GetDTInt(31)==12345 then print(e:EntIndex(),e:GetDTFloat(31),#e:GetDTString(3)) end end
+lua_run if IsValid(DTProbe) then DTProbe:Remove() end DTProbe=nil
+```
+
+服务器生成后稍等一秒再执行客户端查询，预期同一实体编号、12.5、511；最后一行删除探针。这些命令未由代理自动执行。
+
+
+## 2026-10-27 DT receiver type regression
+
+- User18:29-18:30 session logs show original entity_helpers SetZoom/GetZoom failing in native GetFunc: Entity expected, got userdata. No missing method was independently logged; the camera's setup/Equip failed because the preceding round rejected valid Weapon receivers.
+- Root cause is the new HL2SB_DTEntity and SetDTEntity value check comparing metatable.__type to literal entity. luasrc_install_type_names intentionally stamps Entity/Player/Weapon/Vehicle/NPC/NextBot; the earlier lower-case values are overwritten during complete bootstrap. Source exists, yet a valid userdata was rejected before accessing its slots.
+- Reused current-version client/server GetDTFloat and SetDTEntity typed-slot archives and verified actual Steam SHA256 unchanged. Both binaries test TYPE_ENTITY family, not a string display name. Reopened Facepunch Entity:NetworkVar and Entity:GetDTFloat pages; original installer intentionally captures an Entity/Weapon and calls its native getters. No new reverse needed, no repeated extraction.
+- Fix only game/shared/lua/lbaseentity_shared.cpp: raw full-userdata and exact handle-size gate, then identity check against actual registered entity-family metatables using luaL_testudata. Covers base/animating/flex/combatcharacter/player/HL2MP/weapon/vehicle/NPC/NextBot. Receiver still errors for NULL; SetDTEntity accepts nil/NULL value while rejecting wrong typed userdata. No display-name string dependency, no blind reinterpret of arbitrary userdata.
+- No original Lua, addon, public header or network table change. No object cleanup needed. Single TU and client/server build succeed (1m17.022s); direct DLL/PDB deployment hashes recorded at D:/tmp/dt_receiver_regression_20261027/deployment.json. No game launch, native test, resulttxt or commit/push. Live retest remains user task.
+- Important lesson: entity type display names and native TYPE_ENTITY membership are different. Never validate an entity family by requiring __type == entity. Verify complete bootstrap as well as initial registrations.
+
+Quick test after fully quitting/restarting: enter a map, equip GMod camera; startup should not show entity_helpers GetFunc Entity-expected errors. Execute each realm after stopping zoom/roll:
+
+```text
+lua_run local w=player.GetAll()[1]:GetActiveWeapon() print(w:GetClass(),w:GetZoom(),w:GetRoll())
+lua_run_cl local w=LocalPlayer():GetActiveWeapon() print(w:GetClass(),w:GetZoom(),w:GetRoll())
+```
+
+Expected: gmod_camera and matching finite Zoom/Roll values, no Lua traceback. Check fists attacks and normal weapon switching as before. These commands are provided for manual validation, not automatically executed.
+
+
+## 2026-10-27 Fists secondary punch callback shadow
+
+- User corrects symptom to RIGHT mouse button failing to produce the right punch; predates DT migration. Latest18:45-18:46 log has no new Lua exception for fists. No automatic game launch.
+- Exact original weapon_fists/shared.lua is byte-identical to actual Steam lua/weapons/weapon_fists.lua. Its SecondaryAttack calls self:PrimaryAttack(true), which chooses fists_right; primary without right chooses fists_left. Original Weapon.__index searches Weapon and Entity metatables before instance table.
+- Fork exported CBaseCombatWeapon PrimaryAttack/SecondaryAttack directly into Weapon metatable. These take no Lua optional argument, call virtual methods and re-enter script with only self. Thus original SecondaryAttack's true is discarded through native PrimaryAttack, producing left punch. This is a script lookup defect, not evidence for reversing mouse or changing animations.
+- Current actual Steam client/server named registration scans found no PrimaryAttack/SecondaryAttack export, while neighboring expected GetNextPrimaryFire anchors were found. Inventories and hashes archived as Weapon.AttackLuaExports.Fists20261027.txt in both redll module dirs, indexes updated. Wiki WEAPON:SecondaryAttack consulted as the right-click callback contract; original Lua establishes right-punch behavior. No repeated binary decompile was needed for absent exports.
+- Removed only the two extra native Lua registration entries and unused wrapper functions in game/shared/lua/lbasecombatweapon_shared.cpp. Native C++ virtual methods and ItemPostFrame dispatch remain. Original fists and all other Lua untouched. This also avoids the same argument loss for other SWEPs calling custom PrimaryAttack arguments.
+- No header changes or object cleanup. Single TU succeeds, client/server build22.318s; direct DLL/PDB four SHA256 pairs in D:/tmp/fists_secondary_20261027/deployment.json. No native test, game launch, resulttxt or commit/push. Actual punch visual and damage pending user retest.
+- Quick manual validation after full restart: equip fists, aim at empty space (avoid combo uppercut), left click should give left fist; wait at least1 second, right click should give right fist. Then alternate on a target and verify damage plus third-hit combo. Toolgun left/right and camera right-click are useful short regressions. DT batch was user-tested without regression before this separate existing punch issue.
+
+
+## 2026-10-27 Fists holdtype stale translation cache
+
+- User live client outputs: GetHoldType=fist; TranslateActivity(ACT_MP_STAND_IDLE)=998 while ACT_HL2MP_IDLE_FIST=1138; SelectWeightedSequence(FIST)=381; active sequence idle_pistol. This proves state/translation mismatch and usable fist model sequence, not missing model animation. Server values not supplied.
+- Reviewed native HoldType archive and original sh_anim.lua. Wiki Weapon:SetHoldType states it calls SetWeaponHoldType and networks state. Fresh weapons.Get instance contains base pistol ActivityTranslate until original mapper is applied. Fork applied-string cache survived Lua table replacement and marked calls applied even without a valid/successful handler; a pre-bind update can suppress mapping for the replacement table. This structural failure matches the observed mismatch but was not automatically reproduced in a live game.
+- Fix weapon_hl2mpbase_scriptedweapon.cpp: invalidate applied string when installing a fresh Lua instance; call original mapping with saved stack and recursion guard; cache only a successful call and the actual requested string used by that call. lbasecombatweapon_shared.cpp setter applies pending mapping immediately after storing native holdtype. Native network string and existing enum layout remain; no new fallback animation table, no Lua edits.
+- Two TUs compile, client/server final build30.402s; direct DLL/PDB four SHA256 pairs in D:/tmp/fists_holdtype_regression_20261027/deployment.json. No header changes or .o cleanup. No native test/game launch/resulttxt/commit/push. Actual third-person pose is pending user retest.
+- After complete restart, equip fists and execute: lua_run_cl print(LocalPlayer():GetActiveWeapon():TranslateActivity(ACT_MP_STAND_IDLE),ACT_HL2MP_IDLE_FIST). Both should be1138 in current enum layout. Mirror should show fists stance; switch to toolgun/camera and back to verify mapping does not get stuck. Do not treat GetHoldType=fist alone as proof the mapping is current.
+
+
+## 2026-10-27 Console EOF and selection copy parity
+
+- User linked nillerusr/source-engine PR #454. The patch fixes RichText selection painting by splitting draw spans when entering/exiting selection boundaries; it does not replace the clipboard API. Applied the same four boundary conditions to vgui2/vgui_controls/RichText.cpp. Native Ctrl+C/Cut still use TextEntry/RichText CopySelected -> system()->SetClipboardText.
+- Console EOF root: CConsolePanel stored partial text and completion/submit command in 256-byte buffers, while CCommand tokenizer accepts up to 512 bytes. Long lua_run/lua_run_cl input was truncated before Lua parsing, so an incomplete string/chunk ended with EOF or a missing ')' near end. Raised console-side buffers to 512, matching the parser capacity; no parser leniency or Lua EOF behavior changed.
+- Exact GameUI current DLL was scanned for CommandSubmitted/submit/ConsoleEntry/DoCopySelected string callers and stored at D:/tmp/console_input_20261027/GameUI.dll with current Steam SHA256 and xrefs. redll import of GameUI had a Windows path quoting failure in the first attempt; source copy and xref evidence are retained, no product impact. PR source patch is the authoritative selection reference.
+- Changed vgui2 RichText.cpp, vgui2 consoledialog.cpp and public ConsoleDialog.h. No public engine/game entity layout change. Single TU checks for GameConsoleDialog/consoledialog/RichText passed; vgui_controls+GameUI build12.489s. Deployed GameUI.dll/PDB to D:/srceng/bin with matching hashes. No game launch, native test, resulttxt, commit or push.
+- Quick test after restart: open console and type a Lua command just below/above 256 characters with a quoted string; it should reach Lua intact rather than EOF. In console history, drag-select across a wrapped line boundary; selection highlight should stop at the exact selection endpoints, then Ctrl+C and paste into a text field. Also test Ctrl+X and Ctrl+V.

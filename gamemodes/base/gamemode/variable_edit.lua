@@ -1,10 +1,3 @@
---[[---------------------------------------------------------
-
-  Base Gamemode: Entity variable editing
-
-  Reference: GMod base/gamemode/variable_edit.lua
-
------------------------------------------------------------]]
 
 --
 -- Called when we've received a call from a client who wants to edit
@@ -24,14 +17,12 @@ function GM:VariableEdited( ent, ply, key, val, editor )
 	--
 	-- Actually apply the edited value
 	--
-	if ( ent.EditValue ) then
-		ent:EditValue( key, val )
-	end
+	ent:EditValue( key, val )
 
 end
 
 --
--- Your gamemode should use this hook to allow/disallow editing
+-- Your gamemode should use this hook to allow/dissallow editing
 -- By default only admins can edit entities.
 --
 function GM:CanEditVariable( ent, ply, key, val, editor )

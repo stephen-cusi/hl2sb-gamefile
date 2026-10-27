@@ -165,7 +165,7 @@ function PrintTable( t, indent, done )
 		key = ( type( key ) == "string" ) and "[\"" .. key .. "\"]" || "[" .. tostring( key ) .. "]"
 		Msg( string.rep( "\t", indent ) )
 
-		if  ( istable( value ) and !done[ value ] ) then
+		if ( istable( value ) and !done[ value ] ) then
 
 			done[ value ] = true
 			Msg( key, ":\n" )
@@ -236,10 +236,12 @@ function Particle( name )
 	return name
 end
 
--- Some nice globals so we don't keep creating objects for no reason
-vector_origin		= Vector( 0, 0, 0 )
-vector_up			= Vector( 0, 0, 1 )
-angle_zero			= Angle( 0, 0, 0 )
+if ( !MENU_DLL ) then
+	-- Some nice globals so we don't keep creating objects for no reason
+	vector_origin		= Vector( 0, 0, 0 )
+	vector_up			= Vector( 0, 0, 1 )
+	angle_zero			= Angle( 0, 0, 0 )
+end
 
 color_white			= Color( 255, 255, 255, 255 )
 color_black			= Color( 0, 0, 0, 255 )
@@ -470,14 +472,6 @@ function IsMounted( name )
 		name = "hl2"
 	end
 
-	-- This engine does not expose GetGames; with no game list nothing extra
-	-- is mounted.  The call must ANSWER false, not throw: GMod's stock
-	-- content files (game_hl2 / base_npcs) call IsMounted() unconditionally
-	-- and a throw takes the whole registration file down with it.
-	if ( engine == nil or engine.GetGames == nil ) then
-		return false
-	end
-
 	local games = engine.GetGames()
 
 	for k, v in pairs( games ) do
@@ -601,28 +595,4 @@ function GetConVarString( name )
 	if ( name == "maxplayers" ) then return tostring( game.MaxPlayers() ) end -- ew
 	local c = GetConVar( name )
 	return ( c and c:GetString() ) or ""
-end
-
--- ===========================================================================
--- HL2SB GMod compat (2026-10-07): player.GetByID( id ) -- the pre-2013 wiki
--- documents it as "Retrieve a player object based upon his entity index",
--- so the argument is the ENTITY INDEX (Player:EntIndex()), NOT the UserID
--- that modern GMod 13 changed the same name to.  Lives here (not in
--- gmod_globals.lua) because the server realm's extension loading order does
--- not reliably reach gmod_globals.lua, and lua_run needs it server-side.
--- ents.GetByIndex resolves through PushLuaInstanceSafe, so a player at that
--- index comes back carrying the player metatable.  A miss (bad index or a
--- non-player entity there) returns the NULL sentinel: reads answer
--- IsValid=false and false-returning method stubs instead of raising.
--- ===========================================================================
-if ( player ~= nil and player.GetByID == nil and ents ~= nil and ents.GetByIndex ~= nil ) then
-	function player.GetByID( id )
-		id = tonumber( id )
-		if ( id == nil ) then return NULL end
-		local ent = ents.GetByIndex( id )
-		if ( ent ~= nil and ent.IsPlayer ~= nil and ent:IsPlayer() ) then
-			return ent
-		end
-		return NULL
-	end
 end
