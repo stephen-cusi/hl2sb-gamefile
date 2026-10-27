@@ -213,15 +213,9 @@ do
 			end
 		end
 
-		local fnOriginalOnLoaded = ScriptedEnts.OnLoaded
-
-		ScriptedEnts.OnLoaded = function( ... )
-			if ( fnOriginalOnLoaded != nil ) then
-				fnOriginalOnLoaded( ... )
-			end
-
-			HL2SBResyncRuntimeClasses()
-		end
+		-- scripted_ents.OnLoaded remains the original GMod function. The engine
+		-- invokes it after all classes are registered; wrapping it here could
+		-- overwrite inherited instance tables with leaf shim tables.
 
 		Msg( "[HL2SB]   runtime SENT classes -> entity module resync installed\n" )
 	end
