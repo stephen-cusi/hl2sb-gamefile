@@ -114,9 +114,9 @@ if ( SERVER ) then
 			numpad.OnDown( ply, self:GetKey(), "Camera_On", self )
 			numpad.OnUp( ply, self:GetKey(), "Camera_Off", self )
 		end
-
+	
 	end
-
+	
 	function ENT:OnRestore()
 
 		-- HACK: Restore keybinds on level transitions, which can only happen in single player

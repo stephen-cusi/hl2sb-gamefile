@@ -48,6 +48,7 @@ module( "entity" )
 
 local tEntities = {}
 
+
 -------------------------------------------------------------------------------
 -- Purpose: Returns an entity table
 -- Input  : strName - Name of the entity
@@ -82,7 +83,7 @@ function get( strClassname )
     sBase = _BASE_ENTITY_CLASS
   end
 
-  if ( sBase ~= strClassname ) then
+  if ( type( sBase ) == "string" && sBase ~= "" && sBase ~= strClassname ) then
     local tBaseEntity = get( sBase )
     if ( not tBaseEntity ) then
       -- 引擎的 prop_scripted 在实体目录按字母序里最后加载，一个只以它为基类的

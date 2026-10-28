@@ -90,9 +90,9 @@ hl2box（半条命 2 沙盒，迁移前内部名 hl2sb）对 GMod 的功能移�
 - [x] 入口 `includes/init.lua` 只保留明确的加载顺序；移除已由 native hover 负责的 `vgui.Create` tooltip 包装。
 - [x] 击杀通知移回 `base/gamemode/cl_deathnotice.lua`；既有重力枪回调拆回 `base/gamemode/gravitygun.lua`，行为保持。
 - [ ] native gamemode 实体加载器支持原版 `gamemodes/<name>/entities` 层级；当前工具/实体在 `content/lua` 或全局 `lua`，已经搬过并在使用，不能直接改目录导致不再注册。
-- [ ] base 缺的原版文件：effects 的 `base.lua`、`dof_node.lua`，entities 的 `prop_effect.lua`、`ragdoll_motion.lua`。
-- [ ] sandbox 缺的原版效果文件：`balloon_pop.lua`、`entity_remove.lua`、`inflator_magic.lua`、`lasertracer.lua`、`phys_unfreeze.lua`、`wheel_indicator.lua`。
-- [ ] sandbox 缺的编辑实体：`base_edit.lua`、`edit_fog.lua`、`edit_sky.lua`、`edit_sun.lua`；示例内容 `nb_example.lua`、`manhack_welder.lua` 也尚无对应文件。
+- [~] base 缺的原版文件：`base.lua`、`dof_node.lua`、`prop_effect.lua`、`ragdoll_motion.lua` 已按 Steam GMod 原版补齐；其余 base 文件仍待核对。
+- [~] sandbox 原版效果文件：`balloon_pop.lua`、`entity_remove.lua`、`inflator_magic.lua`、`lasertracer.lua`、`phys_unfreeze.lua`、`wheel_indicator.lua` 已按 Steam GMod 原版补齐；其他效果仍待清点。
+- [~] sandbox 编辑实体：`base_edit.lua`、`edit_sky.lua`、`edit_sun.lua`、`edit_fog.lua` 已按 Steam GMod 原版补齐；示例实体仍待清点。
 - [~] `cl_notice.lua` 的 AddNotify 已在 base 适配里；sandbox `save_load.lua` 仍是 base 文件存储适配，原生 `.gms` 存取链未补。
 - [~] base 玩家类 `taunt_camera.lua` 仍是旧适配，gamemode 另有活动相机实现，不能当重复文件直接删除。
 
@@ -797,3 +797,26 @@ Expected: gmod_camera and matching finite Zoom/Roll values, no Lua traceback. Ch
 - Exact GameUI current DLL was scanned for CommandSubmitted/submit/ConsoleEntry/DoCopySelected string callers and stored at D:/tmp/console_input_20261027/GameUI.dll with current Steam SHA256 and xrefs. redll import of GameUI had a Windows path quoting failure in the first attempt; source copy and xref evidence are retained, no product impact. PR source patch is the authoritative selection reference.
 - Changed vgui2 RichText.cpp, vgui2 consoledialog.cpp and public ConsoleDialog.h. No public engine/game entity layout change. Single TU checks for GameConsoleDialog/consoledialog/RichText passed; vgui_controls+GameUI build12.489s. Deployed GameUI.dll/PDB to D:/srceng/bin with matching hashes. No game launch, native test, resulttxt, commit or push.
 - Quick test after restart: open console and type a Lua command just below/above 256 characters with a quoted string; it should reach Lua intact rather than EOF. In console history, drag-select across a wrapped line boundary; selection highlight should stop at the exact selection endpoints, then Ctrl+C and paste into a text field. Also test Ctrl+X and Ctrl+V.
+
+
+## 2026-10-27 Weapon base shared 原版替换与 native CallOnClient
+
+- 用户要求后续工作全部双向核对。本批实际执行 Wiki、GMod 当前 Steam 双端二进制、原版 Lua、Valve SDK 源码四方核对；找不到页面时先请求用户提供地址，不把 404 当作功能缺失。之后每批按此规则。
+- 已核对并保存 Wiki：Weapon:LastShootTime、Weapon:SetLastShootTime、Weapon:CallOnClient。Wiki 结论：LastShootTime 返回本地上次 FireBullets 时间；SetLastShootTime 默认当前时间、服务器写入不自动同步客户端；CallOnClient 仅服务器有效、owner-only usermessage、方法名和 data 合计不超过254字节。
+- 当前 Steam 双端取证：LastShootTime/SetLastShootTime 都读写 CBaseCombatWeapon 的 native double 槽；脚本武器和普通武器共享它。FireBullets 入口在开火前写当前时间。没有增加网络同步。CallOnClient 服务端校验拥有者，发送可靠 SWEPCmd，编码完整 entity index+serial；客户端校验 serial 和 IsWeapon 后再找 Lua 方法。客户端调用为空操作。DefaultReload 仍走 native 当前 clip 与玩家 reload 动画。
+- `weapon_base/shared.lua` 已整体替换为当前 GMod 原版；`init.lua`、`ai_translations.lua`、`sh_anim.lua` 也保持原版。`cl_init.lua` 只剩一处空格格式差异，内容和运行语义未自定义修改。旧 Lua LastShootTime、nwseed/nwrequest、CallOnClient 网络包装和 Entity 广播 RPC 均移除。普通 Entity:CallOnClient 不再作为武器通路保留。
+- 旧 SWEPCmd 中间层也已改成原版消息名和 owner-only 语义，不广播给所有客户端。脚本接收器限制方法缓冲32、data缓冲256，与 usermessage 合计限制一致；服务器超长只记录并丢弃，不破坏 Lua 栈。
+- 原版 shared Lua 中 `DefaultReload(ACT_VM_RELOAD)` 由 native binding 接受单参并填当前两个最大 clip，保留现有兼容签名；没有新增 Lua 侧装填动画。
+- 头文件增加 realm-local double 成员，无 virtual；按真实包含闭包和 client/server 变体精准清理1280个对象，其中1274个旧对象，最终所有消费者时间戳新于头文件。未清 engine、lua_shared 或第三方对象。
+- 单 TU 五个改动源全通过；最终 client/server 构建5m32.711s，直接部署 DLL/PDB 四对SHA256一致。未启动游戏、未运行 native test、未提交推送、未生成resulttxt。证据 `D:/tmp/weapon_base_final_20261027`，当前Steam双端新归档在 `D:/tmp/redll/client.dll` 和 `server.dll`，索引已回填。
+- 日志先读到 20:56-20:57，唯一 Lua 报错为用户手动 `lua_run_cl` 调用缺失 `TranslateActivity`；这不是本批回归根因，已记录为后续 weapon binding 缺口。其余为已记录 shader/SkyPaint 警告。未把这些日志当作游戏验证通过。
+
+快速验证：完整退出并重启后，依次测试拳头、工具枪、相机和插件武器。
+
+```text
+lua_run local w=player.GetAll()[1]:GetActiveWeapon() print(w:GetClass(),w:LastShootTime())
+lua_run_cl local w=LocalPlayer():GetActiveWeapon() print(w:GetClass(),w:LastShootTime())
+lua_run_cl print(type(LocalPlayer():GetActiveWeapon().CallOnClient))
+```
+
+开火前后本地 `LastShootTime()` 应随本地 FireBullets 改变；服务器设置后客户端不应自动跟随。检查武器拥有者是否只收到自己的 CallOnClient 方法调用。再测试换武器、装填、拳头攻击和工具枪动画。没有实际调用 `CallOnClient` 的插件时，不要仅凭方法存在判定消息链完全通过。

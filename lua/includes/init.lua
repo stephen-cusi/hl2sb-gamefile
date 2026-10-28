@@ -15,6 +15,7 @@ if ( CLIENT and surface and vgui ) then
 	include( "skins/default.lua" )
 	include( "vgui_base.lua" )
 	include( "vgui_extra.lua" )
+	include( "hl2sb/compat/property_panels.lua" )
 	include( "util/tooltips.lua" )
 	require( "notification" )
 	include( "util/javascript_util.lua" )
