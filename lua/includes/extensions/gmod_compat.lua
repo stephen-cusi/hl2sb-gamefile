@@ -943,38 +943,8 @@ MAT_DEFAULT     = MAT_DEFAULT     or 88
 MAT_GLASS       = MAT_GLASS       or 89
 MAT_WARPSHIELD  = MAT_WARPSHIELD  or 90
 
--- ---------------------------------------------------------------------------
--- 2. Entity:NearestPoint( point ) -- nearest point inside this entity's OBB
---    (GMod engine binding, used e.g. by the sandbox ragdoll-flush snippet).
---    Pure-Lua approximation: transform into local space via the entity's
---    angles, clamp onto OBBMins/OBBMaxs, transform back.
--- ---------------------------------------------------------------------------
 do
 	local ENTITY_META = FindMetaTable( "Entity" )
-
-	if ( ENTITY_META ~= nil and ENTITY_META.NearestPoint == nil ) then
-		function ENTITY_META:NearestPoint( point )
-			local pos  = self:GetPos()
-			local ang  = self:GetAngles()
-			local fwd  = ang:Forward()
-			local right = ang:Right()
-			local up   = ang:Up()
-
-			local d = point - pos
-			local x = d:Dot( fwd )
-			local y = d:Dot( right )
-			local z = d:Dot( up )
-
-			local mins, maxs = self:OBBMins(), self:OBBMaxs()
-			x = math.Clamp( x, mins.x, maxs.x )
-			y = math.Clamp( y, mins.y, maxs.y )
-			z = math.Clamp( z, mins.z, maxs.z )
-
-			return pos + fwd * x + right * y + up * z
-		end
-	elseif ( ENTITY_META == nil ) then
-		Msg( "[HL2SB] gmod_compat: FindMetaTable( \"Entity\" ) was nil -- NearestPoint NOT installed\n" )
-	end
 
 	if ( ENTITY_META ~= nil ) then
 		if ( ENTITY_META.GetModelRenderBounds == nil ) then

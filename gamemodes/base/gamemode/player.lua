@@ -379,7 +379,7 @@ local function LoadSpawnpointNamesFromGModPlayerSpawn()
 
 	for _, className in pairs( scripted_ents.GetMember( "gmod_player_start", "SpawnPointClasses" ) ) do
 		-- Removing this one for the time being, c1m4_atrium has one of these in a box under the map
-		if (  className == "info_survivor_position" ) then continue end
+		if ( className == "info_survivor_position" ) then continue end
 
 		SpawnPointEntityClasses[ className ] = true
 	end
@@ -462,10 +462,10 @@ function GM:PlayerSelectSpawn( pl, transiton )
 end
 
 --[[---------------------------------------------------------
-	Name: gamemode:WeaponEquip( weapon )
+	Name: gamemode:WeaponEquip( weapon, owner )
 	Desc: Player just picked up (or was given) weapon
 -----------------------------------------------------------]]
-function GM:WeaponEquip( weapon )
+function GM:WeaponEquip( weapon, owner )
 end
 
 --[[---------------------------------------------------------
@@ -499,7 +499,7 @@ end
 	Name: gamemode:PlayerDeathSound()
 	Desc: Return true to not play the default sounds
 -----------------------------------------------------------]]
-function GM:PlayerDeathSound()
+function GM:PlayerDeathSound( ply )
 	return false
 end
 
@@ -764,9 +764,9 @@ end
 	Name: gamemode:NetworkIDValidated()
 	Desc: Called when Steam has validated this as a valid player
 -----------------------------------------------------------]]
-function GM:NetworkIDValidated( name, steamid )
+function GM:NetworkIDValidated( name, steamid, ownerSteamID )
 
-	-- MsgN( "GM:NetworkIDValidated", name, steamid )
+	-- MsgN( "GM:NetworkIDValidated", name, steamid, ownerSteamID )
 
 end
 
