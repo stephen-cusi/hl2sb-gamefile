@@ -1,76 +1,3 @@
---[[----------------------------------------------------------------------------
-    gamemodes/sandbox/gamemode/commands.lua  --  GMod 同位文件移植。
-
-    这是 GMod gamemodes/sandbox/gamemode/commands.lua 的“生成链”部分，逐字
-    移植（函数名、参数形状、注册的命令名都与 GMod 完全一致，插件会直接调
-    Spawn_SENT / MakeProp / CCSpawn 这些全局函数）。
-
-    为什么要有这个文件（本次对齐的原因）
-    ------------------------------------
-    这六个生成命令在 GMod 是 **Lua concommand**（concommand.Add，见本文件各
-    段落），不是引擎命令。本分叉此前把它们做成了引擎侧 C++ 命令
-    （game/server/hl2sb_gm_commands.cpp），好处是能绕开当时缺失的绑定，代价
-    是每个命令都是 GMod 的一个分叉特例、菜单命令形状与 GMod 不一致。现在
-    绑定补齐了（见下方逐条 HL2SB 注释），命令回到 GMod 的同位文件里，C++
-    版即可删除。注册的六个命令名：
-
-        gm_spawn        CCSpawn          (道具/布娃娃/特效，参数是 <model>)
-        gmod_spawnnpc   Spawn_NPC        (NPC，参数是 <列表键> <武器>)
-        gm_spawnsent    Spawn_SENT       (SENT/列表实体，参数是 <列表键>)
-        gm_giveswep     CCGiveSWEP       (直接给武器)
-        gm_spawnswep    Spawn_Weapon     (在地上生成武器)
-        gm_spawnvehicle Spawn_Vehicle    (载具，参数是 <列表键>)
-
-    GMod 没有 gm_spawnprop / gm_spawnnpc 这两个名字，分叉旧 C++ 加的它们随
-    C++ 一起删除，不要再造。
-
-    运行面：本文件由 sandbox/gamemode/init.lua include —— 那是 **服务端**
-    半边（客户端加载的是 cl_init.lua，见 luasrc_LoadGamemode 的 CLIENT_DLL
-    分支），与 GMod 的结构一致（GMod 也只 include 在服务端，客户端用
-    RunConsoleCommand 把命令名发给服务端执行）。prop_tools.lua 同样只在
-    服务端，GMod 在此文件顶部 include 它。
-
-    分叉适配（每条都在行内以 HL2SB 注释标出）
-    ----------------------------------------
-    1. Entity:SetCreator 没有绑定：删除这些调用（undo/cleanup 已持有玩家，
-       归属不受影响）。分叉的“显示名”契约改由 ent:SetName 承担，见下。
-    2. 分叉把实体的 targetname 当作“生成菜单显示名”（服务端 baseentity.cpp
-       把它写进 entity_killed 的 "victimname"，kill feed 原样显示；旧引擎
-       命令 GM_SpawnAtEyeTrace 就是拿菜单传来的名字 SetName 的）。菜单不再
-       传名字之后，NPC/SENT/载具改在生成成功后从注册表读名字 SetName（
-       HL2SB_DisplayName 负责把 "#token" 解析成人话）。
-    3. Entity:NearestPoint 本分叉无绑定：DoPlayerEntitySpawn 的“贴地 flush”
-       整段略过（旧引擎生成路径同样不做 flush，位置保持 tr.HitPos）。
-    4. Entity:DropToFloor() 本分叉原样没有方法绑定：已在
-       lua/includes/extensions/entity.lua 补上 GMod 同名方法（内部走
-       util.DropToFloor），所以本文件保持 GMod 原文调用。
-    5. Entity:SetBodyGroups（复数）由 CBaseAnimating 的共享绑定提供（十六进
-       制串形态）；对不支持的目标加方法判空，行为与 GMod 的“没方法就不调”
-       一致。
-    6. Player:HasWeapon 没有绑定：CCGiveSWEP 用 GetWeapon( class ) 判空
-       （同一个 Weapon_OwnsThisType 查询）。
-    7. ai.GetSquadMemberCount 没有绑定：InternalSpawnNPC 的“小队溢出改名”
-       在缺表时跳过（NPC 保留注册的 SquadName）。
-    8. PhysObj:GetAABB 没有绑定：FixInvalidPhysicsObject 早退（它只修
-       “vphysics 盒与模型盒差太多”的坏模型）。
-    9. 本分叉的 SENT 名册里有一部分没有 SpawnFunction（不基于 base_entity
-       的旧脚本）：CanPlayerSpawnSENT 不再因缺 SpawnFunction 直接拒收，
-       Spawn_SENT 对这类实体回退 ents.Create + Spawn + Activate（与
-       base_entity 默认 SpawnFunction 相同的建法）；有 SpawnFunction 时仍是
-       GMod 原路径。
-    10. 载具 KeyValues 里的 `vehicleclass` 不能走 SetKeyValue（本分叉它不是
-        keyfield——DATADESC FIELD_CHARACTER，datamap 路径只写一个字节）；
-        MakeVehicle 跳过它，由 GMod 原文的 vehicle:SetVehicleClass( VName )
-        在 Spawn 之后写（旧引擎命令同样这么做）。
-    11. duplicator 模块在本分叉是完整存在的（lua/includes/modules/
-        duplicator.lua，base/gamemode/save_load.lua 已在用它注册实体类），
-        所以 duplicator.DoGeneric/DoGenericPhysics/RegisterEntityClass 保持
-        GMod 原文调用，未做判空或跳过。
-
-    注意：GMod 原文的 `gamemode.Call( "PlayerSpawn..." )` 语义与本分叉一致
-    （先跑 hook 注册项、再回退 GAMEMODE 方法；方法不存在回答 false），上限体
-    系仍落在 sandbox/gamemode/player.lua + player_extension.lua。
-----------------------------------------------------------------------------]]--
 
 include( "prop_tools.lua" )
 
@@ -119,31 +46,11 @@ end
 
 local function ReportErrorToPlayer( player, error )
 	if ( IsValid( player ) ) then
+		if ( error == "hook" && player.__lastLimitHitTime && engine.TickCount() == player.__lastLimitHitTime ) then return end
+
 		--player:ChatPrint( "#spawnmenu.error." .. error )
 		player:SendLua( [[GAMEMODE:AddNotify( "#spawnmenu.error.]] .. error .. [[", NOTIFY_ERROR, 4 ) surface.PlaySound( "buttons/button10.wav" )]] )
 	end
-end
-
---[[---------------------------------------------------------
-	HL2SB: 分叉的“生成菜单显示名”契约（对应文件头适配 2）。
-
-	GMod 的 targetname 与显示无关；本分叉把 targetname 当显示名用：
-	game/server/baseentity.cpp 在 entity_killed 事件里把 GetEntityName() 写进
-	"victimname"，客户端 kill feed 原样显示（不再解析）。旧引擎生成命令在
-	生成时用菜单传来的名字 SetName；菜单现在按 GMod 形状只传列表键，名字就
-	在服务端从注册表取。注册表里的名字是 GMod 的 "#token"（base_npcs.lua /
-	base_vehicles.lua 等），这里用服务端的 language 表解析成人话再写；
-	解析不到（不是 "#" 开头或语言表缺条目）就原样写。
------------------------------------------------------------]]
-local function HL2SB_DisplayName( name )
-	if ( name == nil or name == "" ) then return nil end
-	if ( string.sub( name, 1, 1 ) == "#" and _G.language ~= nil and language.GetPhrase ~= nil ) then
-		local phrase = language.GetPhrase( name )
-		if ( phrase ~= nil and phrase ~= "" and string.sub( phrase, 1, 1 ) ~= "#" ) then
-			return phrase
-		end
-	end
-	return name
 end
 
 local function Spawn_SandboxModel( ply, modelName, iSkin, strBody, traceOverride )
@@ -228,8 +135,7 @@ local function MakeRagdoll( ply, _, _, model, _, data )
 	ent:Activate()
 
 	if ( IsValid( ply ) ) then
-		-- HL2SB: GMod 在这里 ent:SetCreator( ply ) —— 本分叉没有该绑定（undo/
-		-- cleanup 已持有玩家），删除；道具/布娃娃不需要显示名。
+		ent:SetCreator( ply )
 		gamemode.Call( "PlayerSpawnedRagdoll", ply, model, ent )
 	end
 
@@ -287,8 +193,7 @@ function MakeProp( ply, pos, ang, model, _, data )
 
 	-- Tell the gamemode we just spawned something
 	if ( IsValid( ply ) ) then
-		-- HL2SB: GMod 在这里 prop:SetCreator( ply ) —— 无此绑定，删除（undo/
-		-- cleanup 已持有玩家）；道具显示名走 undo 的模型路径，不设 targetname。
+		prop:SetCreator( ply )
 		gamemode.Call( "PlayerSpawnedProp", ply, model, prop )
 	end
 
@@ -323,7 +228,7 @@ function MakeEffect( ply, model, data )
 
 	-- Tell the gamemode we just spawned something
 	if ( IsValid( ply ) ) then
-		-- HL2SB: GMod 在这里 prop:SetCreator( ply ) —— 无此绑定，删除。
+		prop:SetCreator( ply )
 		gamemode.Call( "PlayerSpawnedEffect", ply, model, prop )
 	end
 
@@ -346,11 +251,6 @@ function FixInvalidPhysicsObject( prop )
 
 	local PhysObj = prop:GetPhysicsObject()
 	if ( !IsValid( PhysObj ) ) then return end
-
-	-- HL2SB: PhysObj:GetAABB 在本分叉没有绑定（GMod 有）。它是“vphysics 盒与
-	-- 模型盒差太多”这套检测的唯一输入，缺了就什么都不做——旧引擎生成路径
-	-- 同样不修。正常模型不受影响。
-	if ( PhysObj.GetAABB == nil ) then return end
 
 	local min, max = PhysObj:GetAABB()
 	if ( !min or !max ) then return end
@@ -465,30 +365,39 @@ function DoPlayerEntitySpawn( ply, entity_name, model, iSkin, strBody, tr )
 	ent:SetModel( model )
 	ent:SetSkin( iSkin )
 	ent:SetAngles( ang )
-	-- HL2SB: GMod 的 Entity:SetBodyGroups（复数、十六进制串）在本分叉由
-	-- CBaseAnimating 的共享绑定提供；对没有该方法的实体保持“不调”的原语义。
-	if ( strBody and ent.SetBodyGroups ~= nil ) then ent:SetBodyGroups( strBody ) end
+	if ( strBody ) then ent:SetBodyGroups( strBody ) end
 	ent:SetPos( tr.HitPos )
-	-- HL2SB: GMod 在这里 ent:SetCreator( ply ) —— 无此绑定，删除。
+	ent:SetCreator( ply )
 	ent:Spawn()
 	ent:Activate()
 
 	-- Special case for effects
 	if ( strBody && entity_name == "prop_effect" && IsValid( ent.AttachedEntity ) ) then
-		if ( ent.AttachedEntity.SetBodyGroups ~= nil ) then
-			ent.AttachedEntity:SetBodyGroups( strBody )
-		end
+		ent.AttachedEntity:SetBodyGroups( strBody )
 	end
 
-	-- HL2SB: GMod 在这里做“贴地 flush”（ent:NearestPoint 那四行），本分叉
-	-- 没有该方法的引擎绑定，整段略过——旧引擎生成路径（GM_SpawnAtEyeTrace）
-	-- 同样只把实体放在 tr.HitPos + 法线偏移，不做 flush。位置保持 tr.HitPos。
-	-- 成就调用按 GMod 原文保留（achievements 模块两端都有 inert 实现）。
+	-- Attempt to move the object so it sits flush
+	-- We could do a TraceEntity instead of doing all
+	-- of this - but it feels off after the old way
+	local vFlushPoint = tr.HitPos - ( tr.HitNormal * 512 )	-- Find a point that is definitely out of the object in the direction of the floor
+	vFlushPoint = ent:NearestPoint( vFlushPoint )			-- Find the nearest point inside the object to that point
+	vFlushPoint = ent:GetPos() - vFlushPoint				-- Get the difference
+	vFlushPoint = tr.HitPos + vFlushPoint					-- Add it to our target pos
+
 	if ( entity_name != "prop_ragdoll" ) then
 
+		-- Set new position
+		ent:SetPos( vFlushPoint )
 		ply:SendLua( "achievements.SpawnedProp()" )
 
 	else
+
+		-- With ragdolls we need to move each physobject
+		local VecOffset = vFlushPoint - ent:GetPos()
+		for i = 0, ent:GetPhysicsObjectCount() - 1 do
+			local phys = ent:GetPhysicsObjectNum( i )
+			phys:SetPos( phys:GetPos() + VecOffset )
+		end
 
 		ply:SendLua( "achievements.SpawnedRagdoll()" )
 
@@ -607,11 +516,8 @@ local function InternalSpawnNPC( NPCData, ply, Position, Normal, Class, Equipmen
 	--
 	-- Handle squads being overflown.
 	--
-	-- HL2SB: 本分叉没有 ai.GetSquadMemberCount 绑定；表缺了就跳过“小队溢出
-	-- 改名”这一步，NPC 保留注册的 SquadName（GMod 只在溢出时才改名）。
 	local MAX_SQUAD_MEMBERS	= 16
-	if ( squadName and _G.ai ~= nil and ai.GetSquadMemberCount ~= nil
-		and ai.GetSquadMemberCount( squadName ) >= MAX_SQUAD_MEMBERS ) then
+	if ( squadName and ai.GetSquadMemberCount( squadName ) >= MAX_SQUAD_MEMBERS ) then
 
 		-- Find first open squad
 		local sqNum = 0
@@ -678,9 +584,6 @@ local function InternalSpawnNPC( NPCData, ply, Position, Normal, Class, Equipmen
 	end
 
 	if ( bDropToFloor ) then
-		-- HL2SB: GMod 的 Entity:DropToFloor() 方法已在本分叉补齐（见
-		-- lua/includes/extensions/entity.lua 的 GMod 兼容垫片，内部走
-		-- util.DropToFloor( ent, MASK_NPCSOLID )），保持 GMod 原文调用。
 		NPC:DropToFloor()
 	end
 
@@ -725,14 +628,7 @@ function Spawn_NPC( ply, NPCClassName, WeaponName, tr )
 
 	-- Give the gamemode an opportunity to do whatever
 	if ( IsValid( ply ) ) then
-		-- HL2SB: 显示名契约（文件头适配 2）——旧引擎命令在这里 SetName 菜单发来
-		-- 的名字；现在从注册表 NPCData.Name 取（"#token" 先解析成人话）。
-		-- 只在该条目真的注册过 Name 时设置，否则保持引擎的默认显示名。
-		if ( NPCData and NPCData.Name ) then
-			SpawnedNPC:SetName( HL2SB_DisplayName( NPCData.Name ) )
-		end
-
-		-- HL2SB: GMod 在这里 SpawnedNPC:SetCreator( ply ) —— 无此绑定，删除。
+		SpawnedNPC:SetCreator( ply )
 		gamemode.Call( "PlayerSpawnedNPC", ply, SpawnedNPC )
 	end
 
@@ -786,9 +682,7 @@ local function GenericNPCDuplicator( ply, class, equipment, spawnflags, data )
 		end
 
 		if ( IsValid( ply ) ) then
-			-- HL2SB: GMod 在这里 ent:SetCreator( ply ) —— 无此绑定，删除；
-			-- 显示名已在 Spawn_NPC/InternalSpawnNPC 契约里，duplicator 路径
-			-- 不重复写（EntityName 来自存档数据，可能不是注册表键）。
+			ent:SetCreator( ply )
 			gamemode.Call( "PlayerSpawnedNPC", ply, ent )
 			ply:AddCleanup( "npcs", ent )
 		end
@@ -866,16 +760,10 @@ local function CanPlayerSpawnSENT( ply, EntityName )
 
 	-- We need a spawn function. The SENT can then spawn itself properly
 	local SpawnFunction = scripted_ents.GetMember( EntityName, "SpawnFunction" )
-	if ( !isfunction( SpawnFunction ) ) then
-		-- HL2SB: GMod 在这里直接拒收（"bad_sent"）。本分叉名册里有一部分
-		-- SENT 没有 SpawnFunction（不基于 base_entity 的旧脚本），旧引擎命令
-		-- 仍能生成它们；这里放行，由 Spawn_SENT 走
-		-- ents.Create + Spawn + Activate 的回退。Spawnable/AdminOnly 两道闸
-		-- 仍在下面照常执行。
-	end
+	if ( !isfunction( SpawnFunction ) ) then ReportErrorToPlayer( ply, "bad_sent" ) return false end
 
 	-- You're not allowed to spawn this unless you're an admin!
-	if ( !scripted_ents.GetMember( EntityName, "Spawnable" ) && !isAdmin ) then ReportErrorToPlayer( ply, "admin" )  return false end
+	if ( !scripted_ents.GetMember( EntityName, "Spawnable" ) && !isAdmin ) then ReportErrorToPlayer( ply, "admin" ) return false end
 	if ( scripted_ents.GetMember( EntityName, "AdminOnly" ) && !isAdmin ) then ReportErrorToPlayer( ply, "admin" ) return false end
 
 	return true
@@ -914,29 +802,12 @@ function Spawn_SENT( ply, EntityName, tr )
 		ClassName = EntityName
 
 			local SpawnFunction = scripted_ents.GetMember( EntityName, "SpawnFunction" )
-			if ( !SpawnFunction ) then
-				-- HL2SB: GMod 在这里报错拒生成。本分叉的旧 SENT 脚本集合里
-				-- 有一部分没有 SpawnFunction（CanPlayerSpawnSENT 已放行），
-				-- 回退到与 base_entity 默认 SpawnFunction 相同的建法：
-				-- ents.Create + SetPos + Spawn + Activate。
-				entity = ents.Create( EntityName )
-				if ( IsValid( entity ) ) then
-					entity:SetPos( tr.HitPos + tr.HitNormal * 16 )
-					entity:Spawn()
-					entity:Activate()
-				end
-			else
-				entity = SpawnFunction( sentTable, ply, tr, EntityName )
-			end
+			if ( !SpawnFunction ) then ReportErrorToPlayer( ply, "bad_entity" ) return end -- Fallback to default behavior below?
+
+			entity = SpawnFunction( sentTable, ply, tr, EntityName )
 
 			if ( IsValid( entity ) ) then
-				-- HL2SB: 显示名契约（文件头适配 2）——旧引擎命令在这里 SetName
-				-- 菜单发来的名字；现在用 sentTable.PrintName（"#token" 先解析）。
-				if ( sentTable ~= nil and sentTable.PrintName ) then
-					entity:SetName( HL2SB_DisplayName( sentTable.PrintName ) )
-				end
-
-				-- HL2SB: GMod 在这里 entity:SetCreator( ply ) —— 无此绑定，删除。
+				entity:SetCreator( ply )
 			end
 
 		ClassName = nil
@@ -987,14 +858,7 @@ function Spawn_SENT( ply, EntityName, tr )
 		DoPropSpawnedEffect( entity )
 
 		if ( EntTable.DropToFloor ) then
-			-- HL2SB: Entity:DropToFloor() 方法垫片见 extensions/entity.lua
-			-- （GMod 原文调用，内部 util.DropToFloor）。
 			entity:DropToFloor()
-		end
-
-		-- HL2SB: 显示名契约（文件头适配 2）；只在该条目注册过 PrintName 时设。
-		if ( EntTable.PrintName ) then
-			entity:SetName( HL2SB_DisplayName( EntTable.PrintName ) )
 		end
 
 	end
@@ -1052,9 +916,7 @@ function CCGiveSWEP( ply, command, arguments )
 
 	if ( !gamemode.Call( "PlayerGiveSWEP", ply, arguments[1], swep ) ) then ReportErrorToPlayer( ply, "hook" ) return end
 
-	-- HL2SB: GMod 用 Player:HasWeapon；本分叉没有该绑定，GetWeapon( class )
-	-- 是同一查询（Weapon_OwnsThisType，未持有时回 nil）。
-	if ( !IsValid( ply:GetWeapon( swep.ClassName ) ) ) then
+	if ( !ply:HasWeapon( swep.ClassName ) ) then
 		MsgAll( "Giving " .. ply:Nick() .. " a " .. swep.ClassName .. "\n" )
 		ply:Give( swep.ClassName )
 	end
@@ -1118,8 +980,7 @@ function Spawn_Weapon( ply, wepname, tr )
 		SpawnPos = oobTr.HitPos + oobTr.HitNormal * ( tr.HitPos:Distance( oobTr.HitPos ) / 2 )
 	end
 
-	-- HL2SB: GMod 在这里 entity:SetCreator( ply ) —— 无此绑定，删除（武器实体
-	-- 不是 kill feed 的显示名对象，不需要 SetName 替代）。
+	entity:SetCreator( ply )
 	entity:SetPos( SpawnPos )
 	entity:Spawn()
 
@@ -1173,25 +1034,11 @@ local function MakeVehicle( ply, pos, ang, model, className, VName, data )
 	-- Fill in the keyvalues if we have them
 	if ( VTable && VTable.KeyValues ) then
 		for k, v in pairs( VTable.KeyValues ) do
-			-- HL2SB: `vehicleclass` 不能走 SetKeyValue —— 本分叉里它不是
-			-- keyfield（DATADESC FIELD_CHARACTER，datamap 的键值路径只往
-			-- char[64] 写一个字节）。它在 Spawn 之后由下面 GMod 原文的
-			-- vehicle:SetVehicleClass( VName ) 写入（旧引擎命令也是这么做的：
-			-- GM_SpawnAtEyeTrace 跳过它、DispatchSpawn 后调
-			-- HL2SB_SetEntityVehicleClass）。
-			if ( k != "vehicleclass" ) then
-				vehicle:SetKeyValue( k, v )
-			end
+			vehicle:SetKeyValue( k, v )
 		end
 	end
 
-	-- HL2SB: GMod 在这里 if ( ply ) then vehicle:SetCreator( ply ) end ——
-	-- SetCreator 无绑定（删除）；改用显示名契约：注册表 VTable.Name 写进
-	-- targetname（kill feed / 显示名，旧引擎命令同款 SetName）。
-	if ( VTable and VTable.Name ) then
-		vehicle:SetName( HL2SB_DisplayName( VTable.Name ) )
-	end
-
+	if ( ply ) then vehicle:SetCreator( ply ) end
 	vehicle:SetAngles( ang )
 	vehicle:SetPos( pos )
 
@@ -1263,7 +1110,7 @@ function Spawn_Vehicle( ply, vname, tr )
 	end
 
 	local Ent = MakeVehicle( ply, pos, Angles, vehicle.Model, vehicle.Class, vname )
-	if ( !IsValid( Ent ) ) then ReportErrorToPlayer( ply, "no_entity" ) return end
+	if ( !IsValid( Ent ) ) then ReportErrorToPlayer( ply, Ent == NULL and "no_entity" or "hook" ) return end
 
 	-- Unstable for Jeeps
 	-- TryFixPropPosition( ply, Ent, tr.HitPos )

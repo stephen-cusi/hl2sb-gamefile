@@ -1,215 +1,223 @@
---========== HL2SB - GMod compat ==========--
---
--- Purpose: Team library (ported from Garry's Mod's team module).
---
---   HL2SB runs on the HL2MP rule set, so the teams the engine actually knows
---   are TEAM_UNASSIGNED / TEAM_SPECTATOR / TEAM_COMBINE / TEAM_REBELS.  This
---   module keeps GMod's shape (SetUp / GetName / GetColor / GetPlayers /
---   NumPlayers / Score helpers) and pre-seeds it with the HL2MP teams so a
---   ported scoreboard shows something sensible before any gamemode calls
---   team.SetUp.
---
---   Two GMod dependencies are handled defensively because HL2SB has no
---   score bindings yet:
---     ply:Deaths() / ply:Frags()  -> 0 when the binding is missing
---
---===========================================================================--
-
 module( "team", package.seeall )
 
 local TeamInfo = {}
 local DefaultColor = Color( 255, 255, 100, 255 )
 
--- HL2SB 的 Color 是 userdata，分量是**方法**不是字段（见 AGENTS.md 5.4）。
-local function Parts( c )
-	if ( c == nil ) then return 255, 255, 255, 255 end
+TeamInfo[TEAM_CONNECTING] 	= { Name = "Joining/Connecting", 	Color = DefaultColor, 	Score = 0, 	Joinable = false }
+TeamInfo[TEAM_UNASSIGNED] 	= { Name = "Unassigned", 			Color = DefaultColor, 	Score = 0, 	Joinable = false }
+TeamInfo[TEAM_SPECTATOR] 	= { Name = "Spectator", 			Color = DefaultColor, 	Score = 0, 	Joinable = true }
 
-	if ( type( c.r ) == "function" ) then
-		return c.r, c.g, c.b, c.a
-	end
+--[[------------------------------------------------------------
 
-	return c.r or 255, c.g or 255, c.b or 255, c.a or 255
-end
+	Call this to set up your team. It should be called in
+	a shared file. This system assumes that your teams are
+	static. If you want to have dynamic teams you need to
+	code this yourself.
 
-local function Seed( id, name, color, joinable )
-	TeamInfo[ id ] = {
-		Name     = name,
-		Color    = color or DefaultColor,
-		Score    = 0,
-		Joinable = joinable ~= false,
-	}
-end
+	id should be a number. It's best to do something like
 
--- 引擎已知的队伍（HL2MP）
-Seed( TEAM_CONNECTING or 0, "Joining/Connecting", DefaultColor, false )
-Seed( TEAM_UNASSIGNED or 0, "Unassigned",         DefaultColor, false )
-Seed( TEAM_SPECTATOR  or 1, "Spectator",          DefaultColor, true )
-Seed( 2, "Combine", Color( 60, 90, 200, 255 ), true )
-Seed( 3, "Rebels",  Color( 200, 90, 60, 255 ), true )
+	TEAM_TERRORISTS = 2
 
--------------------------------------------------------------------------------
--- Purpose: Registers / overwrites a team (a shared file should call this)
--------------------------------------------------------------------------------
+	at the top of your code somewhere so you can reference
+	teams via a variable rather than a number.
+
+--------------------------------------------------------------]]
 function SetUp( id, name, color, joinable )
-	Seed( id, name, color, joinable )
+
+	if ( joinable == nil ) then joinable = true end
+
+	TeamInfo[id] = { Name = name, Color = color, Score = 0, Joinable = joinable }
+
 end
+
 
 function GetAllTeams()
-	return TeamInfo
+
+	return TeamInfo -- copyof?
+
 end
 
 function Valid( id )
-	return TeamInfo[ id ] ~= nil
+
+	if ( !TeamInfo[id] ) then return false end
+	return true
+
 end
 
 function Joinable( id )
-	if ( TeamInfo[ id ] == nil ) then return false end
-	return TeamInfo[ id ].Joinable
-end
 
-function GetName( id )
-	if ( TeamInfo[ id ] == nil ) then return "" end
-	return TeamInfo[ id ].Name
-end
+	if ( !TeamInfo[id] ) then return false end
+	return TeamInfo[id].Joinable
 
-function GetColor( id )
-	local c = TeamInfo[ id ] and TeamInfo[ id ].Color or DefaultColor
-	local r, g, b, a = Parts( c )
-	return Color( r, g, b, a )
-end
-
-function SetColor( id, color )
-	if ( TeamInfo[ id ] == nil ) then return false end
-
-	TeamInfo[ id ].Color = color
-	return color
-end
-
--------------------------------------------------------------------------------
--- Purpose: Spawn point bookkeeping (GMod keeps these on the team)
--------------------------------------------------------------------------------
-function SetSpawnPoint( id, ent_name )
-	if ( TeamInfo[ id ] == nil ) then return end
-	if ( not istable( ent_name ) ) then ent_name = { ent_name } end
-
-	TeamInfo[ id ].SpawnPointTable = ent_name
-	TeamInfo[ id ].SpawnPoints     = nil
 end
 
 function GetSpawnPoint( id )
-	if ( TeamInfo[ id ] == nil ) then return nil end
-	return TeamInfo[ id ].SpawnPointTable
+
+	if ( !TeamInfo[id] ) then return end
+	return TeamInfo[id].SpawnPointTable
+
 end
 
 function GetSpawnPoints( id )
-	if ( TeamInfo[ id ] == nil ) then return nil end
 
-	local names = TeamInfo[ id ].SpawnPointTable
-	if ( names == nil ) then return nil end
+	if ( IsTableOfEntitiesValid( TeamInfo[id].SpawnPoints ) ) then return TeamInfo[id].SpawnPoints end
 
-	local out = {}
-	for _, entname in ipairs( names ) do
-		if ( _G.ents ~= nil and ents.FindByClass ~= nil ) then
-			local found = ents.FindByClass( entname )
-			for _, e in ipairs( found ) do
-				out[ #out + 1 ] = e
-			end
-		end
+	local SpawnPointTable = team.GetSpawnPoint( id )
+	if ( !SpawnPointTable ) then return end
+
+	TeamInfo[id].SpawnPoints = {}
+
+	for k, entname in pairs( SpawnPointTable ) do
+
+		TeamInfo[id].SpawnPoints = table.Add( TeamInfo[id].SpawnPoints, ents.FindByClass( entname ) )
+
 	end
 
-	TeamInfo[ id ].SpawnPoints = out
-	return out
+	return TeamInfo[id].SpawnPoints
+
+end
+
+function SetSpawnPoint( id, ent_name )
+
+	if ( !TeamInfo[id] ) then return end
+	if ( !istable( ent_name ) ) then ent_name = { ent_name } end
+
+	TeamInfo[id].SpawnPointTable = ent_name
+
 end
 
 function SetClass( id, classtable )
-	if ( TeamInfo[ id ] == nil ) then return end
-	if ( not istable( classtable ) ) then classtable = { classtable } end
 
-	TeamInfo[ id ].SelectableClasses = classtable
+	if ( !TeamInfo[id] ) then return end
+	if ( !istable( classtable ) ) then classtable = { classtable } end
+
+	TeamInfo[id].SelectableClasses = classtable
+
 end
 
 function GetClass( id )
-	if ( TeamInfo[ id ] == nil ) then return nil end
-	return TeamInfo[ id ].SelectableClasses
+
+	if ( !TeamInfo[id] ) then return end
+	return TeamInfo[id].SelectableClasses
+
 end
 
--------------------------------------------------------------------------------
--- Purpose: Score / roster helpers
--------------------------------------------------------------------------------
-local function ForEachPlayer( fn )
-	if ( _G.player == nil or player.GetAll == nil ) then return end
+function TotalDeaths( index )
 
-	for _, ply in ipairs( player.GetAll() ) do
-		fn( ply )
-	end
-end
+	local score = 0
 
--- ply:Team() 是 gmod_compat.lua 给 CBasePlayer 加的别名（= GetTeamNumber）。
-local function PlyTeam( ply )
-	if ( ply.Team ~= nil ) then return ply:Team() end
-	if ( ply.GetTeamNumber ~= nil ) then return ply:GetTeamNumber() end
-	return -1
-end
-
-function NumPlayers( id )
-	local n = 0
-	ForEachPlayer( function( ply )
-		if ( PlyTeam( ply ) == id ) then n = n + 1 end
-	end )
-	return n
-end
-
-function GetPlayers( id )
-	local out = {}
-	ForEachPlayer( function( ply )
-		if ( PlyTeam( ply ) == id ) then out[ #out + 1 ] = ply end
-	end )
-	return out
-end
-
-function TotalFrags( id )
-	local n = 0
-	ForEachPlayer( function( ply )
-		if ( PlyTeam( ply ) == id and ply.Frags ~= nil ) then n = n + ( ply:Frags() or 0 ) end
-	end )
-	return n
-end
-
-function TotalDeaths( id )
-	local n = 0
-	ForEachPlayer( function( ply )
-		if ( PlyTeam( ply ) == id and ply.Deaths ~= nil ) then n = n + ( ply:Deaths() or 0 ) end
-	end )
-	return n
-end
-
-function GetScore( id )
-	return GetGlobalInt( "Team." .. tostring( id ) .. ".Score", 0 )
-end
-
-function SetScore( id, score )
-	return SetGlobalInt( "Team." .. tostring( id ) .. ".Score", score )
-end
-
-function AddScore( id, score )
-	SetScore( id, GetScore( id ) + score )
-end
-
--------------------------------------------------------------------------------
--- Purpose: The joinable team with the fewest players
--------------------------------------------------------------------------------
-function BestAutoJoinTeam()
-	local smallest, count = TEAM_UNASSIGNED or 0, 1000
-
-	for id, tm in pairs( TeamInfo ) do
-		if ( id ~= ( TEAM_SPECTATOR or 1 ) and id ~= ( TEAM_UNASSIGNED or 0 ) and tm.Joinable ) then
-			local n = NumPlayers( id )
-			if ( n < count or ( n == count and id < smallest ) ) then
-				count    = n
-				smallest = id
-			end
+	for _, ply in player.Iterator() do
+		if ( ply:Team() == index ) then
+			score = score + ply:Deaths()
 		end
 	end
 
-	return smallest
+	return score
+
+end
+
+function TotalFrags( index )
+
+	local score = 0
+
+	for _, ply in player.Iterator() do
+		if ( ply:Team() == index ) then
+			score = score + ply:Frags()
+		end
+	end
+
+	return score
+
+end
+
+function NumPlayers( index )
+
+	local players = 0
+
+	for _, ply in player.Iterator() do
+		if ( ply:Team() == index ) then
+			players = players + 1
+		end
+	end
+
+	return players
+
+end
+
+function GetPlayers( index )
+
+	local TeamPlayers = {}
+
+	for _, ply in player.Iterator() do
+		if ( ply:Team() == index ) then
+			table.insert(TeamPlayers, ply)
+		end
+	end
+
+	return TeamPlayers
+
+end
+
+function GetScore( index )
+
+	return GetGlobalInt( "Team." .. tostring( index ) .. ".Score", 0 )
+
+end
+
+function GetName( index )
+
+	if ( !TeamInfo[index] ) then return "" end
+	return TeamInfo[index].Name
+
+end
+
+function SetColor( index, color )
+
+	if ( !TeamInfo[ index ] ) then return false end
+	TeamInfo[ index ].Color = color
+
+	return color
+
+end
+
+function GetColor( index )
+
+	local color = TeamInfo[index] && TeamInfo[index].Color || DefaultColor
+	return Color( color.r, color.g, color.b, color.a )
+
+end
+
+function SetScore( index, score )
+
+	return SetGlobalInt( "Team." .. tostring( index ) .. ".Score", score )
+
+end
+
+function AddScore(index, score)
+
+	SetScore( index, GetScore( index ) + score )
+
+end
+
+function BestAutoJoinTeam()
+
+	local SmallestTeam = TEAM_UNASSIGNED
+	local SmallestPlayers = 1000
+
+	for id, tm in pairs( team.GetAllTeams() ) do
+
+		if ( id != TEAM_SPECTATOR && id != TEAM_UNASSIGNED && id != TEAM_CONNECTING && tm.Joinable ) then
+
+			local PlayerCount = team.NumPlayers( id )
+			if ( PlayerCount < SmallestPlayers || (PlayerCount == SmallestPlayers && id < SmallestTeam ) ) then
+				SmallestPlayers = PlayerCount
+				SmallestTeam = id
+			end
+
+		end
+
+	end
+
+	return SmallestTeam
+
 end

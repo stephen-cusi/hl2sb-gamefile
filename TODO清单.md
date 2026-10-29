@@ -820,3 +820,11 @@ lua_run_cl print(type(LocalPlayer():GetActiveWeapon().CallOnClient))
 ```
 
 开火前后本地 `LastShootTime()` 应随本地 FireBullets 改变；服务器设置后客户端不应自动跟随。检查武器拥有者是否只收到自己的 CallOnClient 方法调用。再测试换武器、装填、拳头攻击和工具枪动画。没有实际调用 `CallOnClient` 的插件时，不要仅凭方法存在判定消息链完全通过。
+
+## 2026-10-29 Team and sandbox commands
+
+- Restored the Steam GMod versions of `team.lua`, base `player.lua` and `cl_scoreboard.lua`, sandbox `shared.lua` and `commands.lua`. The five installed files match the reference MD5.
+- The player team Lua setter dispatches the team-change hook before updating the player field. Entity and player-resource team fields use signed 16-bit network values; client `Player:Team()` reads the player resource. The default team globals are registered before Lua modules load.
+- Updated spectator checks for the GMod spectator team and guarded HL2MP engine-team lookups. Replaced the Lua `NearestPoint` approximation with the shared native collision-property operation.
+- Original `team.lua` passed an isolated Lua contract check for default teams, registration, player iteration, score and spawn-point lookup. Client and server DLL/PDB were built and deployed with matching MD5. The user confirmed client `Player:Team()` returns 7 after changing the server team and resuming singleplayer simulation. Multiplayer synchronization, spectator transitions and the remaining Sandbox spawn paths still require separate live validation.
+- Removed duplicate player-resource creation and temporary resource diagnostics. The standard world lifecycle now creates one resource, and destroying a resource only clears the singleton it owns.

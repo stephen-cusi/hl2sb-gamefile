@@ -835,14 +835,6 @@ if ( _G.cvars == nil ) then
 end
 
 -- ===========================================================================
--- 9. 队伍常量（HL2MP 的取值；只有引擎没给的时候才补）
--- ===========================================================================
-
-TEAM_CONNECTING = TEAM_CONNECTING or 0
-TEAM_UNASSIGNED = TEAM_UNASSIGNED or 0
-TEAM_SPECTATOR  = TEAM_SPECTATOR  or 1
-
--- ===========================================================================
 -- 10. engine.ActiveGamemode()
 --
 -- GMod: the active gamemode's folder name.  It was defined ONLY in the never-loaded
