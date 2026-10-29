@@ -849,3 +849,9 @@ lua_run_cl print(type(LocalPlayer():GetActiveWeapon().CallOnClient))
 - Added a client sorted renderable for dof_node, effect removal state, DOFModeHack group mapping and level-shutdown reset. Other Lua effects retain their existing draw path. This is a host adaptation, not proof of identical native lifecycle or all derived render-group behavior.
 - Current GMod DOFModeHack, entity render-group and Remove behavior were archived under D:/tmp/redll/client.dll; see index. No header changes. Changed client translation units passed individual compilation and client build. Client DLL/PDB and original Lua were deployed and MD5 matched.
 - User confirmed motion blur and bokeh after comparing them with GMod, and confirmed the DOF issue was fixed. The DOF first-frame error was addressed by updating sorted effects before rendering. Repeated toggling and map changes remain separate regression checks.
+
+## 2026-10-29 Frame Blend migration
+
+- Restored frame_blend.lua byte-for-byte from the current Steam installation. Added client GetRenderTargetEx, render.GetMoBlurTex1 and the three render target constants consumed by the script; engine.IsPlayingDemo and PostRender already exist.
+- Current Steam client target bindings and creation helper are archived in D:/tmp/redll/client.dll and indexed. Current server binary contains none of these client APIs. The native image format range is limited to formats supported by this engine, so newer GMod formats remain unsupported.
+- lrender.cpp passed single-TU compilation and client build succeeded. Client DLL/PDB deployed with matching MD5. User compared frame blend in game with GMod and reported matching behavior; demo recording remains untested. super_dof.lua remains pending.
