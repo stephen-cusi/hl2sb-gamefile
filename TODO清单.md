@@ -854,4 +854,29 @@ lua_run_cl print(type(LocalPlayer():GetActiveWeapon().CallOnClient))
 
 - Restored frame_blend.lua byte-for-byte from the current Steam installation. Added client GetRenderTargetEx, render.GetMoBlurTex1 and the three render target constants consumed by the script; engine.IsPlayingDemo and PostRender already exist.
 - Current Steam client target bindings and creation helper are archived in D:/tmp/redll/client.dll and indexed. Current server binary contains none of these client APIs. The native image format range is limited to formats supported by this engine, so newer GMod formats remain unsupported.
-- lrender.cpp passed single-TU compilation and client build succeeded. Client DLL/PDB deployed with matching MD5. User compared frame blend in game with GMod and reported matching behavior; demo recording remains untested. super_dof.lua remains pending.
+- lrender.cpp passed single-TU compilation and client build succeeded. Client DLL/PDB deployed with matching MD5. User compared frame blend in game with GMod and reported matching behavior; demo recording remains untested.
+
+## 2026-10-29 Super DOF migration
+
+- Restored the current Steam super_dof.lua byte-for-byte. Updated both SuperFP textures to full-frame floating-point targets; added render.Spin, screenshot panel visibility, GUIMouseReleased dispatch and PreventScreenClicks handling.
+- Current Steam client target helpers, screenshot binding and rope manager used by Spin are archived in D:/tmp/redll/client.dll and indexed. The corresponding target and Spin bindings do not appear in the current server binary. Client UI and input integration needs live verification, including context-menu regression checks.
+- Changed translation units passed single-TU compilation; client and vgui_controls build succeeded. Client DLL/PDB deployed with matching MD5. Game testing, screenshot output, high quality rendering and cross-platform behavior remain unverified.
+
+## 2026-10-30 Super DOF input regression
+
+- Restricted world mouse press/release dispatch to screen-click panels. Ordinary menu controls and sliders no longer trigger world focus selection or spawnmenu close. User confirmed both sliders and spawnmenu blank-area clicks work after the fix.
+- Corrected the nested RenderView depth counter so the outer view also releases its entry on return.
+- Follow-up: the client Lua world root had disabled its own hit testing, leaving scene space outside the Super DOF window without a mouse receiver. Enabled root hit testing while retaining normal child-first traversal, so the original focus selection and Sparks path can receive scene clicks. Awaiting user verification of this follow-up.
+
+## 2026-10-30 Super DOF native effects
+
+- Reviewed spark registrations against the current Steam callbacks. Corrected Sparks magnitude rounding to ceil and scale to truncation; ElectricSpark truncates both values. Super DOF uses fixed effect parameters independent of blur controls.
+- Client util.Effect now dispatches directly to the Lua/native effect callbacks, matching the current reference path, instead of passing native effects through temporary-entity prediction filtering. The per-call allowOverride flag is honored without a second Lua override attempt. Existing native weapon prediction entry remains unchanged.
+- Evidence is indexed under D:/tmp/redll/client.dll; Wiki effect and world mouse hook contracts checked. Original super_dof.lua remains byte-identical. Related translation units and client build passed; deployed DLL/PDB MD5 pairs match. Latest logs do not capture the failed Sparks invocation; actual scene picking and particle visibility require user retest.
+
+## 2026-10-30 Super DOF world input traversal
+
+- User confirmed standalone Sparks works. The 04:37 native snapshot identifies Engine Tools as the actual hovered panel during scene clicks; the Lua world root resolves correctly at the same coordinates. Empty Lua hover was caused by failure to wrap a panel from another module, not proof of a missing native target. Earlier ancestor-input diagnoses were not the observed root cause.
+- Current Steam CGModBase constructor parents the world root to PANEL_ROOT and sets layer 90; Engine Tools is layer 75 and GameUI is layer 100. Box instead parented the Lua root under PANEL_CLIENTDLL at layer 25. Updated ClientModeShared::Enable to match the reference parent and layer; no original Lua changes.
+- Removed the unsuccessful world-hit fallback, focus-validation exception, callback export, shutdown bridge and extra build dependency. InputWin32.cpp is restored to its prior implementation. Removed the temporary native snapshot command and Lua probe; captured evidence remains outside the repositories.
+- New parent/layer helpers and engine root construction are archived and indexed under D:/tmp/redll/client.dll and engine.dll. Related single-TU checks and vgui2/client build passed; DLL/PDB pairs were deployed to their correct engine/game directories with matching MD5. User reports the issue appears fixed after testing; full screenshot output and menu regression checks remain separate validation items.
