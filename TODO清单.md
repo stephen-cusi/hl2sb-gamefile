@@ -828,3 +828,24 @@ lua_run_cl print(type(LocalPlayer():GetActiveWeapon().CallOnClient))
 - Updated spectator checks for the GMod spectator team and guarded HL2MP engine-team lookups. Replaced the Lua `NearestPoint` approximation with the shared native collision-property operation.
 - Original `team.lua` passed an isolated Lua contract check for default teams, registration, player iteration, score and spawn-point lookup. Client and server DLL/PDB were built and deployed with matching MD5. The user confirmed client `Player:Team()` returns 7 after changing the server team and resuming singleplayer simulation. Multiplayer synchronization, spectator transitions and the remaining Sandbox spawn paths still require separate live validation.
 - Removed duplicate player-resource creation and temporary resource diagnostics. The standard world lifecycle now creates one resource, and destroying a resource only clears the singleton it owns.
+## 2026-10-29 Bokeh DOF migration
+
+- Original motion_blur.lua is retained; user compared GMod and hl2box with pp_motionblur 1 and reported both working.
+- Added byte-identical Steam GMod bokeh_dof.lua. Client NeedsDepthPass runs after main-view world list preparation and invokes the existing SSAO depth pass when requested; render.GetResolvedFullFrameDepth exposes the engine target. Server is not changed: this is a client postprocess and the current server reference has neither binding nor hook.
+- Current Steam client depth hook, depth pass, and texture binding were reverse checked and archived under D:/tmp/redll/client.dll with index entries. The existing Source depth path is the implementation base; exact pixel parity, nested views and performance require live verification.
+- Both changed client translation units passed single-TU compilation and client build succeeded. Client DLL/PDB were deployed and MD5 matched. No game launch or native tests. Remaining dof.lua, frame_blend.lua and super_dof.lua are not complete.
+
+## 2026-10-29 DOF investigation
+
+- User compared bokeh between GMod and hl2box and reported matching visual results.
+- Current Steam reference DOFModeHack switches render groups and resets on level shutdown. The original dof_node effect calls IsValid, Remove, SetCollisionBounds, SetParent and transform methods.
+- Current CLuaEffect is a table driven by a global client-effect draw list, with no real entity render handle or Remove implementation. GMod Entity:Remove rejects calls during rendering and defers client entity removal. Directly marking a table or remapping all render groups is not sufficient to establish equivalent effect placement, sorting and removal; further native lifecycle and render-order work remains before loading original dof.lua.
+- Current Steam Entity Remove and SetCollisionBounds bindings and removal implementation archived in D:/tmp/redll/client.dll with index. No product changes or deployment for DOF in this investigation.
+
+
+## 2026-10-29 DOF implementation
+
+- Restored Steam GMod postprocess/dof.lua byte-for-byte. Existing dof_node remains unchanged.
+- Added a client sorted renderable for dof_node, effect removal state, DOFModeHack group mapping and level-shutdown reset. Other Lua effects retain their existing draw path. This is a host adaptation, not proof of identical native lifecycle or all derived render-group behavior.
+- Current GMod DOFModeHack, entity render-group and Remove behavior were archived under D:/tmp/redll/client.dll; see index. No header changes. Changed client translation units passed individual compilation and client build. Client DLL/PDB and original Lua were deployed and MD5 matched.
+- User confirmed motion blur and bokeh after comparing them with GMod, and confirmed the DOF issue was fixed. The DOF first-frame error was addressed by updating sorted effects before rendering. Repeated toggling and map changes remain separate regression checks.
