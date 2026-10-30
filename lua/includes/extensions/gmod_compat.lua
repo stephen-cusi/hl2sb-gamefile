@@ -213,12 +213,7 @@ local plymeta = _R ~= nil and _R.CBasePlayer or nil
 local hl2meta = _R ~= nil and _R.CHL2MP_Player or nil
 
 if ( entmeta ~= nil ) then
-	Alias( entmeta, "GetModel",      entmeta.GetModelName )
-	Alias( entmeta, "EntIndex",      entmeta.entindex )
 	Alias( entmeta, "SetModelName",  entmeta.SetModel )
-	Alias( entmeta, "GetPos",        entmeta.GetAbsOrigin )
-	Alias( entmeta, "SetPos",        entmeta.SetAbsOrigin )
-	Alias( entmeta, "GetAngles",     entmeta.GetAbsAngles )
 	Alias( entmeta, "SetAngles",     entmeta.SetAbsAngles )
 	Alias( entmeta, "GetVelocity",   entmeta.GetAbsVelocity )
 	Alias( entmeta, "SetVelocity",   entmeta.SetAbsVelocity )
