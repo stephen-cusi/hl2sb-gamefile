@@ -201,19 +201,10 @@ end
 --    引擎的 __index 回退链会走到这些 metatable，所以别名立刻生效。
 -- ===========================================================================
 
-local function Alias( mt, name, source )
-	if ( mt == nil or source == nil ) then return end
-	if ( mt[ name ] == nil ) then
-		mt[ name ] = source
-	end
-end
-
 local entmeta = _R ~= nil and _R.CBaseEntity or nil
 local plymeta = _R ~= nil and _R.CBasePlayer or nil
-local hl2meta = _R ~= nil and _R.CHL2MP_Player or nil
 
 if ( entmeta ~= nil ) then
-	Alias( entmeta, "SetModelName",  entmeta.SetModel )
 	-- HL2SB: GetTable has to answer the entity's per-entity Lua field table (the
 	-- same table the engine __newindex writes), never the classname.  The old
 	-- GetClassname alias made ent:GetTable() a STRING, so tab[key] fell through
@@ -223,8 +214,6 @@ if ( entmeta ~= nil ) then
 end
 
 if ( plymeta ~= nil ) then
-	Alias( plymeta, "SetModel",  plymeta.SetModel )
-
 	-- GMod: ply:GetInfo( "cl_playermodel" ) 读客户端 userinfo
 	if ( plymeta.GetInfo == nil and engine ~= nil and engine.GetClientConVarValue ~= nil ) then
 		plymeta.GetInfo = function( ply, key )
@@ -263,10 +252,6 @@ if ( plymeta ~= nil ) then
 			return nil
 		end
 	end
-end
-
--- CHL2MP_Player 的 __index 会回退到 CBasePlayer，两边别名互补。
-if ( hl2meta ~= nil ) then
 end
 
 -- ===========================================================================
