@@ -4,23 +4,6 @@ if ( rawget( _G, "HL2SB_CoreModulesReady" ) ) then return end
 _G.HL2SB_CoreModulesReady = true
 include( "hl2sb/compat/binary_modules.lua" )
 
--- These globals are native in GMod. Keep them outside its math extension.
-if ( LerpVector == nil ) then
-    function LerpVector( fraction, from, to )
-        return Vector( from.x + ( to.x - from.x ) * fraction,
-            from.y + ( to.y - from.y ) * fraction,
-            from.z + ( to.z - from.z ) * fraction )
-    end
-end
-
-if ( LerpAngle == nil ) then
-    function LerpAngle( fraction, from, to )
-        return Angle( from.p + ( to.p - from.p ) * fraction,
-            from.y + ( to.y - from.y ) * fraction,
-            from.r + ( to.r - from.r ) * fraction )
-    end
-end
-
 -- Lua 5.4 rejects fractional bounds that older addon scripts pass.
 if ( not math.__hl2sb_random_patched ) then
     local random = math.random
