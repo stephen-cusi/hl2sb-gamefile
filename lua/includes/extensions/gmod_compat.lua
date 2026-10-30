@@ -521,12 +521,6 @@ end
 -- 4b. NW 库的 GMod 旧拼法（SetNetworkedBool == SetNWBool 等）
 --     minecraft 等老插件全用 Networked 拼法。
 -- ===========================================================================
-if ( entmeta ~= nil ) then
-	Alias( entmeta, "SetNetworkedVector", entmeta.SetNWVector )
-	Alias( entmeta, "GetNetworkedVector", entmeta.GetNWVector )
-	Alias( entmeta, "SetNetworkedAngle",  entmeta.SetNWAngle )
-	Alias( entmeta, "GetNetworkedAngle",  entmeta.GetNWAngle )
-end
 
 -- ===========================================================================
 -- 4c. ClientsideModel( model, renderGroup ) —— 客户端临时模型全局
