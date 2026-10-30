@@ -522,16 +522,6 @@ end
 --     minecraft 等老插件全用 Networked 拼法。
 -- ===========================================================================
 if ( entmeta ~= nil ) then
-	Alias( entmeta, "SetNetworkedBool",   entmeta.SetNWBool )
-	Alias( entmeta, "GetNetworkedBool",   entmeta.GetNWBool )
-	Alias( entmeta, "SetNetworkedInt",    entmeta.SetNWInt )
-	Alias( entmeta, "GetNetworkedInt",    entmeta.GetNWInt )
-	Alias( entmeta, "SetNetworkedFloat",  entmeta.SetNWFloat )
-	Alias( entmeta, "GetNetworkedFloat",  entmeta.GetNWFloat )
-	Alias( entmeta, "SetNetworkedString", entmeta.SetNWString )
-	Alias( entmeta, "GetNetworkedString", entmeta.GetNWString )
-	Alias( entmeta, "SetNetworkedEntity", entmeta.SetNWEntity )
-	Alias( entmeta, "GetNetworkedEntity", entmeta.GetNWEntity )
 	Alias( entmeta, "SetNetworkedVector", entmeta.SetNWVector )
 	Alias( entmeta, "GetNetworkedVector", entmeta.GetNWVector )
 	Alias( entmeta, "SetNetworkedAngle",  entmeta.SetNWAngle )

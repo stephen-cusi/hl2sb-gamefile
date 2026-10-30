@@ -6,23 +6,19 @@ local EntityMeta = FindMetaTable( "Entity" )
 if ( EntityMeta == nil ) then return end
 
 -- ---------------------------------------------------------------------------
--- GMod's legacy "Networked" spellings for the NW store.  The engine binds
--- SetNWInt/GetNWInt/SetNWBool/GetNWBool/SetNWEntity/GetNWEntity/... ; GMod
--- keeps the pre-13 names (SetNetworkedInt, GetNetworkedBool, ...) as aliases
--- of the same functions, and older addons (portalgun's info_hpd_controller,
--- the SWEP LastPortal slot) use nothing else.
+-- Legacy lowercase spellings and Vector/Angle names remain available here.
 -- ---------------------------------------------------------------------------
-if ( EntityMeta.SetNWInt != nil and EntityMeta.SetNetworkedInt == nil ) then
+if ( EntityMeta.SetNWInt != nil ) then
 	local NWAliasTypes = { "Int", "Bool", "Float", "String", "Entity", "Vector", "Angle" }
 
 	for _, t in pairs( NWAliasTypes ) do
 		if ( EntityMeta[ "SetNW" .. t ] != nil ) then
-			EntityMeta[ "SetNetworked" .. t ] = EntityMeta[ "SetNW" .. t ]
-			EntityMeta[ "SetNetworked" .. string.lower( t ) ] = EntityMeta[ "SetNW" .. t ]
+			EntityMeta[ "SetNetworked" .. t ] = EntityMeta[ "SetNetworked" .. t ] or EntityMeta[ "SetNW" .. t ]
+			EntityMeta[ "SetNetworked" .. string.lower( t ) ] = EntityMeta[ "SetNetworked" .. t ]
 		end
 		if ( EntityMeta[ "GetNW" .. t ] != nil ) then
-			EntityMeta[ "GetNetworked" .. t ] = EntityMeta[ "GetNW" .. t ]
-			EntityMeta[ "GetNetworked" .. string.lower( t ) ] = EntityMeta[ "GetNW" .. t ]
+			EntityMeta[ "GetNetworked" .. t ] = EntityMeta[ "GetNetworked" .. t ] or EntityMeta[ "GetNW" .. t ]
+			EntityMeta[ "GetNetworked" .. string.lower( t ) ] = EntityMeta[ "GetNetworked" .. t ]
 		end
 	end
 
