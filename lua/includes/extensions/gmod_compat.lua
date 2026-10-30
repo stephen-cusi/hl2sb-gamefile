@@ -223,11 +223,6 @@ if ( entmeta ~= nil ) then
 end
 
 if ( plymeta ~= nil ) then
-	Alias( plymeta, "Team",      plymeta.GetTeamNumber )
-	Alias( plymeta, "SetTeam",   plymeta.ChangeTeam )
-	Alias( plymeta, "Nick",      plymeta.GetPlayerName )
-	Alias( plymeta, "Alive",     plymeta.IsAlive )
-	Alias( plymeta, "SteamID",   plymeta.GetNetworkIDString )
 	Alias( plymeta, "UniqueID",  plymeta.GetUserID )
 	Alias( plymeta, "Ping",      function() return 0 end )
 	Alias( plymeta, "SetModel",  plymeta.SetModel )
@@ -279,9 +274,6 @@ end
 
 -- CHL2MP_Player 的 __index 会回退到 CBasePlayer，两边别名互补。
 if ( hl2meta ~= nil ) then
-	Alias( hl2meta, "Team",     hl2meta.GetTeamNumber )
-	Alias( hl2meta, "Nick",     hl2meta.GetPlayerName )
-	Alias( hl2meta, "Alive",    hl2meta.IsAlive )
 end
 
 -- ===========================================================================
