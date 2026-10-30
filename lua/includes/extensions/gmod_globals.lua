@@ -18,13 +18,12 @@
 -----------------------------------------------------------------------------]]--
 
 -- ===========================================================================
--- HL2SB GMod SWEP compat: activity / player-animation constants + Angle
--- constructor.  These must exist before any weapon script loads (weapons are
--- walked after includes/), and GMod SWEPs use the ACT_VM_* / ACT_MP_* / PLAYER_*
--- symbols directly.  Values come from Source's ai_activity.h / shareddefs.h
--- Activity + PLAYER_ANIM enums.
+-- HL2SB GMod SWEP compat: activity / player-animation constants.  These must
+-- exist before any weapon script loads (weapons are walked after includes/),
+-- and GMod SWEPs use the ACT_VM_* / ACT_MP_* / PLAYER_* symbols directly.
+-- Values come from Source's ai_activity.h / shareddefs.h Activity +
+-- PLAYER_ANIM enums. Angle is registered by the native math library.
 -- ===========================================================================
-Angle = Angle or QAngle
 
 -- ===========================================================================
 -- Sound( path )  (GMod global, both realms)

@@ -6,16 +6,6 @@ local EntityMeta = FindMetaTable( "Entity" )
 if ( EntityMeta == nil ) then return end
 
 -- ---------------------------------------------------------------------------
--- GMod's Angle constructor.  This engine publishes the same thing as QAngle
--- (public/lua/mathlib/lvector.cpp QAngle_funcs); GMod scripts -- env_skypaint's
--- siblings, the sky editor family -- spell it Angle( p, y, r ).
--- ---------------------------------------------------------------------------
-if ( Angle == nil and QAngle != nil ) then
-	Angle = QAngle
-	Msg( "[HL2SB]   Angle() global added (QAngle alias)\n" )
-end
-
--- ---------------------------------------------------------------------------
 -- render origin / angles
 -- ---------------------------------------------------------------------------
 if ( EntityMeta.SetRenderOrigin == nil ) then

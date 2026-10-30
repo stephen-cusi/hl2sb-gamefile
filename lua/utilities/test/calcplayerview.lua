@@ -9,7 +9,7 @@ local curtime = gpGlobals.curtime
 
 hook.add( "CalcPlayerView", "CalcPlayerView", function( pPlayer, eyeOrigin, eyeAngles, fov )
   -- Give a subtle breathing effect.
-  eyeAngles = eyeAngles + QAngle( sin( curtime() ) / 2, 0, 0 )
+  eyeAngles = eyeAngles + Angle( sin( curtime() ) / 2, 0, 0 )
 
   -- FIXME: Field of view is just plain broken here. Use pPlayer:SetFOV() to
   -- get around this.

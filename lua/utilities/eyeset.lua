@@ -5,7 +5,7 @@
 --===========================================================================--
 
 local EYE_PRESET_ORIGIN = Vector(27.044645, -906.119995, 165.712967)
-local EYE_PRESET_ANGLES = QAngle(-7.722018, 102.617867, 0.000000)
+local EYE_PRESET_ANGLES = Angle(-7.722018, 102.617867, 0.000000)
 local EYE_PRESET_FOV = 90
 
 local r_eyeset = ConVar( "r_eyeset", "0", FCVAR_CLIENTDLL )

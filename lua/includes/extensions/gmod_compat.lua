@@ -76,16 +76,6 @@ DefPredicate( "isvector", function( v )
 	return t == "Vector" or t == "vector"
 end )
 
-DefPredicate( "isangle", function( v )
-	if ( T( v ) ~= "userdata" ) then return false end
-
-	local mt = getmetatable( v )
-	if ( mt == nil ) then return false end
-
-	local t = rawget( mt, "__type" )
-	return t == "QAngle" or t == "Angle" or t == "angle"
-end )
-
 DefPredicate( "ispanel", function( v )
 	if ( T( v ) ~= "userdata" ) then return false end
 

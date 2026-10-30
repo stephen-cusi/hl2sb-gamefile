@@ -314,9 +314,6 @@ if ( rawget( _G, "MATERIAL_CULLMODE_CW" ) == nil ) then MATERIAL_CULLMODE_CW = 1
 -- constants; gmod_hands.lua uses them verbatim (AttachToViewmodel, OnRemove).
 ------------------------------------------------------------------------------
 
-if ( rawget( _G, "vector_origin" ) == nil ) then vector_origin = Vector( 0, 0, 0 ) end
-if ( rawget( _G, "angle_zero" ) == nil ) then angle_zero = QAngle( 0, 0, 0 ) end
-
 ------------------------------------------------------------------------------
 -- HUD_PRINT_* globals: GMod publishes the Entity:PrintMessage routing types
 -- as globals.  hitnumbers' client toggle passes HUD_PRINTTALK verbatim, and
