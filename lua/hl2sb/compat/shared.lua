@@ -20,28 +20,6 @@ end
 include( "hl2sb/compat/enumerations.lua" )
 include( "hl2sb/compat/player_manager.lua" )
 
-local hl2sb_EntityMeta = FindMetaTable( "Entity" )
-
-if ( hl2sb_EntityMeta ~= nil and hl2sb_EntityMeta.SetNoDraw == nil ) then
-	local hl2sb_NoDraw = EF_NODRAW or 32
-
-	--- GMod: toggles EF_NODRAW on the entity.
-	function hl2sb_EntityMeta:SetNoDraw( b )
-		if ( b ) then
-			self:AddEffects( hl2sb_NoDraw )
-		else
-			self:RemoveEffects( hl2sb_NoDraw )
-		end
-	end
-
-	function hl2sb_EntityMeta:GetNoDraw()
-		return self:IsEffectActive( hl2sb_NoDraw )
-	end
-
-	Msg( "[HL2SB]   Entity:SetNoDraw / GetNoDraw added (EF_NODRAW=" .. tostring( hl2sb_NoDraw ) .. ")\n" )
-end
-
-
 if ( CLIENT and type( effects ) == "table" and type( effects.Register ) == "function" ) then
 	local hl2sb_OldEffectRegister = effects.Register
 	local hl2sb_EffectIDs = setmetatable( {}, { __mode = "k" } )
