@@ -402,7 +402,6 @@ if ( plymeta ~= nil ) then
 	Alias( plymeta, "SetTeam",   plymeta.ChangeTeam )
 	Alias( plymeta, "Nick",      plymeta.GetPlayerName )
 	Alias( plymeta, "Alive",     plymeta.IsAlive )
-	Alias( plymeta, "GetModel",  plymeta.GetModelName )
 	Alias( plymeta, "SteamID",   plymeta.GetNetworkIDString )
 	Alias( plymeta, "UniqueID",  plymeta.GetUserID )
 	Alias( plymeta, "Ping",      function() return 0 end )
@@ -458,7 +457,6 @@ if ( hl2meta ~= nil ) then
 	Alias( hl2meta, "Team",     hl2meta.GetTeamNumber )
 	Alias( hl2meta, "Nick",     hl2meta.GetPlayerName )
 	Alias( hl2meta, "Alive",    hl2meta.IsAlive )
-	Alias( hl2meta, "GetModel", hl2meta.GetModelName )
 end
 
 -- ===========================================================================
