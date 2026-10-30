@@ -95,68 +95,11 @@ DefPredicate( "iscolor", function( v )
 end )
 
 -- ===========================================================================
--- 2. 全局变量表（GMod 的 GetGlobalInt / SetGlobalInt 等）
---    注意：这一层是纯 Lua 的本地存储，服务端和客户端各存各的。
---    计分板这类“服务端自己读写”的用法没问题；要跨端同步得走 net。
+-- 2. Shared storage for the native global variable bindings.
 -- ===========================================================================
 
 local tGlobals = _G.__HL2SB_GLOBALS or {}
 _G.__HL2SB_GLOBALS = tGlobals
-
-function GetGlobalVar( key, default )
-	local v = tGlobals[ key ]
-	if ( v == nil ) then return default end
-	return v
-end
-
-function SetGlobalVar( key, value )
-	tGlobals[ key ] = value
-	return value
-end
-
-function GetGlobalInt( key, default )
-	local v = tGlobals[ key ]
-	if ( v == nil ) then return default or 0 end
-	return math_floor( tonumber( v ) or 0 )
-end
-
-function SetGlobalInt( key, value )
-	tGlobals[ key ] = math_floor( tonumber( value ) or 0 )
-	return tGlobals[ key ]
-end
-
-function GetGlobalFloat( key, default )
-	local v = tGlobals[ key ]
-	if ( v == nil ) then return default or 0 end
-	return tonumber( v ) or 0
-end
-
-function SetGlobalFloat( key, value )
-	tGlobals[ key ] = tonumber( value ) or 0
-	return tGlobals[ key ]
-end
-
-function GetGlobalString( key, default )
-	local v = tGlobals[ key ]
-	if ( v == nil ) then return default or "" end
-	return tostring( v )
-end
-
-function SetGlobalString( key, value )
-	tGlobals[ key ] = tostring( value or "" )
-	return tGlobals[ key ]
-end
-
-function GetGlobalBool( key, default )
-	local v = tGlobals[ key ]
-	if ( v == nil ) then return default and true or false end
-	return v and true or false
-end
-
-function SetGlobalBool( key, value )
-	tGlobals[ key ] = value and true or false
-	return tGlobals[ key ]
-end
 
 -- ===========================================================================
 -- 2.1 跨端复制（2026-09-24）
@@ -170,6 +113,7 @@ local NET_GVAR = "HL2SB_GVar"
 
 local function GVarType( v )
 	local tv = type( v )
+	if tv == "nil" then return "n" end
 	if tv == "number" then
 		if v == math_floor( v ) then return "i" end
 		return "f"
@@ -178,7 +122,8 @@ local function GVarType( v )
 end
 
 local function GVarCoerce( typ, s )
-	if typ == "i" then return math_floor( tonumber( s ) or 0 )
+	if typ == "n" then return nil
+	elseif typ == "i" then return tonumber( s ) or 0
 	elseif typ == "f" then return tonumber( s ) or 0
 	-- The wire sends Lua's tostring(v): booleans arrive as "true"/"false"
 	-- (never "1").  Accept both spellings - the "1" form is what the int
@@ -196,11 +141,10 @@ if SERVER then
 
 	local function broadcast( key )
 		local v = tGlobals[ key ]
-		if v == nil then return end
 		net.Start( NET_GVAR )
 			net.WriteString( tostring( key ) )
 			net.WriteString( GVarType( v ) )
-			net.WriteString( tostring( v ) )
+			net.WriteString( type( v ) == "number" and string.format( "%.17g", v ) or tostring( v ) )
 		net.Broadcast()
 	end
 
@@ -213,7 +157,7 @@ if SERVER then
 				net.Start( NET_GVAR )
 					net.WriteString( tostring( k ) )
 					net.WriteString( GVarType( v ) )
-					net.WriteString( tostring( v ) )
+					net.WriteString( type( v ) == "number" and string.format( "%.17g", v ) or tostring( v ) )
 				net.Send( ply )
 			end
 		end )
