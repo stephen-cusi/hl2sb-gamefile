@@ -10,30 +10,22 @@ if ( EntityMeta == nil ) then return end
 -- ---------------------------------------------------------------------------
 if ( EntityMeta.SetRenderOrigin == nil ) then
 	function EntityMeta:SetRenderOrigin( v )
-		if ( v == nil ) then return end
+		if ( v != nil and !isvector( v ) ) then
+			error( "bad argument #1 to 'SetRenderOrigin' (Vector expected, got " .. type( v ) .. ")", 2 )
+		end
 
-		self.m_vHL2SBRenderOrigin = v
-
-		if ( self.SetAbsOrigin ) then self:SetAbsOrigin( v ) end
-	end
-
-	function EntityMeta:GetRenderOrigin()
-		return self.m_vHL2SBRenderOrigin or self:GetAbsOrigin()
+		self.m_RenderOrigin = v
 	end
 
 	function EntityMeta:SetRenderAngles( a )
-		if ( a == nil ) then return end
+		if ( a != nil and !isangle( a ) ) then
+			error( "bad argument #1 to 'SetRenderAngles' (Angle expected, got " .. type( a ) .. ")", 2 )
+		end
 
-		self.m_aHL2SBRenderAngles = a
-
-		if ( self.SetAbsAngles ) then self:SetAbsAngles( a ) end
+		self.m_RenderAngles = a
 	end
 
-	function EntityMeta:GetRenderAngles()
-		return self.m_aHL2SBRenderAngles or self:GetAbsAngles()
-	end
-
-	Msg( "[HL2SB]   Entity:SetRenderOrigin / SetRenderAngles added (applied as Abs*)\n" )
+	Msg( "[HL2SB]   Entity render-origin and render-angle overrides added\n" )
 end
 
 -- ---------------------------------------------------------------------------
