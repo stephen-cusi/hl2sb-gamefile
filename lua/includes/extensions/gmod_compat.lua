@@ -214,17 +214,12 @@ local hl2meta = _R ~= nil and _R.CHL2MP_Player or nil
 
 if ( entmeta ~= nil ) then
 	Alias( entmeta, "SetModelName",  entmeta.SetModel )
-	Alias( entmeta, "GetVelocity",   entmeta.GetAbsVelocity )
-	Alias( entmeta, "SetVelocity",   entmeta.SetAbsVelocity )
 	-- HL2SB: GetTable has to answer the entity's per-entity Lua field table (the
 	-- same table the engine __newindex writes), never the classname.  The old
 	-- GetClassname alias made ent:GetTable() a STRING, so tab[key] fell through
 	-- the string metatable and every custom entity field read back nil
 	-- silently - player.lua's __index fallback (Owner.C4s in cod_c4) and
 	-- construct.lua's ent:GetTable().toggle both died on it.
-	Alias( entmeta, "GetTable",      entmeta.GetRefTable )
-	Alias( entmeta, "Remove",        entmeta.Remove )
-	Alias( entmeta, "IsWorld",       entmeta.IsWorld )
 end
 
 if ( plymeta ~= nil ) then
