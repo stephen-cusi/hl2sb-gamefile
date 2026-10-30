@@ -223,14 +223,7 @@ if ( entmeta ~= nil ) then
 end
 
 if ( plymeta ~= nil ) then
-	Alias( plymeta, "UniqueID",  plymeta.GetUserID )
-	Alias( plymeta, "Ping",      function() return 0 end )
 	Alias( plymeta, "SetModel",  plymeta.SetModel )
-	-- GMod 的 Player:Give() == HL2SB 的 GiveNamedItem
-	Alias( plymeta, "Give",      plymeta.GiveNamedItem )
-	-- GMod 的武器查询/切换
-	Alias( plymeta, "HasWeapon",    plymeta.Weapon_OwnsThisType )
-	Alias( plymeta, "SelectWeapon", plymeta.Weapon_Switch )
 
 	-- GMod: ply:GetInfo( "cl_playermodel" ) 读客户端 userinfo
 	if ( plymeta.GetInfo == nil and engine ~= nil and engine.GetClientConVarValue ~= nil ) then
