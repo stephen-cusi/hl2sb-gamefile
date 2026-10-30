@@ -80,11 +80,3 @@ end
         end
     end
     if (!vgui.GetKeyboardFocus) then vgui.GetKeyboardFocus = input.GetFocus end
-    local playerMeta = FindMetaTable("Player")
-    if (playerMeta && !playerMeta.GetTool) then
-        function playerMeta:GetTool(mode)
-            local weapon = self:GetWeapon("gmod_tool")
-            if (!IsValid(weapon)) then return end
-            return weapon:GetToolObject(mode)
-        end
-    end

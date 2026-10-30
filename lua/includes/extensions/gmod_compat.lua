@@ -48,42 +48,8 @@ end
 -- 引擎的 type() 对带 __type 的 metatable 返回 __type，否则返回 luaL_typename。
 local function T( v ) return type( v ) end
 
-DefPredicate( "istable",    function( v ) return T( v ) == "table" end )
-DefPredicate( "isstring",   function( v ) return T( v ) == "string" end )
-DefPredicate( "isnumber",   function( v ) return T( v ) == "number" end )
-DefPredicate( "isbool",     function( v ) return T( v ) == "boolean" end )
-DefPredicate( "isfunction", function( v ) return T( v ) == "function" end )
 DefPredicate( "isuserdata", function( v ) return T( v ) == "userdata" end )
 DefPredicate( "isthread",   function( v ) return T( v ) == "thread" end )
-
-DefPredicate( "isentity", function( v )
-	if ( T( v ) ~= "userdata" ) then return false end
-
-	local mt = getmetatable( v )
-	if ( mt == nil ) then return false end
-
-	-- 实体/武器/面板的 metatable 都带 __type。
-	return rawget( mt, "__type" ) == "entity"
-end )
-
-DefPredicate( "isvector", function( v )
-	if ( T( v ) ~= "userdata" ) then return false end
-
-	local mt = getmetatable( v )
-	if ( mt == nil ) then return false end
-
-	local t = rawget( mt, "__type" )
-	return t == "Vector" or t == "vector"
-end )
-
-DefPredicate( "ispanel", function( v )
-	if ( T( v ) ~= "userdata" ) then return false end
-
-	local mt = getmetatable( v )
-	if ( mt == nil ) then return false end
-
-	return rawget( mt, "__type" ) == "Panel"
-end )
 
 DefPredicate( "iscolor", function( v )
 	if ( T( v ) ~= "userdata" ) then return false end
@@ -99,18 +65,6 @@ end )
 --    GMod 的 game 是 C++ 绑定的表；HL2SB 没有，用现有绑定拼一个等价的。
 -- ===========================================================================
 
--- GMod 用 AddCSLuaFile 标记“这个文件也要发给客户端”。HL2SB 的 Lua 本来
--- 就在客户端和服务端各有一份，所以是空操作。
-if ( _G.AddCSLuaFile == nil ) then
-	function AddCSLuaFile( ... )
-	end
-end
-
--- GMod 的字符串格式化缩写
-if ( _G.Format == nil ) then
-	Format = string.format
-end
-
 -- GMod 的 RealTime()：服务器/客户端都从引擎的 gpGlobals 取
 if ( _G.RealTime == nil ) then
 	function RealTime()
@@ -118,17 +72,6 @@ if ( _G.RealTime == nil ) then
 			return gpGlobals.realtime()
 		end
 		return 0
-	end
-end
-
--- GMod 的 GetHostName()
-if ( _G.GetHostName == nil ) then
-	function GetHostName()
-		if ( _G.GetConVarString ~= nil ) then
-			local ok, v = pcall( GetConVarString, "hostname" )
-			if ( ok and v ~= nil ) then return v end
-		end
-		return "HL2SB Server"
 	end
 end
 
@@ -168,15 +111,6 @@ end
 
 function game.GetMapName()
 	return game.GetMap()
-end
-
--- GMod: game.GetWorld() -- 世界实体（entindex 0）。gmsave.SaveMap 把它加进
--- 复制列表，只为取"只挂在世界上"的约束；本引擎没有 C 绑定，Entity(0) 等价。
-if ( game.GetWorld == nil ) then
-	function game.GetWorld()
-		if ( Entity == nil ) then return nil end
-		return Entity( 0 )
-	end
 end
 
 -- GMod: player.GetHumans() -- 非机器人玩家。gmsave 读档兜底找"唯一的那个

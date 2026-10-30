@@ -117,12 +117,6 @@ end
 -- on the first suicide of a test session (2026-10-08).  Same trap the two
 -- blocks above and below already document.
 -- ===========================================================================
-if ( rawget( _G, "Format" ) == nil ) then
-	function Format( str, ... )
-		return string.format( str, ... )
-	end
-end
-
 if ( rawget( _G, "MsgAll" ) == nil ) then
 	function MsgAll( ... )
 		Msg( ... )
@@ -585,18 +579,6 @@ if ( CLIENT and _G.gui ~= nil and _G.input ~= nil and input.GetCursorPos ~= nil 
 
 		end
 
-	end
-
-end
-
-if ( _G.game ~= nil and game.GetWorld == nil and _G.ents ~= nil and ents.FindByClass ~= nil ) then
-
-	function game.GetWorld()
-		local found = ents.FindByClass( "worldspawn" )
-		if ( found ~= nil ) then
-			return found[ 1 ]
-		end
-		return nil
 	end
 
 end
