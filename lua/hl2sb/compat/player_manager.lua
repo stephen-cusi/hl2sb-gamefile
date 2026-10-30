@@ -40,9 +40,6 @@ end
 
 local playerMeta = FindMetaTable( "Player" )
 if ( playerMeta ~= nil ) then
-	if ( playerMeta.ShouldDropWeapon == nil ) then
-		function playerMeta:ShouldDropWeapon( enabled ) self.__hl2sbDropWeaponOnDeath = enabled and true or false end
-	end
 	if ( playerMeta.SetNoCollideWithTeammates == nil ) then
 		function playerMeta:SetNoCollideWithTeammates( enabled ) self.__hl2sbTeammateNoCollide = enabled and true or false end
 	end
