@@ -111,29 +111,6 @@ _G.__HL2SB_GLOBALS = tGlobals
 -- ===========================================================================
 local NET_GVAR = "HL2SB_GVar"
 
-local function GVarType( v )
-	local tv = type( v )
-	if tv == "nil" then return "n" end
-	if tv == "number" then
-		if v == math_floor( v ) then return "i" end
-		return "f"
-	elseif tv == "boolean" then return "b" end
-	return "s"
-end
-
-local function GVarCoerce( typ, s )
-	if typ == "n" then return nil
-	elseif typ == "i" then return tonumber( s ) or 0
-	elseif typ == "f" then return tonumber( s ) or 0
-	-- The wire sends Lua's tostring(v): booleans arrive as "true"/"false"
-	-- (never "1").  Accept both spellings - the "1" form is what the int
-	-- path would send if a bool ever rode it - or every synced boolean
-	-- decodes false on the client (hitnumbers' ShowSign/IgnoreZ family).
-	elseif typ == "b" then return s == "true" or s == "1"
-	end
-	return s
-end
-
 if SERVER then
 	if util and util.AddNetworkString then
 		util.AddNetworkString( NET_GVAR )
@@ -143,8 +120,7 @@ if SERVER then
 		local v = tGlobals[ key ]
 		net.Start( NET_GVAR )
 			net.WriteString( tostring( key ) )
-			net.WriteString( GVarType( v ) )
-			net.WriteString( type( v ) == "number" and string.format( "%.17g", v ) or tostring( v ) )
+			net.WriteType( v )
 		net.Broadcast()
 	end
 
@@ -156,22 +132,24 @@ if SERVER then
 				local v = tGlobals[ k ]
 				net.Start( NET_GVAR )
 					net.WriteString( tostring( k ) )
-					net.WriteString( GVarType( v ) )
-					net.WriteString( type( v ) == "number" and string.format( "%.17g", v ) or tostring( v ) )
+					net.WriteType( v )
 				net.Send( ply )
 			end
 		end )
 	end )
 
 	-- 包一层：服务端存完即广播（跨端语义只属于服务端写入，GMod 同）
-	local _SetVar, _SetInt, _SetFloat, _SetString, _SetBool =
-		SetGlobalVar, SetGlobalInt, SetGlobalFloat, SetGlobalString, SetGlobalBool
+	local _SetVar, _SetInt, _SetFloat, _SetString, _SetBool, _SetVector, _SetAngle, _SetEntity =
+		SetGlobalVar, SetGlobalInt, SetGlobalFloat, SetGlobalString, SetGlobalBool, SetGlobalVector, SetGlobalAngle, SetGlobalEntity
 
 	SetGlobalVar   = function( k, v ) local r = _SetVar( k, v ); broadcast( k ); return r end
 	SetGlobalInt   = function( k, v ) local r = _SetInt( k, v ); broadcast( k ); return r end
 	SetGlobalFloat = function( k, v ) local r = _SetFloat( k, v ); broadcast( k ); return r end
 	SetGlobalString= function( k, v ) local r = _SetString( k, v ); broadcast( k ); return r end
 	SetGlobalBool  = function( k, v ) local r = _SetBool( k, v ); broadcast( k ); return r end
+	SetGlobalVector = function( k, v ) local r = _SetVector( k, v ); broadcast( k ); return r end
+	SetGlobalAngle = function( k, v ) local r = _SetAngle( k, v ); broadcast( k ); return r end
+	SetGlobalEntity = function( k, v ) local r = _SetEntity( k, v ); broadcast( k ); return r end
 end
 
 if CLIENT then
@@ -181,9 +159,7 @@ if CLIENT then
 		_G.__HL2SB_GVAR_RECV = true
 		net.Receive( NET_GVAR, function()
 			local key = net.ReadString()
-			local typ = net.ReadString()
-			local val = net.ReadString()
-			tGlobals[ key ] = GVarCoerce( typ, val )
+			tGlobals[ key ] = net.ReadType()
 		end )
 	end
 end
