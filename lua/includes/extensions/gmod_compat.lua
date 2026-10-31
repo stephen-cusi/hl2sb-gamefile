@@ -89,30 +89,6 @@ end
 -- player_extension.lua CheckLimit 第一行），沙盒上限因此整体失效。改为：优先用
 -- engine.GetMaxClients（有绑定才走），否则回退覆盖前的引擎绑定；两者都拿不到
 -- 才回答 false（按多人算，让限制体系说话）。
-local EngineSinglePlayer = game.SinglePlayer
-
-function game.SinglePlayer()
-	if ( engine ~= nil and engine.GetMaxClients ~= nil ) then
-		return ( SafeCall( engine.GetMaxClients ) or 1 ) <= 1
-	end
-	if ( EngineSinglePlayer ~= nil ) then
-		local ok, v = pcall( EngineSinglePlayer )
-		if ( ok and v ~= nil ) then return v == true end
-	end
-	return false
-end
-
-game.IsSinglePlayer = game.SinglePlayer
-
-function game.GetMap()
-	if ( engine == nil or engine.GetLevelName == nil ) then return "" end
-	return SafeCall( engine.GetLevelName ) or ""
-end
-
-function game.GetMapName()
-	return game.GetMap()
-end
-
 -- GMod: player.GetHumans() -- 非机器人玩家。gmsave 读档兜底找"唯一的那个
 -- 玩家"用；本引擎没有 C 绑定，在 GetAll 上滤 IsBot 等价。
 if ( player ~= nil and player.GetHumans == nil and player.GetAll ~= nil ) then
@@ -136,11 +112,7 @@ function game.GetPort()
 	return 27015
 end
 
-function game.GetHostName()
-	if ( GetConVarString == nil ) then return "" end
-	return GetConVarString( "hostname" ) or ""
-end
-
+-- Preserve the existing fallback until the rules-state binding is restored.
 function game.GetTimeScale()
 	return 1
 end
@@ -172,11 +144,6 @@ function game.CleanUpMap( dontSendToClients, extraFilters, callback )
 	if ( callback ) then
 		callback()
 	end
-end
-
-function game.GetMaxPlayers()
-	if ( engine == nil or engine.GetMaxClients == nil ) then return 1 end
-	return SafeCall( engine.GetMaxClients ) or 1
 end
 
 -- 服务端执行控制台命令（GMod: game.ConsoleCommand）
