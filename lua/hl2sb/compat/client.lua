@@ -64,13 +64,3 @@ end
 
     -- Original scripted panels own control registration and inheritance.
     include("extensions/client/panel.lua")
-    local panel = FindMetaTable("Panel")
-    panel.SetFGColorEx = function(self, r, g, b, a)
-        return panel.SetFgColor(self, Color(r or 255, g or 255, b or 255, a or 255))
-    end
-    panel.SetBGColorEx = function(self, r, g, b, a)
-        return panel.SetBgColor(self, Color(r or 255, g or 255, b or 255, a or 255))
-    end
-    panel.GetFGColor = panel.GetFgColor
-    panel.GetBGColor = panel.GetBgColor
-    if (!vgui.GetKeyboardFocus) then vgui.GetKeyboardFocus = input.GetFocus end

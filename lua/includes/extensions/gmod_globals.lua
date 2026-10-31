@@ -26,25 +26,6 @@
 -- ===========================================================================
 
 -- ===========================================================================
--- Sound( path )  (GMod global, both realms)
---
--- GMod's Sound() returns a sound object that EmitSound/PlaySound accept.  HL2SB
--- has no such global and its EmitSound takes the PATH STRING directly, so a
--- stock GMod SWEP doing `self:EmitSound( Sound( self.Primary.Sound ) )` died on
--- "attempt to call a nil value (global 'Sound')" -- a red error in the console
--- that also skipped everything after it in that function (pist_weagon's
--- SetNextPrimaryFire, so its fire rate was never armed).
---
--- Returning the path is exactly what AGENTS.md 9.6 tells hand-ported scripts to
--- do by hand; providing the global means the pristine addon works unmodified.
--- ===========================================================================
-if ( Sound == nil ) then
-	function Sound( path )
-		return path
-	end
-end
-
--- ===========================================================================
 -- HL2SB: the ACT_* globals used to be hand-copied here from the Valve SDK
 -- numbering (ACT_HL2MP_IDLE = 988 ...).  That was WRONG for this engine: models
 -- resolve activities BY NAME at load (animation.cpp:151,
@@ -80,21 +61,7 @@ PLAYER_RELOAD	= 8
 PLAYER_START_AIMING	= 9
 PLAYER_LEAVE_AIMING	= 10
 
--- HL2SB GMod SWEP compat: stock SWEPs call Sound("...") (identity in GMod's
--- C binding) and AddCSLuaFile (HL2SB ships all Lua to both sides already).
-Sound = Sound or function( s ) return s end
 AddCSLuaFile = AddCSLuaFile or function( ... ) return true end
-
--- GMod: Model("path") precaches the model on the server and returns the path
--- (identity on the client).  gmod_camera and many workshop SWEPs wrap their
--- ViewModel/WorldModel in Model(...), which used to die with
--- "attempt to call global 'Model' (a nil value)".
-Model = Model or function( s )
-	if ( not _CLIENT and util and util.PrecacheModel ) then
-		util.PrecacheModel( s )
-	end
-	return s
-end
 
 -- ===========================================================================
 -- HL2SB (2026-10-08): base-gamemode round.  Four small GMod globals the
@@ -107,7 +74,6 @@ end
 --                    channel; this fork has no such channel, so this lands
 --                    on the server console only (same text, narrower
 --                    audience) until a net path exists.
---   Entity( index )- ents.GetByIndex alias (GMod global).
 --   ents.FindInBox - the engine binding is spelled Entities.GetInBox here.
 --
 -- WARNING: this block MUST sit above the `if ( not _CLIENT )` section below -
@@ -120,12 +86,6 @@ end
 if ( rawget( _G, "MsgAll" ) == nil ) then
 	function MsgAll( ... )
 		Msg( ... )
-	end
-end
-
-if ( rawget( _G, "Entity" ) == nil and ents ~= nil and ents.GetByIndex ~= nil ) then
-	function Entity( index )
-		return ents.GetByIndex( index )
 	end
 end
 
