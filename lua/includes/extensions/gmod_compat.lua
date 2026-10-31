@@ -229,23 +229,6 @@ if ( CLIENT and _G.ClientsideModel == nil and entmeta ~= nil and Entities ~= nil
 end
 
 -- ===========================================================================
--- 5. player.Iterator —— GMod 用它遍历玩家（team.lua 等直接依赖）
--- ===========================================================================
-
-if ( _G.player ~= nil and player.GetAll ~= nil and player.Iterator == nil ) then
-	function player.Iterator()
-		local t = player.GetAll()
-		local i = 0
-		return function()
-			i = i + 1
-			if ( t[ i ] ~= nil ) then
-				return i, t[ i ]
-			end
-		end
-	end
-end
-
--- ===========================================================================
 -- 6. ents.FindByClass / FindByName —— GMod 版是返回表，HL2SB 的 gEntList 是链表
 -- ===========================================================================
 
@@ -417,40 +400,6 @@ if ( _G.RunString == nil ) then
 		end
 
 		return ok
-	end
-end
-
--- ===========================================================================
--- 9. cvars 表 —— GMod 的 cvars.Bool / cvars.Number / cvars.String
---    GMod 里是 C++，纯 Lua 用 cvar.FindVar 拼一个。
--- ===========================================================================
-
-if ( _G.cvars == nil ) then
-	cvars = {}
-
-	local function Var( name )
-		if ( _G.cvar == nil or cvar.FindVar == nil ) then return nil end
-		local ok, v = pcall( cvar.FindVar, name )
-		if ( not ok ) then return nil end
-		return v
-	end
-
-	function cvars.Bool( name, default )
-		local v = Var( name )
-		if ( v == nil ) then return default and true or false end
-		return v:GetBool()
-	end
-
-	function cvars.Number( name, default )
-		local v = Var( name )
-		if ( v == nil ) then return default or 0 end
-		return v:GetFloat()
-	end
-
-	function cvars.String( name, default )
-		local v = Var( name )
-		if ( v == nil ) then return default or "" end
-		return v:GetString()
 	end
 end
 
@@ -657,20 +606,6 @@ end
 if ( CLIENT and EyeVector == nil and render ~= nil and render.MainViewForward ~= nil ) then
 	EyeVector = render.MainViewForward
 	Msg( "[HL2SB]   EyeVector added (render.MainViewForward alias)\n" )
-end
-
--- ---------------------------------------------------------------------------
--- 5. util.QuickTrace( startPos, delta, filter ) -- GMod's lighter trace.
---    A plain util.TraceLine answers the same result for every consumer this
---    tree has (hl1sweps' satchel charge detonation reads HitPos / HitNormal
---    off the returned table); the trace-result contract already matches
---    GMod's field semantics, Normal = ray direction, HitNormal = face normal.
--- ---------------------------------------------------------------------------
-if ( util ~= nil and util.QuickTrace == nil ) then
-	function util.QuickTrace( startPos, delta, filter )
-		return util.TraceLine( { start = startPos, endpos = startPos + delta, filter = filter } )
-	end
-	Msg( "[HL2SB]   util.QuickTrace added (util.TraceLine wrapper)\n" )
 end
 
 -- ---------------------------------------------------------------------------
