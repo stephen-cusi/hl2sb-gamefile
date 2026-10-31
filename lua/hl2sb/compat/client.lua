@@ -73,10 +73,4 @@ end
     end
     panel.GetFGColor = panel.GetFgColor
     panel.GetBGColor = panel.GetBgColor
-    if (!panel.SetExpensiveShadow) then
-        function panel:SetExpensiveShadow(offset, color)
-            self.m_iExpensiveShadowOffset = offset
-            self.m_colExpensiveShadow = color
-        end
-    end
     if (!vgui.GetKeyboardFocus) then vgui.GetKeyboardFocus = input.GetFocus end

@@ -664,25 +664,6 @@ print( "[HL2SB] gmod_globals loaded: DEFINE_BASECLASS=" .. type( rawget( _G, "DE
 
 
 
--- HL2SB GMod compat (2026-09-24): EyePos() / EyeAngles() - GMod globals for
--- the LOCAL PLAYER's eye position/angles (First Person Body snapshots
--- EyeAngles() during body init and per-frame).  Engine locals only exist
--- in-game, so fall back to zero vectors/angles on the menu or before spawn.
-if ( EyePos == nil ) then
-	function EyePos()
-		local lp = LocalPlayer()
-		if ( IsValid( lp ) ) then return lp:EyePos() end
-		return Vector( 0, 0, 0 )
-	end
-end
-if ( EyeAngles == nil ) then
-	function EyeAngles()
-		local lp = LocalPlayer()
-		if ( IsValid( lp ) ) then return lp:EyeAngles() end
-		return Angle( 0, 0, 0 )
-	end
-end
-
 -- HL2SB GMod compat (2026-09-24): meta-table chain for FindMetaTable reads.
 -- Addons capture methods straight off the bare metatable (PLAYER.Alive,
 -- ENTITY.OnGround) - a RAW table read that never triggers the userdata
