@@ -129,19 +129,6 @@ if ( rawget( _G, "Entity" ) == nil and ents ~= nil and ents.GetByIndex ~= nil ) 
 	end
 end
 
-if ( ents ~= nil and ents.FindInBox == nil and Entities ~= nil and Entities.GetInBox ~= nil ) then
-	function ents.FindInBox( mins, maxs, filter )
-		-- Entities.GetInBox's third argument is a partition flag mask, not a
-		-- GMod filter.  Pass numeric masks through; table/function filters
-		-- have no engine counterpart yet, so the call runs unfiltered there
-		-- (the base gamemode's spawn-point search calls this two-argument
-		-- form only).
-		if ( type( filter ) == "number" ) then
-			return Entities.GetInBox( mins, maxs, filter )
-		end
-		return Entities.GetInBox( mins, maxs )
-	end
-end
 
 -- ===========================================================================
 -- HL2SB: server-realm stand-ins for two client-only APIs that the ported GMod
@@ -618,27 +605,9 @@ end
 -- single player is always allowed (GMod exempts SP from the admin gate), and
 -- in multiplayer nobody is an admin by default - same as GMod without a
 -- users.txt.
-if ( _R ~= nil and _R.CBasePlayer ~= nil and _R.CBasePlayer.IsAdmin == nil ) then
-	_R.CBasePlayer.IsAdmin = function()
-		return game.SinglePlayer() == true
-	end
-end
 
 -- GMod: player.GetHumans() - non-bot players (the save loader's "the one
 -- human" fallback).
-if ( _G.player ~= nil and player.GetHumans == nil and player.GetAll ~= nil ) then
-
-	function player.GetHumans()
-		local out = {}
-		for _, ply in ipairs( player.GetAll() or {} ) do
-			if ( ply.IsBot == nil or not ply:IsBot() ) then
-				out[ #out + 1 ] = ply
-			end
-		end
-		return out
-	end
-
-end
 
 -- ===========================================================================
 -- HL2SB GMod compat: DEFINE_BASECLASS( name )  (both realms)

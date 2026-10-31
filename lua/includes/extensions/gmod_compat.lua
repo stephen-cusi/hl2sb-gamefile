@@ -81,17 +81,6 @@ end
 -- 才回答 false（按多人算，让限制体系说话）。
 -- GMod: player.GetHumans() -- 非机器人玩家。gmsave 读档兜底找"唯一的那个
 -- 玩家"用；本引擎没有 C 绑定，在 GetAll 上滤 IsBot 等价。
-if ( player ~= nil and player.GetHumans == nil and player.GetAll ~= nil ) then
-	function player.GetHumans()
-		local out = {}
-		for _, ply in ipairs( player.GetAll() or {} ) do
-			if ( ply.IsBot == nil or not ply:IsBot() ) then
-				out[ #out + 1 ] = ply
-			end
-		end
-		return out
-	end
-end
 
 function game.GetIP()
 	if ( engine == nil or engine.GetGameDir == nil ) then return "" end
@@ -172,25 +161,11 @@ end
 
 if ( plymeta ~= nil ) then
 	-- GMod: ply:GetInfo( "cl_playermodel" ) 读客户端 userinfo
-	if ( plymeta.GetInfo == nil and engine ~= nil and engine.GetClientConVarValue ~= nil ) then
-		plymeta.GetInfo = function( ply, key )
-			local idx = engine.IndexOfEdict( ply )
-			if ( idx == nil or idx == 0 ) then return "" end
-			local ok, v = pcall( engine.GetClientConVarValue, idx, key )
-			if ( not ok or v == nil ) then return "" end
-			return v
-		end
-	end
 
 	-- GMod: ply:IsAdmin()。本引擎没有 usergroup 体系（cod-c4 曾因它不存在
 	-- 报过 attempt to call nil）。按 GMod 默认语义的最低实现：单人恒真
 	-- （GMod 单人本来就豁免管理员门），多人恒假（GMod 默认也没有人自带
 	-- admin 组，users.txt 那套这里没有）。
-	if ( plymeta.IsAdmin == nil ) then
-		plymeta.IsAdmin = function()
-			return game.SinglePlayer() == true
-		end
-	end
 
 	-- player_manager 在 extensions 之后加载，所以这两个别名要晚绑定。
 	if ( plymeta.SetPlayerClass == nil ) then
@@ -238,43 +213,6 @@ end
 -- FindInCone 按 wiki：以 WorldSpaceCenter 落在半角余弦 angle_cos 内为准。
 -- ===========================================================================
 
-if ( _G.ents ~= nil and _G.gEntList ~= nil ) then
-	if ( ents.FindInCone == nil ) then
-		function ents.FindInCone( pos, dir, range, angleCos )
-			local out = {}
-			if ( dir == nil or angleCos == nil ) then return out end
-
-			-- GMod's 4th argument changed meaning at some point: old addons
-			-- (scp0492base passes 155) hand an ANGLE IN DEGREES, the current wiki
-			-- documents the cosine of the half-angle.  A cosine is -1..1, so any
-			-- value above 1 can only be the legacy degrees form.
-			if ( angleCos > 1 ) then
-				angleCos = math.cos( math.rad( angleCos ) )
-			end
-
-			local normal = dir:GetNormalized()
-			for _, v in ipairs( ents.FindInSphere( pos, range or 0 ) ) do
-				local ok, center = pcall( v.WorldSpaceCenter, v )
-				if ( ok and center ~= nil ) then
-					local offset = center - pos
-					-- 恰在锥顶的实体按命中处理，否则长度为 0 的向量没有方向
-					if ( offset:Length() < 1 or normal:Dot( offset:GetNormalized() ) >= angleCos ) then
-						table.insert( out, v )
-					end
-				end
-			end
-
-			-- HL2SB TEMPORARY: disambiguates which targeting path scp049-2 runs
-			-- (FindInCone only runs on nb_targetmethod 1)
-			if ( HL2SB_FindInConeDiag == nil or HL2SB_FindInConeDiag < 3 ) then
-				HL2SB_FindInConeDiag = ( HL2SB_FindInConeDiag or 0 ) + 1
-				print( "[HL2SB] ents.FindInCone: requested (method-1 targeting in use), results=" .. #out .. "\n" )
-			end
-			return out
-		end
-	end
-
-end
 
 -- ===========================================================================
 -- 6c. sound.Add —— GMod 的运行时音效脚本。addons 在 autorun 里注册
@@ -363,45 +301,8 @@ end
 -- ===========================================================================
 
 -- GMod: AccessorFunc( tab, "m_var", "Name" ) 生成 Name()/SetName() 一对方法
-if ( _G.AccessorFunc == nil ) then
-	function AccessorFunc( tab, key, name, force )
-		local n = name or key
-
-		tab[ "Get" .. n ] = function( self ) return self[ key ] end
-		tab[ "Set" .. n ] = function( self, v ) self[ key ] = v end
-
-		-- GMod 还会加不带 Get/Set 前缀的短名；force 控制是否覆盖已有方法
-		if ( tab[ n ] == nil or force == 2 ) then
-			tab[ n ] = tab[ "Get" .. n ]
-		end
-
-		if ( tab[ "Set" .. n ] == nil or force == 1 ) then
-			tab[ "Set" .. n ] = tab[ "Set" .. n ]
-		end
-
-		return tab
-	end
-end
 
 -- GMod: RunString( code, identifier ) —— 执行一段 Lua
-if ( _G.RunString == nil ) then
-	function RunString( code, identifier )
-		local chunk, err = loadstring( tostring( code ), tostring( identifier or "RunString" ) )
-		if ( chunk == nil ) then
-			if ( dbg ~= nil and dbg.Warning ~= nil ) then
-				dbg.Warning( "[RunString] " .. tostring( err ) .. "\n" )
-			end
-			return false
-		end
-
-		local ok, runErr = pcall( chunk )
-		if ( not ok and dbg ~= nil and dbg.Warning ~= nil ) then
-			dbg.Warning( "[RunString:" .. tostring( identifier or "?" ) .. "] " .. tostring( runErr ) .. "\n" )
-		end
-
-		return ok
-	end
-end
 
 -- ===========================================================================
 -- 10. engine.ActiveGamemode()
@@ -508,12 +409,6 @@ do
 	local ENTITY_META = FindMetaTable( "Entity" )
 
 	if ( ENTITY_META ~= nil ) then
-		if ( ENTITY_META.GetModelRenderBounds == nil ) then
-			function ENTITY_META:GetModelRenderBounds()
-				return self:OBBMins(), self:OBBMaxs()
-			end
-		end
-
 		-- HL2SB (2026-10-19): GetBoneCount / GetBoneName must NOT be stubbed here.
 		-- The engine already binds both (bone count from the studio header, the
 		-- "__INVALIDBONE__" name for an out-of-range index), and this file runs
@@ -529,13 +424,6 @@ do
 		-- InitPostEntity handler at the end of this block).
 	end
 
-	local PLAYER_META = FindMetaTable( "Player" )
-	if ( PLAYER_META ~= nil ) then
-		if ( PLAYER_META.SetEyeAngles == nil and PLAYER_META.SnapEyeAngles ~= nil ) then
-			PLAYER_META.SetEyeAngles = PLAYER_META.SnapEyeAngles
-		end
-	end
-
 	local CMD_META = FindMetaTable( "CUserCmd" )
 end
 
@@ -548,16 +436,6 @@ end
 --    (combustible_lemon checks `if soundChannel ~= nil` before storing it).
 -- ---------------------------------------------------------------------------
 if ( CLIENT ) then
-	if ( render ~= nil and render.DynamicLight ~= nil ) then
-		DynamicLight = function( index, elight )
-			return render.DynamicLight( index, elight == true )
-		end
-	else
-		DynamicLight = function( index, elight )
-			return { index = index, elight = elight == true }
-		end
-	end
-
 	sound = sound or {}
 	if ( sound.PlayFile == nil ) then
 		sound.PlayFile = function( path, flags, callback )
