@@ -211,18 +211,16 @@ if ( not _CLIENT ) then
 		return ConVar( name, def, iFlags or 0, help, min ~= nil, min or 0, max ~= nil, max or 0 )
 	end
 
-	GetConVar = GetConVar or function( name )
-		return ConVar( name )
-	end
-
-	GetConVarNumber = GetConVarNumber or function( name )
-		local c = ConVar( name )
-		return c and c:GetFloat() or 0
-	end
-
-	GetConVarString = GetConVarString or function( name )
-		local c = ConVar( name )
-		return c and c:GetString() or ""
+	if ( _GAMEUI ) then
+		GetConVar = GetConVar or function( name ) return ConVar( name ) end
+		GetConVarNumber = GetConVarNumber or function( name )
+			local c = ConVar( name )
+			return c and c:GetFloat() or 0
+		end
+		GetConVarString = GetConVarString or function( name )
+			local c = ConVar( name )
+			return c and c:GetString() or ""
+		end
 	end
 
 	GetConVarBool = GetConVarBool or function( name )
@@ -300,14 +298,11 @@ end
 -- Without them that file fails to load completely, which shows up as exactly
 -- one [Lua] FAILED line -- that is how the undo notification vanished.
 --
--- GMod semantics: ScreenScale and ScreenScaleH scale by height against the
--- 480-unit baseline, ScreenScaleW scales by width against 640.
-ScreenScale = ScreenScale or function( size )
-	return size * ( ScrH() / 480 )
-end
-
-ScreenScaleH = ScreenScaleH or function( size )
-	return size * ( ScrH() / 480 )
+-- In the game client, the original client globals provide ScreenScale and
+-- ScreenScaleH. The menu state uses its own fallback.
+if ( _GAMEUI ) then
+	ScreenScale = ScreenScale or function( size ) return size * ( ScrW() / 640 ) end
+	ScreenScaleH = ScreenScaleH or function( size ) return size * ( ScrH() / 480 ) end
 end
 
 ScreenScaleW = ScreenScaleW or function( size )
@@ -335,18 +330,16 @@ CreateConVar = CreateConVar or function( name, def, flags, help, min, max )
 		return ConVar( name, def, iFlags or 0, help, min ~= nil, min or 0, max ~= nil, max or 0 )
 	end
 
-GetConVar = GetConVar or function( name )
-	return ConVar( name )
-end
-
-GetConVarNumber = GetConVarNumber or function( name )
-	local c = ConVar( name )
-	return c and c:GetFloat() or 0
-end
-
-GetConVarString = GetConVarString or function( name )
-	local c = ConVar( name )
-	return c and c:GetString() or ""
+if ( _GAMEUI ) then
+	GetConVar = GetConVar or function( name ) return ConVar( name ) end
+	GetConVarNumber = GetConVarNumber or function( name )
+		local c = ConVar( name )
+		return c and c:GetFloat() or 0
+	end
+	GetConVarString = GetConVarString or function( name )
+		local c = ConVar( name )
+		return c and c:GetString() or ""
+	end
 end
 
 GetConVarBool = GetConVarBool or function( name )

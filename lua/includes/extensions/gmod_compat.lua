@@ -537,33 +537,6 @@ do
 	end
 
 	local CMD_META = FindMetaTable( "CUserCmd" )
-	if ( CMD_META ~= nil ) then
-		if ( CMD_META.GetViewAngles == nil ) then
-			function CMD_META:GetViewAngles()
-				return self.viewangles or Angle( 0, 0, 0 )
-			end
-		end
-		if ( CMD_META.SetViewAngles == nil ) then
-			function CMD_META:SetViewAngles( ang )
-				self.viewangles = ang
-			end
-		end
-		if ( CMD_META.AddKey == nil ) then
-			function CMD_META:AddKey( key )
-				self.buttons = bit.bor( self.buttons or 0, key or 0 )
-			end
-		end
-		if ( CMD_META.KeyDown == nil ) then
-			function CMD_META:KeyDown( key )
-				return bit.band( self.buttons or 0, key or 0 ) ~= 0
-			end
-		end
-		if ( CMD_META.CommandNumber == nil ) then
-			function CMD_META:CommandNumber()
-				return self.command_number or 0
-			end
-		end
-	end
 end
 
 -- ---------------------------------------------------------------------------
