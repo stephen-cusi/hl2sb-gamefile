@@ -65,16 +65,6 @@ end )
 --    GMod 的 game 是 C++ 绑定的表；HL2SB 没有，用现有绑定拼一个等价的。
 -- ===========================================================================
 
--- GMod 的 RealTime()：服务器/客户端都从引擎的 gpGlobals 取
-if ( _G.RealTime == nil ) then
-	function RealTime()
-		if ( gpGlobals ~= nil and gpGlobals.realtime ~= nil ) then
-			return gpGlobals.realtime()
-		end
-		return 0
-	end
-end
-
 game = game or {}
 
 local function SafeCall( fn, ... )
@@ -259,28 +249,6 @@ end
 -- 6. ents.FindByClass / FindByName —— GMod 版是返回表，HL2SB 的 gEntList 是链表
 -- ===========================================================================
 
-if ( _G.ents ~= nil and ents.FindByClass == nil and _G.gEntList ~= nil ) then
-	function ents.FindByClass( classname )
-		local out = {}
-		local e = gEntList.FindEntityByClassname( NULL, classname )
-		while ( e ~= NULL and e ~= nil ) do
-			table.insert( out, e )
-			e = gEntList.FindEntityByClassname( e, classname )
-		end
-		return out
-	end
-
-	function ents.FindByName( name )
-		local out = {}
-		local e = gEntList.FindEntityByName( NULL, name )
-		while ( e ~= NULL and e ~= nil ) do
-			table.insert( out, e )
-			e = gEntList.FindEntityByName( e, name )
-		end
-		return out
-	end
-end
-
 -- ===========================================================================
 -- 6b. ents.GetAll / FindInSphere / FindInCone —— scp049 等 nextbot 插件的
 -- 目标搜索命脉。同样走 gEntList 的链式原语（FirstEnt/NextEnt/FindEntityInSphere）。
@@ -288,32 +256,6 @@ end
 -- ===========================================================================
 
 if ( _G.ents ~= nil and _G.gEntList ~= nil ) then
-
-	if ( ents.GetAll == nil ) then
-		function ents.GetAll()
-			local out = {}
-			local e = gEntList.FirstEnt()
-			while ( e ~= nil and e ~= NULL ) do
-				table.insert( out, e )
-				e = gEntList.NextEnt( e )
-			end
-			return out
-		end
-	end
-
-	if ( ents.FindInSphere == nil ) then
-		function ents.FindInSphere( pos, radius )
-			local out = {}
-			local e = NULL
-			while true do
-				e = gEntList.FindEntityInSphere( e, pos, radius )
-				if ( e == nil or e == NULL ) then break end
-				table.insert( out, e )
-			end
-			return out
-		end
-	end
-
 	if ( ents.FindInCone == nil ) then
 		function ents.FindInCone( pos, dir, range, angleCos )
 			local out = {}
