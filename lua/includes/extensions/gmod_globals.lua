@@ -133,31 +133,6 @@ if ( SERVER ) then
 end
 
 if ( not _CLIENT ) then
-	-- Server side has no surface / skin; still bridge time + convar.
-	gpGlobals = gpGlobals or _G.gpGlobals
-	CurTime  = CurTime  or function() return gpGlobals.curtime() end
-	RealTime = RealTime or function() return gpGlobals.realtime() end
-
-	CreateConVar = CreateConVar or function( name, def, flags, help, min, max )
-		-- HL2SB: GMod passes FLAGS AS A TABLE, and the engine ConVar takes a
-		-- number plus a DIFFERENT positional layout:
-		--     GMod    ( name, default, flags, helptext, min, max )
-		--     engine  ( name, default, flags, help, bMin, fMin, bMax, fMax )
-		-- Passing GMod's min/max straight through put them in boolean slots, and
-		-- a flags table produced
-		--     gmod_globals.lua:115: bad argument #3 to 'ConVar' (number expected, got table)
-		-- which is exactly what killed modules/constraint.lua (52 KB).
-		local iFlags = flags
-		if ( type( flags ) == "table" ) then
-			iFlags = 0
-			for _, flag in ipairs( flags ) do
-				iFlags = bit.bor( iFlags, flag )
-			end
-		end
-
-		return ConVar( name, def, iFlags or 0, help, min ~= nil, min or 0, max ~= nil, max or 0 )
-	end
-
 	if ( _GAMEUI ) then
 		GetConVar = GetConVar or function( name ) return ConVar( name ) end
 		GetConVarNumber = GetConVarNumber or function( name )
@@ -168,11 +143,6 @@ if ( not _CLIENT ) then
 			local c = ConVar( name )
 			return c and c:GetString() or ""
 		end
-	end
-
-	GetConVarBool = GetConVarBool or function( name )
-		local c = ConVar( name )
-		return c and c:GetBool() or false
 	end
 
 	-- GMod: ConVarExists( name ) -> boolean.
@@ -208,33 +178,6 @@ end
 -- Client side
 -- ===========================================================================
 
-local gpGlobals = gpGlobals
-
--- Time
-CurTime  = CurTime  or function() return gpGlobals.curtime() end
-RealTime = RealTime or function() return gpGlobals.realtime() end
-FrameTime = FrameTime or function() return gpGlobals.frametime() end
--- HL2SB GMod compat (2026-09-25): SysTime() - wiki: "highly accurate time in
--- seconds since start up, ideal for benchmarking... updated any time the
--- function is called" (First Person Body timestamps its shadow renders with
--- it).  RealTime() is the engine's high-resolution wall clock, which is the
--- same contract; it was left undefined here until now.
-SysTime = SysTime or function() return RealTime() end
--- HL2SB GMod compat (2026-09-24): FrameNumber() - GMod global, the engine
--- frame counter as a float (First Person Body's RenderScene hook counts
--- frames with it).  gpGlobals.framecount is the same counter.
-FrameNumber = FrameNumber or function() return gpGlobals.framecount() end
-
--- Screen size
-ScrW = ScrW or function()
-	local w = surface.GetScreenSize()
-	return w or 0
-end
-ScrH = ScrH or function()
-	local _, h = surface.GetScreenSize()
-	return h or 0
-end
-
 -- HL2SB: GMod's ScreenScale family.  These are ENGINE globals in GMod (C++),
 -- not util.lua helpers -- GMod's own lua/includes/util.lua (ours, byte for
 -- byte) does not define them, and lua/includes/notification.lua needs them on
@@ -256,27 +199,6 @@ ScreenScaleW = ScreenScaleW or function( size )
 	return size * ( ScrW() / 640 )
 end
 
--- ConVar access (see above for the shape)
-CreateConVar = CreateConVar or function( name, def, flags, help, min, max )
-		-- HL2SB: GMod passes FLAGS AS A TABLE, and the engine ConVar takes a
-		-- number plus a DIFFERENT positional layout:
-		--     GMod    ( name, default, flags, helptext, min, max )
-		--     engine  ( name, default, flags, help, bMin, fMin, bMax, fMax )
-		-- Passing GMod's min/max straight through put them in boolean slots, and
-		-- a flags table produced
-		--     gmod_globals.lua:115: bad argument #3 to 'ConVar' (number expected, got table)
-		-- which is exactly what killed modules/constraint.lua (52 KB).
-		local iFlags = flags
-		if ( type( flags ) == "table" ) then
-			iFlags = 0
-			for _, flag in ipairs( flags ) do
-				iFlags = bit.bor( iFlags, flag )
-			end
-		end
-
-		return ConVar( name, def, iFlags or 0, help, min ~= nil, min or 0, max ~= nil, max or 0 )
-	end
-
 if ( _GAMEUI ) then
 	GetConVar = GetConVar or function( name ) return ConVar( name ) end
 	GetConVarNumber = GetConVarNumber or function( name )
@@ -289,50 +211,12 @@ if ( _GAMEUI ) then
 	end
 end
 
-GetConVarBool = GetConVarBool or function( name )
-	local c = ConVar( name )
-	return c and c:GetBool() or false
-end
-
 -- GMod: ConVarExists( name ) -> boolean.  Client half - see the server-side note above:
 -- cod_c4 checks it before CreateClientConVar (entities/cod-c4/shared.lua:46), so without it
 -- the client half of that file failed to load too (ds_debug.log:19736).
 ConVarExists = ConVarExists or function( name )
 	return ConVar( name ) ~= nil
 end
-
--- ===========================================================================
--- HL2SB: GMod's SysTime() and RealFrameTime()
---
--- lua/includes/notification.lua uses SysTime() for every notice lifetime --
--- Panel.StartTime = SysTime() (line 83), the timeleft/velocity maths that drives
--- the whole slide-in animation, and KillSelf's StartTime + Length test -- and
--- RealFrameTime() for the friction term and the spring step.
---
--- Neither existed in this fork, so the GMod undo notice died at
---
---     notification.lua:83: attempt to call a nil value (global 'SysTime')
---
--- RealTime() and FrameTime() (defined above, on gpGlobals) are the same
--- quantities here.
---
--- HL2SB: the SysTime alias that used to live here is GONE -- the ENGINE provides
--- SysTime() now (luaopen_UTIL_shared, Plat_FloatTime, both realms).  Do not put
--- it back:
---
---     SysTime = SysTime or RealTime        -- RealTime is CLIENT only
---
--- evaluated to nil on the SERVER, so the server had no clock at all, which
--- silently disabled the undo de-duplication in lua/includes/modules/undo.lua and
--- let the twice-dispatched "undo" run twice -- deleting entities the first pass
--- had already removed and crashing in server.dll (execute access violation).
---
--- (lua/includes/modules/gmod_compatibility/sh_init.lua:260 also assigns
--- "SysTime = Engines.GetSystemTime"; that file is not loaded -- we only include
--- its sh_enumerations.lua -- but do not start including it, or it would shadow
--- the engine global.)
--- ===========================================================================
-RealFrameTime = RealFrameTime or FrameTime
 
 -- NOTE: the server-realm render/net.Receive stand-ins are NOT here.  This file
 -- ends the server's pass with the bare `return` above (inside the
