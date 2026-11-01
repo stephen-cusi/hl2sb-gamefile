@@ -145,32 +145,6 @@ if ( not _CLIENT ) then
 		end
 	end
 
-	-- GMod: ConVarExists( name ) -> boolean.
-	--
-	-- WARNING: cod_c4 gates the creation of every one of its convars on it:
-	--     addons/cod_c4/lua/entities/cod-c4/shared.lua:19  if !ConVarExists( ... ) then CreateConVar(...)
-	--     addons/cod_c4/lua/entities/cod-c4/shared.lua:46  if !ConVarExists( "C4_RedLight" ) then ...
-	-- As a nil global BOTH realms failed to load that file entirely
-	-- ("[Lua] FAILED ... shared.lua:19: attempt to call a nil value (global 'ConVarExists')",
-	-- ds_debug.log:18941): the six C4_* convars were never created, the
-	-- net.Receive( "C4_Convars_Change" ) handler was never registered and the client never
-	-- built its convar-change callbacks or the tool-menu panel.
-	ConVarExists = ConVarExists or function( name )
-		return ConVar( name ) ~= nil
-	end
-
-	-- GMod's ServerLog( text ): a server-only global that writes the text to
-	-- the server log file, echoing "ServerLog: <text>" to the console when
-	-- sv_logecho is nonzero (reference behavior confirmed 2026-10-16).
-	-- This engine exposes no log-file writer to Lua, so the shim
-	-- echoes through Msg -- which lands in the console AND hl2sb_lua.log, the
-	-- same visible channel.  Callers are the rate-limit branches of the GMod
-	-- property files (lua/autorun/properties/statue.lua:86,
-	-- kinect_controller.lua:54), so volume is negligible.
-	ServerLog = ServerLog or function( text )
-		Msg( tostring( text ) )
-	end
-
 	return
 end
 
@@ -211,68 +185,10 @@ if ( _GAMEUI ) then
 	end
 end
 
--- GMod: ConVarExists( name ) -> boolean.  Client half - see the server-side note above:
--- cod_c4 checks it before CreateClientConVar (entities/cod-c4/shared.lua:46), so without it
--- the client half of that file failed to load too (ds_debug.log:19736).
-ConVarExists = ConVarExists or function( name )
-	return ConVar( name ) ~= nil
-end
-
 -- NOTE: the server-realm render/net.Receive stand-ins are NOT here.  This file
 -- ends the server's pass with the bare `return` above (inside the
 -- `if ( not _CLIENT )` block), so anything after that point never runs on the
 -- server.  They live near the top of the file instead.
-
--- ===========================================================================
--- HL2SB: input.IsKeyTrapping()  (GMod global on the input library)
---
--- gamemodes/base/gamemode/cl_spawnmenu.lua:15 is
---
---     concommand.Add( "-menu", function()
---         if ( input.IsKeyTrapping() ) then return end
---         hook.Run( "OnSpawnMenuClose" )
---     end, ... )
---
--- (and lua/vgui/dbinder.lua:81 calls it too).  This fork's vgui IInput has no
--- IsKeyTrapping at all (public/vgui/IInput.h has no such virtual -- GMod added
--- it to its fork of vgui2), so it cannot be bound; the only definition anywhere
--- was lua/includes/modules/gmod_compatibility/sh_init.lua:1298, which is inert
--- behind GMOD_COMPATIBILITY = false.
---
--- GMod's semantics: true while the console or a text entry is trapping the
--- keyboard.  input.GetFocus() IS bound (public/lua/vgui/LIInput.cpp:312) and
--- returns the panel holding keyboard focus, which is the same signal, so test
--- the focused panel's class.  It only needs to be conservative: returning true
--- keeps a text entry from being closed under the user's fingers.
---
--- HL2SB (2026-09-17): the engine binding for input.IsKeyTrapping now exists too
--- (public/lua/vgui/LIInput.cpp, added for lua/vgui/DBinder.lua), and it reports the
--- input.StartKeyTrapping() trap mode.  GMod's function is the UNION of the two, so
--- both are consulted below - the binding alone would let the "-menu" concommand
--- close the spawn menu while a text entry is being typed into.
--- ===========================================================================
-if ( input ~= nil ) then
-
-	local EngineIsKeyTrapping = input.IsKeyTrapping
-
-	function input.IsKeyTrapping()
-
-		if ( EngineIsKeyTrapping ~= nil and EngineIsKeyTrapping() ) then return true end
-
-		if ( input.GetFocus == nil ) then return false end
-
-		local pnl = input.GetFocus()
-		if ( not IsValid( pnl ) ) then return false end
-
-		if ( pnl.GetClassName == nil ) then return false end
-
-		local class = pnl:GetClassName()
-
-		return class == "TextEntry" or class == "EditablePanel"
-
-	end
-
-end
 
 -- ===========================================================================
 -- HL2SB: the `achievements` table (GMod global, client)
