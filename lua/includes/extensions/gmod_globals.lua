@@ -64,32 +64,14 @@ PLAYER_LEAVE_AIMING	= 10
 AddCSLuaFile = AddCSLuaFile or function( ... ) return true end
 
 -- ===========================================================================
--- HL2SB (2026-10-08): base-gamemode round.  Four small GMod globals the
--- ported base files (and stock addons) expect.
+-- HL2SB (2026-10-08): base-gamemode globals used by the ported base files.
 --
 --   Format         - string.format alias (GMod extensions/string.lua spells
 --                    it out with a format cache; a straight alias answers
 --                    the same contract).
---   MsgAll         - GMod prints to every client's console over a net
---                    channel; this fork has no such channel, so this lands
---                    on the server console only (same text, narrower
---                    audience) until a net path exists.
 --   ents.FindInBox - the engine binding is spelled Entities.GetInBox here.
 --
--- WARNING: this block MUST sit above the `if ( not _CLIENT )` section below -
--- that section ends the server's pass with a bare `return`, and an earlier
--- copy of this block at the end of the file was therefore client-only: the
--- server's PlayerDeath hit "attempt to call a nil value (global 'MsgAll')"
--- on the first suicide of a test session (2026-10-08).  Same trap the two
--- blocks above and below already document.
 -- ===========================================================================
-if ( rawget( _G, "MsgAll" ) == nil ) then
-	function MsgAll( ... )
-		Msg( ... )
-	end
-end
-
-
 -- ===========================================================================
 -- HL2SB: server-realm stand-ins for two client-only APIs that the ported GMod
 -- libraries touch at LOAD time.
@@ -232,57 +214,7 @@ if ( achievements == nil ) then
 	}
 
 end
--- ===========================================================================
--- HL2SB: gui.MouseX / gui.MouseY  and  game.GetWorld()   (2026-09-13)
---
--- Both came out of tools/globals_audit.py, which diffs every bare global call
--- and every library.Member( in the spawnmenu path against what this fork binds.
--- Both are on the Derma surface the spawnmenu builds with.
---
--- gui.MouseX / gui.MouseY
---   lua/vgui/dframe.lua uses them for window dragging (11 + 17 sites, e.g.
---   :139,:140,:212) and lua/includes/extensions/client/panel/dragdrop.lua:216,262
---   and selections.lua:79 use them for spawn-icon drag & drop.  This fork's `gui`
---   library binds only IsGameUIVisible / ScreenToVector / ... -- no MouseX/MouseY.
---   input.GetCursorPos() (public/lua/vgui/LIInput.cpp, bound in round 2) is the
---   same cursor the engine's ISurface reads, so these are exact.
---
--- game.GetWorld()
---   gamemodes/sandbox/gamemode/spawnmenu/toolpanel.lua:148 builds its CanTool
---   argument with it while the tool tabs are populated:
---       local fakeTrace = { Entity = game.GetWorld(), Hit = false }
---   so without it UpdateToolDisabledStatus throws and the whole tool panel fails
---   to build.  lua/includes/modules/constraint.lua and duplicator.lua use it too.
---   Implemented through ents.FindByClass (extensions/gmod_compat.lua:384, which
---   wraps the working gEntList.FindEntityByClassname) rather than guessing at a
---   world accessor: it returns the real worldspawn entity, or nil if the entity
---   list cannot answer.
--- ===========================================================================
 if ( CLIENT and _G.gui ~= nil and _G.input ~= nil and input.GetCursorPos ~= nil ) then
-
-	if ( gui.MouseX == nil ) then
-		function gui.MouseX()
-			local x = input.GetCursorPos()
-			return x or 0
-		end
-	end
-
-	if ( gui.MouseY == nil ) then
-		function gui.MouseY()
-			local _, y = input.GetCursorPos()
-			return y or 0
-		end
-	end
-
-	-- HL2SB (2026-10-20 mc_swep audit B5): gui.SetMousePos( x, y ) -- the
-	-- reference binds it right beside MouseX/MouseY (client realm) and the
-	-- minecraft swep's model menu parks/restores the cursor with it.  Same
-	-- cursor, same engine input binding the two getters above read.
-	if ( gui.SetMousePos == nil and input.SetCursorPos ~= nil ) then
-		function gui.SetMousePos( x, y )
-			input.SetCursorPos( x, y )
-		end
-	end
 
 	-- HL2SB (2026-10-20 mc_swep audit B5): GMod's clipboard writer is the bare
 	-- global SetClipboardText( str ) (client realm); this fork's implementation
@@ -293,32 +225,6 @@ if ( CLIENT and _G.gui ~= nil and _G.input ~= nil and input.GetCursorPos ~= nil 
 		function _G.SetClipboardText( strText )
 			return _G.system.SetClipboardText( strText )
 		end
-	end
-
-	-- HL2SB (2026-10-16): gui.ScreenToVector( x, y ) - the screen point's world
-	-- direction.  GMod implements it in C++; this engine's gui library has no
-	-- binding (the C-menu port's OnMousePressed had to guard it, which is why
-	-- the properties right-click chain was dead).  util.AimVector (lutil_shared)
-	-- is documented as this function's inverse maths, so rebuild the direction
-	-- from the local player's view: EyeAngles for the basis, GetFOV for the
-	-- projection (the reference uses the live render FOV; GetFOV is the same
-	-- value outside zoom lerps).  With no local player (main menu) the
-	-- EyeAngles shim answers angle_zero and the vector is simply forward.
-	if ( gui.ScreenToVector == nil and util ~= nil and util.AimVector ~= nil ) then
-
-		function gui.ScreenToVector( x, y )
-
-			local lp = LocalPlayer()
-
-			local fov = 90
-			if ( IsValid( lp ) and lp.GetFOV ~= nil ) then
-				fov = lp:GetFOV()
-			end
-
-			return util.AimVector( EyeAngles(), fov, x, y, ScrW(), ScrH() )
-
-		end
-
 	end
 
 end
@@ -452,26 +358,6 @@ if ( FindMetaTable ~= nil ) then
 		if ( animmeta ~= nil and animmeta ~= entmeta and getmetatable( entmeta ) == nil ) then
 			setmetatable( entmeta, { __index = animmeta } )
 		end
-	end
-end
-
--- HL2SB GMod compat (2026-09-24): ents.CreateClientProp - GMod's clientside
--- prop_physics creator.  The engine's ClientsideModel() (gmod_compat.lua ->
--- Entities.CreateClientEntity) gives the same thing for our purposes: a
--- clientside C_BaseAnimating the addon can model/bone/pose.  Accepts the
--- model string the First Person Body addon passes (GMod wants a Vector but
--- ignores it for this addon's usage - it SetModels and SetPoses right after).
-if ( ents ~= nil and ents.CreateClientProp == nil ) then
-	function ents.CreateClientProp( positionOrModel )
-		local model = "models/error.mdl"
-		if ( isstring( positionOrModel ) ) then
-			model = positionOrModel
-		end
-		local ent = ClientsideModel( model, 0 )
-		if ( IsValid( ent ) and not isstring( positionOrModel ) ) then
-			ent:SetPos( positionOrModel )
-		end
-		return ent
 	end
 end
 
